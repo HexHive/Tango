@@ -6,7 +6,7 @@ from statemanager import StateBase,
                          StateManager,
                          StateLoaderBase
 import subprocess
-from time import sleep
+from time         import sleep
 
 class ReplayStateLoader(StateLoaderBase):
     PROC_TERMINATE_RETRIES = 5
@@ -19,7 +19,7 @@ class ReplayStateLoader(StateLoaderBase):
         super().__init__(exec_env, ch_env)
         self._pobj = None # Popen object of child process
 
-    def launch_target(self) -> ChannelBase:
+    def _launch_target(self):
         # kill current process, if any
         if self._pobj:
             retries = 0
@@ -46,7 +46,7 @@ class ReplayStateLoader(StateLoaderBase):
         retries = 0
         while True:
             try:
-                channel = self._ch_env.create()
+                self._channel = self._ch_env.create()
                 break
             except:
                 retries += 1
@@ -54,7 +54,9 @@ class ReplayStateLoader(StateLoaderBase):
                     raise
                 sleep(CHAN_CREATE_WAIT)
 
-        return channel
+    @property
+    def channel(self):
+        return self._channel
 
     def load_state(self, state: StateBase, sman: StateManager):
         # get a path to the target state (may throw if state not in sm)
@@ -62,7 +64,7 @@ class ReplayStateLoader(StateLoaderBase):
         path = next(sman.state_machine.get_paths(state))
 
         # relaunch the target and establish channel
-        channel = self.launch_target()
+        self._launch_target()
 
         # reconstruct target state by replaying inputs
         for source, destination, transition in path:
@@ -72,7 +74,7 @@ class ReplayStateLoader(StateLoaderBase):
                     "source state did not match current state"
                 )
             # perform the transition
-            self.execute_input(transition.input, channel)
+            self.execute_input(transition.input, self._channel, sman)
             # check if destination matches the current state
             if destination != sman.state_tracker.current_state:
                 raise StabilityException(

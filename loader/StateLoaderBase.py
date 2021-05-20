@@ -6,7 +6,9 @@ from fuzzer       import Environment,
 from input        import InputBase,
                          PreparedInput
 from statemanager import StateBase,
-                         StateManager
+                         StateManager,
+                         PreparedTransition
+from interaction  import ReceiveInteraction
 
 class StateLoaderBase(ABC):
     """
@@ -18,11 +20,16 @@ class StateLoaderBase(ABC):
         self._ch_env = ch_env
 
     @abstractmethod
-    def load_state(self, state: StateBase):
+    def load_state(self, state: StateBase, sman: StateManager):
         pass
 
-    def execute_input(self, input: InputBase, channel: ChannelBase)
-        -> PreparedInput:
+    @abstractmethod
+    @property
+    def channel(self):
+        pass
+
+    def execute_input(self, input: InputBase, channel: ChannelBase,
+            sman: StateManager):
         """
         Executes the sequence of interactions specified by the input.
 
@@ -33,16 +40,13 @@ class StateLoaderBase(ABC):
                     is performed. This is usually provided by the loader.
         :type       channel: ChannelBase
 
-        :returns:   The sequence of interactions actually performed
-        :rtype:     PreparedInput
-
         :raises:    LoadedException: Forwards the exception that was raised
                     during execution, along with the input that caused it.
         """
         prep_input = PreparedInput()
         for interaction in input:
             try:
-                # TODO figure out what other parameters this needs
+                # FIXME figure out what other parameters this needs
                 performed = interaction.perform(channel)
                 prep_input.extend(performed)
             except Exception as ex:
@@ -50,12 +54,16 @@ class StateLoaderBase(ABC):
                 raise LoadedException(ex, prep_input)
 
             try:
-                # TODO collect state info
+                # poll channel for incoming data
+                data = channel.receive()
+                if data:
+                    prep_input.append(ReceiveInteraction(data=data))
+
+                # collect state info and update state machine
+                if sman.update(PreparedTransition(prep_input)):
+                    # if a new state is observed, clear the input
+                    prep_input = PreparedInput()
+
                 # TODO perform fault detection
-                # TODO update state machine
-                # TODO poll channel for incoming data? or do it async?
-                pass
             except Exception as ex:
                 raise LoadedException(ex, prep_input)
-
-        return prep_input

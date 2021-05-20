@@ -5,9 +5,11 @@ from   typing     import ByteString, Callable
 import socket, select
 
 class ChannelBase(ABC):
-    def __init__(self, tx_callback: Callable, rx_callback: Callable):
+    def __init__(self, tx_callback: Callable, rx_callback: Callable,
+            timescale: float = 1.0):
         self._tx_callback = tx_callback
         self._rx_callback = rx_callback
+        self._timescale = timescale
 
     @abstractmethod
     def send(self, data: ByteString) -> int:
@@ -21,7 +23,7 @@ class TCPChannel(ChannelBase):
     RECV_CHUNK_SIZE = 4096
 
     def __init__(self, tx_callback: Callable, rx_callback: Callable,
-                 endpoint: str, port: int):
+                 endpoint: str, port: int, timescale: float):
         super().__init__(tx_callback, rx_callback)
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -58,7 +60,7 @@ class TCPChannel(ChannelBase):
 
 class UDPChannel(ChannelBase):
     def __init__(self, tx_callback: Callable, rx_callback: Callable,
-                 endpoint: str, port: int):
+                 endpoint: str, port: int, timescale: float):
         super().__init__(tx_callback, rx_callback)
         raise NotImplemented()
 
@@ -70,9 +72,11 @@ class ChannelFactoryBase(ABC):
 
     tx_callback: Callable
     rx_callback: Callable
+    timescale: float = 1.0
 
     @abstractmethod
     def create(self) -> ChannelBase:
+        # TODO set up the recv hook and tx_callback stuff
         pass
 
 @dataclass
@@ -86,12 +90,14 @@ class TCPChannelFactory(TransportChannelFactory):
     data_timeout: float = 5.0 # seconds
     def create(self) -> ChannelBase:
         return TCPChannel(self.tx_callback, self.rx_callback,
-                          self.endpoint,    self.port)
+                          self.endpoint,    self.port,
+                          timescale=self.timescale)
 
 @dataclass
 class UDPChannelFactory(TransportChannelFactory):
     def create(self) -> ChannelBase:
         return UDPChannel(self.tx_callback, self.rx_callback,
-                          self.endpoint,    self.port)
+                          self.endpoint,    self.port,
+                          timescale=self.timescale)
 
 # TODO implement other channel factory data classes

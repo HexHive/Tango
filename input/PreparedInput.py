@@ -4,8 +4,8 @@ from typing      import Iterable
 
 class PreparedInput(InputBase):
     """
-    A buffered input. All interactions are readily available and can be exported to
-    a file.
+    A buffered input. All interactions are readily available and can be exported
+    to a file.
     """
     def __init__(self, interactions: Iterable[InteractionBase]=None):
         super(PreparedInput).__init__()

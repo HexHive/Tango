@@ -21,9 +21,9 @@ class FuzzerConfig:
                 "var2": "value2"
             },
             "cwd": "/path/to/working/dir",
-            "stdin": /path/to/input,
-            "stdout": /path/to/output.log,
-            "stderr": /path/to/error.log,
+            "stdin": "/path/to/input.txt",
+            "stdout": "/path/to/output.log",
+            "stderr": "/path/to/error.log",
             ...
         },
         "channel": {
@@ -46,7 +46,10 @@ class FuzzerConfig:
         },
         "fuzzer": {
             "type": "<coverage | grammar | hybrid | ...>",
-            "strategy": "<depth-first | breadth-first | ...>"
+            "strategy": "<depth-first | breadth-first | ...>",
+            "seeds": "/path/to/pcap/dir",
+            "timescale": .0 .. 1.,
+            ...
         }
     }
     """
@@ -72,9 +75,9 @@ class FuzzerConfig:
     def ch_env(self):
         _config = self._config["channel"]
         if _config["type"] == "tcp":
-            return TCPChannelFactory(**_config["tcp"])
+            return TCPChannelFactory(**_config["tcp"], timescale=self.timescale)
         elif _config["type"] == "udp":
-            return UDPChannelFactory(**_config["udp"])
+            return UDPChannelFactory(**_config["udp"], timescale=self.timescale)
         else:
             raise NotImplemented()
 
@@ -91,6 +94,8 @@ class FuzzerConfig:
         _config = self._config["fuzzer"]
         if _config["type"] == "coverage":
             return CoverageStateTracker(self.loader)
+        else:
+            raise NotImplemented()
 
     @cached_property
     def scheduler_strategy(self):
@@ -98,4 +103,13 @@ class FuzzerConfig:
 
     @cached_property
     def state_manager(self):
-        return StateManager(self.state_tracker, self.scheduler_strategy)
+        return StateManager(self.loader, self.state_tracker,
+                self.scheduler_strategy)
+
+    @cached_property
+    def seed_dir(self):
+        return self._config["fuzzer"]["seeds"]
+
+    @cached_property
+    def timescale(self):
+        return self._config["fuzzer"]["timescale"]
