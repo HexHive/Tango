@@ -1,9 +1,9 @@
 import json
-from functools import cached_property
-from loader import (Environment,
-                   TCPChannelFactory,
-                   UDPChannelFactory,
-                   ReplayStateLoader)
+from functools    import cached_property
+from loader       import Environment
+from networkio    import (TCPChannelFactory,
+                         UDPChannelFactory)
+from loader       import ReplayStateLoader
 from statemanager import (CoverageStateTracker,
                          StateManager)
 
@@ -75,9 +75,13 @@ class FuzzerConfig:
     def ch_env(self):
         _config = self._config["channel"]
         if _config["type"] == "tcp":
-            return TCPChannelFactory(**_config["tcp"], timescale=self.timescale)
+            return TCPChannelFactory(**_config["tcp"], timescale=self.timescale,
+                    tx_callback=None, rx_callback=None
+                )
         elif _config["type"] == "udp":
-            return UDPChannelFactory(**_config["udp"], timescale=self.timescale)
+            return UDPChannelFactory(**_config["udp"], timescale=self.timescale,
+                    tx_callback=None, rx_callback=None
+                )
         else:
             raise NotImplemented()
 

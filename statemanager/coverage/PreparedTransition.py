@@ -1,3 +1,4 @@
+from __future__ import annotations
 from input        import PreparedInput
 from statemanager import TransitionBase
 

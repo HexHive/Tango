@@ -10,7 +10,7 @@ class StateManager:
         self._loader = loader
         self._tracker = tracker
         self._last_state = self._tracker.initial_state
-        self._sm = StateMachine(self._last_state)
+        self._sm = StateMachine(self._last_state, self._tracker.initial_transition)
 
     @property
     def state_machine(self) -> StateMachine:
@@ -53,5 +53,5 @@ class StateManager:
             updated = True
 
         # update the current state (e.g., if it needs to track interesting cov)
-        current_state.update(self, transition)
+        self._tracker.update_state(current_state, transition.input)
         return updated

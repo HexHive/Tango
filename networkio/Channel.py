@@ -1,12 +1,13 @@
-from   abc        import ABC, abstractmethod
-from   common     import ChannelBrokenException
-from   contextlib import contextmanager
-from   typing     import ByteString, Callable
+from   abc         import ABC, abstractmethod
+from   common      import ChannelBrokenException
+from   contextlib  import contextmanager
+from   typing      import ByteString, Callable
+from   dataclasses import dataclass
 import socket, select
 
 class ChannelBase(ABC):
     def __init__(self, tx_callback: Callable, rx_callback: Callable,
-            timescale: float = 1.0):
+            timescale: float):
         self._tx_callback = tx_callback
         self._rx_callback = rx_callback
         self._timescale = timescale
@@ -24,17 +25,14 @@ class TCPChannel(ChannelBase):
 
     def __init__(self, tx_callback: Callable, rx_callback: Callable,
                  endpoint: str, port: int, timescale: float):
-        super().__init__(tx_callback, rx_callback)
+        super().__init__(tx_callback, rx_callback, timescale)
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.connect((endpoint, port))
 
     def connect(self, address: tuple):
         self._socket.connect(address)
 
-    def __enter__(self):
-        self._socket.connect((endpoint, port))
-        return self
-
-    def __exit__(self):
+    def __del__(self):
         self._socket.close()
 
     def send(self, data: ByteString) -> int:
@@ -48,7 +46,7 @@ class TCPChannel(ChannelBase):
     def receive(self) -> ByteString:
         chunks = []
         while True:
-            poll, _, _ = select.select([self._socket], [], [])
+            poll, _, _ = select.select([self._socket], [], [], 0)
             if self._socket not in poll:
                 return b''.join(chunks)
 
@@ -61,7 +59,7 @@ class TCPChannel(ChannelBase):
 class UDPChannel(ChannelBase):
     def __init__(self, tx_callback: Callable, rx_callback: Callable,
                  endpoint: str, port: int, timescale: float):
-        super().__init__(tx_callback, rx_callback)
+        super().__init__(tx_callback, rx_callback, timescale)
         raise NotImplemented()
 
 @dataclass
@@ -72,7 +70,7 @@ class ChannelFactoryBase(ABC):
 
     tx_callback: Callable
     rx_callback: Callable
-    timescale: float = 1.0
+    timescale: float
 
     @abstractmethod
     def create(self) -> ChannelBase:

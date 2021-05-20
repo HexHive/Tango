@@ -1,5 +1,5 @@
 from interaction import InteractionBase
-from loader      import ChannelBase
+from networkio   import ChannelBase
 from typing      import ByteString, Sequence
 
 class TransmitInteraction(InteractionBase):

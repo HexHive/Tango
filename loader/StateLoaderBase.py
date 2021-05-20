@@ -1,7 +1,7 @@
 from abc          import ABC,abstractmethod
 from common       import LoadedException
-from fuzzer       import (Environment,
-                         ChannelFactoryBase,
+from loader       import Environment
+from networkio    import (ChannelFactoryBase,
                          ChannelBase)
 from input        import (InputBase,
                          PreparedInput)
@@ -23,8 +23,8 @@ class StateLoaderBase(ABC):
     def load_state(self, state: StateBase, sman: StateManager):
         pass
 
-    @abstractmethod
     @property
+    @abstractmethod
     def channel(self):
         pass
 

@@ -10,10 +10,11 @@ class StateMachine:
     States are derived from the hashable and equatable StateBase base class.
     Transitions are derived from the addable TransitionBase base class.
     """
-    def __init__(self, entry: StateBase):
+    def __init__(self, entry: StateBase, initial: TransitionBase):
         self._graph = nx.MultiDiGraph()
         self._graph.add_node(entry)
         self._entry = entry
+        self._initial = initial
 
     @property
     def entry_state(self):
@@ -65,7 +66,7 @@ class StateMachine:
             )
         self._graph.remove_node(state)
 
-    def get_paths(self, destination: StateBase, source: StateBase=None)
+    def get_paths(self, destination: StateBase, source: StateBase=None) \
         -> Generator[List[Tuple[StateBase, StateBase, TransitionBase]], None, None]:
         """
         Generates all paths to destination from source. If source is None, the entry
@@ -82,14 +83,16 @@ class StateMachine:
         """
         if source is None:
             source = self._entry
-
-        paths = nx.all_simple_edge_paths(self._graph, source, destination)
-        for path in paths:
-            tuples = []
-            for edge in path:
-                _source = edge[0]
-                _destination = edge[1]
-                _idx = edge[2]
-                _transition = G.get_edge_data(_source, _destination)[_idx]
-                tuples.append((_source, _destination, _transition))
-            yield tuples
+        if source == destination:
+            yield [(source, destination, self._initial),]
+        else:
+            paths = nx.all_simple_edge_paths(self._graph, source, destination)
+            for path in paths:
+                tuples = []
+                for edge in path:
+                    _source = edge[0]
+                    _destination = edge[1]
+                    _idx = edge[2]
+                    _transition = G.get_edge_data(_source, _destination)[_idx]
+                    tuples.append((_source, _destination, _transition))
+                yield tuples

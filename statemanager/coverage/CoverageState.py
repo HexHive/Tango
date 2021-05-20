@@ -1,4 +1,4 @@
-from statemanager import StateBase
+from statemanager import StateBase, StateManager, TransitionBase
 from input        import InputBase
 
 class CoverageState(StateBase):

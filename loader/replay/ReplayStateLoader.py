@@ -1,10 +1,10 @@
 from common       import StabilityException
-from fuzzer       import (Environment,
-                         ChannelFactoryBase,
+from loader       import Environment
+from networkio    import (ChannelFactoryBase,
                          ChannelBase)
 from statemanager import (StateBase,
-                         StateManager,
-                         StateLoaderBase)
+                         StateManager)
+from loader       import StateLoaderBase
 import subprocess
 from time         import sleep
 
@@ -24,12 +24,12 @@ class ReplayStateLoader(StateLoaderBase):
         if self._pobj:
             retries = 0
             while self._pobj.poll() is None:
-                if retries == PROC_TERMINATE_RETRIES:
+                if retries == self.PROC_TERMINATE_RETRIES:
                     # TODO add logging to indicate force kill
                     self._pobj.kill()
                     break
                 self._pobj.terminate()
-                sleep(PROC_TERMINATE_WAIT)
+                sleep(self.PROC_TERMINATE_WAIT)
                 retries += 1
 
         # launch new process
@@ -50,9 +50,9 @@ class ReplayStateLoader(StateLoaderBase):
                 break
             except:
                 retries += 1
-                if retries == CHAN_CREATE_RETRIES:
+                if retries == self.CHAN_CREATE_RETRIES:
                     raise
-                sleep(CHAN_CREATE_WAIT)
+                sleep(self.CHAN_CREATE_WAIT)
 
     @property
     def channel(self):

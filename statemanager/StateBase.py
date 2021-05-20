@@ -1,5 +1,4 @@
 from abc          import ABC, abstractmethod
-from statemanager import StateManager, TransitionBase
 from input        import InputBase
 
 class StateBase(ABC):
@@ -13,8 +12,4 @@ class StateBase(ABC):
 
     @abstractmethod
     def get_escaper(self) -> InputBase:
-        pass
-
-    @abstractmethod
-    def update(self, sman: StateManager, transition: TransitionBase):
         pass

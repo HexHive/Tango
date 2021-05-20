@@ -1,9 +1,11 @@
 from .StateBase                     import StateBase
-from .StateMachine                  import StateMachine
-from .StateManager                  import StateManager
-from .StateTrackerBase              import StateTrackerBase
 from .TransitionBase                import TransitionBase
+from .StateMachine                  import StateMachine
+
+from .StateTrackerBase              import StateTrackerBase
 from .coverage.CoverageState        import CoverageState
-from .coverage.CoverageStateTracker import CoverageStateTracker
 from .coverage.PreparedTransition   import PreparedTransition
+from .coverage.CoverageStateTracker import CoverageStateTracker
 from .grammar.GrammarState          import GrammarState
+
+from .StateManager                  import StateManager

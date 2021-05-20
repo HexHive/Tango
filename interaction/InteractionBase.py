@@ -1,6 +1,7 @@
-from abc    import ABC
-from loader import ChannelBase
-from typing import Sequence
+from __future__ import annotations
+from abc           import ABC, abstractmethod
+from networkio     import ChannelBase
+from typing        import Sequence
 
 class InteractionBase(ABC):
     @abstractmethod
