@@ -1,6 +1,6 @@
 from   itertools    import product as xproduct
-from   statemanager import StateBase,
-                           TransitionBase
+from   statemanager import (StateBase,
+                           TransitionBase)
 from   typing       import Generator, Tuple, List
 import networkx     as     nx
 

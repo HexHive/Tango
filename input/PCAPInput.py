@@ -1,11 +1,11 @@
 from input       import PreparedInput
 from loader      import ChannelFactoryBase, TCPChannelFactory, UDPChannelFactory
 from scapy.all   import *
-from typing      import Sequence,           Tuple
-from interaction import InteractionBase,
+from typing      import Sequence, Tuple
+from interaction import (InteractionBase,
                         TransmitInteraction,
                         ReceiveInteraction,
-                        DelayInteraction
+                        DelayInteraction)
 from collections import OrderedSet
 
 class PCAPInput(PreparedInput):

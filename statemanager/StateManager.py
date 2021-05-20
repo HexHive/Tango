@@ -1,7 +1,7 @@
-from statemanager import StateBase,
+from statemanager import (StateBase,
                          StateMachine,
                          StateTrackerBase,
-                         TransitionBase
+                         TransitionBase)
 from loader       import StateLoaderBase
 
 class StateManager:

@@ -1,5 +1,5 @@
-from input         import InputBase,
-                          PreparedInput
+from input         import (InputBase,
+                          PreparedInput)
 from fuzzer        import FuzzerConfig
 import os
 
@@ -30,6 +30,9 @@ class FuzzerSession:
         Loops over the initial set of seeds to populate the state machine with
         known states.
         """
+        if self._seed_dir is None or not os.path.isdir(self._seed_dir):
+            return
+
         seeds = []
         for root, _, files in os.walk(self._seed_dir):
             seeds.extend(os.path.join(root, file) for file in files)

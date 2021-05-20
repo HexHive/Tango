@@ -1,4 +1,4 @@
-from abc          import ABC,      abstractmethod
+from abc          import ABC, abstractmethod
 from statemanager import StateBase
 
 class StateTrackerBase(ABC):

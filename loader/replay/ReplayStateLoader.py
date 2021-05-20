@@ -1,10 +1,10 @@
 from common       import StabilityException
-from fuzzer       import Environment,
+from fuzzer       import (Environment,
                          ChannelFactoryBase,
-                         ChannelBase
-from statemanager import StateBase,
+                         ChannelBase)
+from statemanager import (StateBase,
                          StateManager,
-                         StateLoaderBase
+                         StateLoaderBase)
 import subprocess
 from time         import sleep
 

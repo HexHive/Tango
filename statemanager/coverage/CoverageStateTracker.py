@@ -1,6 +1,6 @@
 from loader       import StateLoaderBase
-from statemanager import StateTrackerBase,
-                         CoverageState
+from statemanager import (StateTrackerBase,
+                         CoverageState)
 
 class CoverageStateTracker(StateTrackerBase):
     def __init__(self, loader: StateLoaderBase):

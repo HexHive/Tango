@@ -1,13 +1,13 @@
 from abc          import ABC,abstractmethod
 from common       import LoadedException
-from fuzzer       import Environment,
+from fuzzer       import (Environment,
                          ChannelFactoryBase,
-                         ChannelBase
-from input        import InputBase,
-                         PreparedInput
-from statemanager import StateBase,
+                         ChannelBase)
+from input        import (InputBase,
+                         PreparedInput)
+from statemanager import (StateBase,
                          StateManager,
-                         PreparedTransition
+                         PreparedTransition)
 from interaction  import ReceiveInteraction
 
 class StateLoaderBase(ABC):

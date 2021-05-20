@@ -1,11 +1,11 @@
 import json
 from functools import cached_property
-from loader import Environment,
+from loader import (Environment,
                    TCPChannelFactory,
                    UDPChannelFactory,
-                   ReplayStateLoader
-from statemanager import CoverageStateTracker,
-                         StateManager
+                   ReplayStateLoader)
+from statemanager import (CoverageStateTracker,
+                         StateManager)
 
 class FuzzerConfig:
     """
@@ -108,8 +108,8 @@ class FuzzerConfig:
 
     @cached_property
     def seed_dir(self):
-        return self._config["fuzzer"]["seeds"]
+        return self._config["fuzzer"].get("seeds")
 
     @cached_property
     def timescale(self):
-        return self._config["fuzzer"]["timescale"]
+        return self._config["fuzzer"].get("timescale", 1.0)

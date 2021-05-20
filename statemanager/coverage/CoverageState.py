@@ -14,3 +14,9 @@ class CoverageState(StateBase):
     def update(self, sman: StateManager, transition: TransitionBase):
         # TODO update coverage and add interesting inputs
         pass
+
+    def __hash__(self):
+        pass
+
+    def __eq__(self, other):
+        pass
