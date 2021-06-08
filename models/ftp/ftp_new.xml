@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Peach version="1.0">
+
+
+  <Include ns="default" src="file:defaults.xml"/>
+
+  <!--                      -->
+  <!--     Data Models      -->
+  <!--                      --> 
+  <DataModel name="DDataUSER">
+    <String value="USER anon\r\n"/>
+  </DataModel>
+  
+  <DataModel name="DDataPASS">
+    <String value="PASS anon\r\n"/>
+  </DataModel>
+  
+  <DataModel name="DDataPORT">
+    <String value="PORT 10.1.1.169,4,1\r\n"/>
+  </DataModel>
+
+  <DataModel name="DDataREST">
+    <String value="REST 9999\r\n"/>
+  </DataModel>
+
+  <DataModel name="DDataMKD">
+    <String value="MKD test\r\n"/>
+  </DataModel>
+
+  <DataModel name="DDataRNFR">
+    <String value="RNFR test\r\n"/>
+  </DataModel>
+
+  <DataModel name="DDataQUIT"> 
+     <String value="QUIT\r\n" token="true" mutable="false"/> 
+   </DataModel>
+   
+  <!-- Response -->
+  <DataModel name="DataResponse">
+    <String name="response"/>
+  </DataModel>
+
+  <DataModel name="UnameAcceptedResponse">
+    <String name="331"/>
+  </DataModel>
+
+
+  <DataModel name="PasswordAcceptedResponse">
+    <String name="230"/>
+  </DataModel>
+
+
+  <!--
+    States for the protocol
+  -->
+
+  <StateModel name="FTPState" initialState="Initial">
+    <State name="Initial">
+        <Action type="input" finalState="Ready"><DataModel ref="DataResponse"/></Action>
+    </State>
+    <State name="Ready">
+        <Action type="output" finalState="UnameSent"><DataModel ref="DataUSER"/></Action>
+        <Action type="output" finalState="Quit"><DataModel ref="DDataQUIT"/></Action>
+        <Action type="default" finalState="Initial"><DataModel ref="any"/></Action>  
+    </State>
+    <State name="UnameSent">
+        <Action type="input" finaState="UnameAccepted"><DataModel ref="UnameAcceptedResponse"/></Action>
+        <Action type="output" finalState="UnameSent"><DataModel ref="DataUSER"/></Action> 
+    </State>
+    <State name="UnameAccepted">
+        <Action type="output" finalState="PasswordSent"><DataModel ref="DDataPass"/></Action>
+        <Action type="output" finalState="UnameSent"><DataModel ref="DataUSER"/></Action>
+    </State>
+    <State name="PasswordSent">
+        <Action type="input" finalState="Authenticated"><DataModel ref="PasswordAcceptedResponse"/></Action>
+    </State>
+    <State name="Authenticated">
+        <!-- 
+            All the actions post authentication can be added here.
+            Further states can be defined on that basis.
+        -->
+    </State>
+
+    <State name="Quit">
+    </State>
+  </StateModel>
+
+
+</Peach>
