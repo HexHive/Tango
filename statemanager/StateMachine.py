@@ -96,3 +96,6 @@ class StateMachine:
                     _transition = G.get_edge_data(_source, _destination)[_idx]
                     tuples.append((_source, _destination, _transition))
                 yield tuples
+
+    def find_state(self, state: StateBase):
+        return (state in self._graph)

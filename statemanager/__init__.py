@@ -7,5 +7,6 @@ from .coverage.CoverageState        import CoverageState
 from .coverage.PreparedTransition   import PreparedTransition
 from .coverage.CoverageStateTracker import CoverageStateTracker
 from .grammar.GrammarState          import GrammarState
+from .grammar.GrammarTransition     import GrammarTransition
 
 from .StateManager                  import StateManager
