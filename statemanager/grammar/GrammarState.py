@@ -4,6 +4,8 @@ from statemanager import (
     StateMachine, 
     GrammarTransition)
 
+from input import GrammarInput
+
 class GrammarState(StateBase):
     """
     XML File has a state attribute
@@ -26,6 +28,11 @@ class GrammarState(StateBase):
         if (self.name == other.name) and (self.reachable_states == other.reachable_states):
             return True
 
+    def __hash__(self):
+        # The hashable for a state is defined as hashable for its name, since it is unique to the state, can use 
+        # reachable states too
+        return hash(self.name)
+
 def analyze_xml(fname: str):
 
     tree = ElementTree.parse(fname)
@@ -43,6 +50,13 @@ def analyze_xml(fname: str):
         # TODO: Add this grammar state's transitions to the transitions list.
         for transition in list(state):
             dest_state = GrammarState(transition.attrib.get('finalState'))
+            # Let's create the input now
+
+            datamodel_name = transition.find('DataModel').attrib('ref', '')
+            datamodel = root.find(f'./DataModel[@name="{datamodel_name}"]')
+            input = GrammarInput(name, None)
+            data = input.parse_element(datamodel)
+            input.add_interaction(data, transition.attrib.get('type'))
             state_transition = GrammarTransition(source_state, dest_state, None)
 
             state_machine.add_transition(source_state, dest_state, state_transition)
