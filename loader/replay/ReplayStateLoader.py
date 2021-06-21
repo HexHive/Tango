@@ -10,9 +10,9 @@ from time         import sleep
 
 class ReplayStateLoader(StateLoaderBase):
     PROC_TERMINATE_RETRIES = 5
-    PROC_TERMINATE_WAIT = 0.100 # seconds
-    CHAN_CREATE_RETRIES = 5
-    CHAN_CREATE_WAIT = 0.100 # seconds
+    PROC_TERMINATE_WAIT = 0.1 # seconds
+    CHAN_CREATE_RETRIES = 500
+    CHAN_CREATE_WAIT = 0.001 # seconds
 
     def __init__(self, exec_env: Environment, ch_env: ChannelFactoryBase):
         # initialize the base class
@@ -20,17 +20,23 @@ class ReplayStateLoader(StateLoaderBase):
         self._pobj = None # Popen object of child process
 
     def _launch_target(self):
+        # TODO later replace this by a forkserver to reduce reset costs
+
         # kill current process, if any
         if self._pobj:
             retries = 0
-            while self._pobj.poll() is None:
+            while True:
                 if retries == self.PROC_TERMINATE_RETRIES:
                     # TODO add logging to indicate force kill
+                    # FIXME is safe termination necessary?
                     self._pobj.kill()
                     break
                 self._pobj.terminate()
-                sleep(self.PROC_TERMINATE_WAIT)
-                retries += 1
+                try:
+                    self._pobj.wait(self.PROC_TERMINATE_WAIT)
+                    break
+                except subprocess.TimeoutExpired:
+                    retries += 1
 
         # launch new process
         self._pobj = subprocess.Popen(self._exec_env.args, shell=False,
