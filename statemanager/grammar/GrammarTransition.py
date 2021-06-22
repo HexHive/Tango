@@ -9,6 +9,10 @@ def GrammarTransition(TransitionBase):
     Initial state
     Final state
     Input
+
+    Input - It is very complex to define the input class in such a way as to elicit the structure...
+    We can define the input tokens here, and use them in the later part.
+    Also, any attribute defined with mutable False is a token/keyword for the protocol.
     """
 
     def __init__(self, inital_state: GrammarState, final_state: GrammarState, input: InputBase):
@@ -16,6 +20,7 @@ def GrammarTransition(TransitionBase):
         self.initial_state = initial_state
         self.final_state = final_state
         self.input = input
+        self.tokens = list()
 
 
     def __add__(self, other):

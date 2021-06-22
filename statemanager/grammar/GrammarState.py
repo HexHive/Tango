@@ -57,6 +57,6 @@ def analyze_xml(fname: str):
             input = GrammarInput(name, None)
             data = input.parse_element(datamodel)
             input.add_interaction(data, transition.attrib.get('type'))
-            state_transition = GrammarTransition(source_state, dest_state, None)
+            state_transition = GrammarTransition(source_state, dest_state, input)
 
             state_machine.add_transition(source_state, dest_state, state_transition)
