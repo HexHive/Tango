@@ -3,6 +3,16 @@ from input         import (InputBase,
 from fuzzer        import FuzzerConfig
 import os
 
+from xml.etree     import ElementTree 
+
+from statemanager  import (
+    NodeBase,
+    DataModelNode,
+    StringNode,
+    NumberNode,
+    BlockNode
+)
+
 class FuzzerSession:
     """
     This class initializes and tracks the global state of the fuzzer.
@@ -22,6 +32,8 @@ class FuzzerSession:
         self._sman = config.state_manager
         self._seed_dir = config.seed_dir
         self._ch_env = config.ch_env # we may need this for parsing PCAP
+        self._pit_file = config.pit_file
+        self._grammar_tree_base = NodeBase(None, "start_symbol")
 
         self._load_seeds()
 
@@ -62,3 +74,75 @@ class FuzzerSession:
 
         # TODO anything else?
         pass
+
+
+    def load_pit(self):
+
+        tree = ElementTree.parse(self._pit_file)
+        root = tree.getroot()
+
+        for element in list(root):
+
+            if element.tag != 'DataModel':
+                continue
+
+            self._grammar_tree_base.add_child(self.parse_single_xml_element(element, tree))
+
+        for element in list(root):
+
+            if element.tag == 'StateModel':
+                statemodel = element
+        
+            # We have the statemodel now, lets start enumerating the states.
+            entry_state = statemodel.find('./State[@name="Initial]"')
+            state_machine = StateMachine(GrammarState(entry_state.attrib.get('name', None)), None)
+
+
+            for state in list(statemodel):
+                source_state = GrammarState(state.attrib.get('name'))
+                # TODO: Add this grammar state's transitions to the transitions list.
+                for transition in list(state):
+                    dest_state = GrammarState(transition.attrib.get('finalState'))
+                    # Let's create the input now
+
+                    datamodel_name = transition.find('DataModel').attrib('ref', '')
+                    datamodel = root.find(f'./DataModel[@name="{datamodel_name}"]')
+                    input = GrammarInput(name, None)
+                    data = input.parse_element(datamodel)
+                    input.add_interaction(data, transition.attrib.get('type'))
+                    state_transition = GrammarTransition(source_state, dest_state, input)
+
+                    state_machine.add_transition(source_state, dest_state, state_transition)
+
+    def parse_single_xml_element(self, element: ElementTree.Element, tree: ElementTree):
+
+        if element.tag == 'DataModel':
+            node = DataModelNode(list(), element.attrib.get('name'))
+        
+            for child_element in list(element):
+                node.add_child(self.parse_single_xml_element(child, tree))
+        elif element.tag == 'String':
+
+            node = StringNode(
+                list(), 
+                element.attrib.get('name'), 
+                element.attrib.get('value'), 
+                element.attrib.get('mutable', True), 
+                element.attrib.get('constraint', None)
+            )
+
+        elif element.tag == 'Number':
+            node = NumberNode(
+                list(), 
+                element.attrib.get('name'), 
+                int(element.attrib.get('value')), 
+                element.attrib.get('mutable', True), 
+                element.attrib.get('constraint', None)
+            )
+        elif element.tag == 'Block':
+            node = BlockNode(list(), element.attrib.get('name'))
+
+            for child_element in list(element):
+                node.add_child(self.parse_single_xml_element(child_element, tree))
+        
+        return node if (node is not None) else None 

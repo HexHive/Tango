@@ -5,6 +5,7 @@ from networkio    import (TCPChannelFactory,
                          UDPChannelFactory)
 from loader       import ReplayStateLoader
 from statemanager import (CoverageStateTracker,
+                          GrammarStateTracker,
                          StateManager)
 
 class FuzzerConfig:
@@ -49,6 +50,7 @@ class FuzzerConfig:
             "strategy": "<depth-first | breadth-first | ...>",
             "seeds": "/path/to/pcap/dir",
             "timescale": .0 .. 1.,
+            "pit_file": "/path/to/peachpit.xml"
             ...
         }
     }
@@ -98,7 +100,10 @@ class FuzzerConfig:
         _config = self._config["fuzzer"]
         if _config["type"] == "coverage":
             return CoverageStateTracker(self.loader)
+        elif _config["type"] == "grammar":
+            return GrammarStateTracker(self.loader)
         else:
+            # TODO: Hybrid case for state tracking, need two state machines, trackers etc.
             raise NotImplemented()
 
     @cached_property
@@ -117,3 +122,7 @@ class FuzzerConfig:
     @cached_property
     def timescale(self):
         return self._config["fuzzer"].get("timescale", 1.0)
+
+    @cached_property
+    def pit_file(self):
+        return self._config["fuzzer"].get("pit_file")
