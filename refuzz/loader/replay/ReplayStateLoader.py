@@ -65,9 +65,13 @@ class ReplayStateLoader(StateLoaderBase):
         return self._channel
 
     def load_state(self, state: StateBase, sman: StateManager):
-        # get a path to the target state (may throw if state not in sm)
-        # TODO how to select from multiple paths?
-        path = next(sman.state_machine.get_paths(state))
+        if state is None or sman is None:
+            # special case where the state tracker wants an initial state
+            path = ()
+        else:
+            # get a path to the target state (may throw if state not in sm)
+            # TODO how to select from multiple paths?
+            path = next(sman.state_machine.get_paths(state))
 
         # relaunch the target and establish channel
         self._launch_target()

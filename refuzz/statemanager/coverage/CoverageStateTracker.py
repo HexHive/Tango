@@ -1,17 +1,23 @@
 from loader       import StateLoaderBase
 from statemanager import (StateTrackerBase,
                          CoverageState,
+                         CoverageReader,
                          PreparedTransition)
 from input        import InputBase, PreparedInput
 
 class CoverageStateTracker(StateTrackerBase):
     def __init__(self, loader: StateLoaderBase):
-        # TODO set environment variables and load program with loader
-        pass
+        # set environment variables and load program with loader
+        loader._exec_env.env.update({
+                'REFUZZ_COVERAGE': '/refuzz_cov'
+            })
+        loader.load_state(None, None)
+        self._reader = CoverageReader('/refuzz_cov')
+        self._state0 = CoverageState(self._reader.array)
 
     @property
     def initial_state(self) -> CoverageState:
-        pass
+        return self._state0
 
     @property
     def initial_transition(self) -> PreparedTransition:
