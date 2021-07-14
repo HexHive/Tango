@@ -11,8 +11,6 @@ from time         import sleep
 class ReplayStateLoader(StateLoaderBase):
     PROC_TERMINATE_RETRIES = 5
     PROC_TERMINATE_WAIT = 0.1 # seconds
-    CHAN_CREATE_RETRIES = 500
-    CHAN_CREATE_WAIT = 0.001 # seconds
 
     def __init__(self, exec_env: Environment, ch_env: ChannelFactoryBase):
         # initialize the base class
@@ -22,7 +20,7 @@ class ReplayStateLoader(StateLoaderBase):
     def _launch_target(self):
         # TODO later replace this by a forkserver to reduce reset costs
 
-        # kill current process, if any
+        ## Kill current process, if any
         if self._pobj:
             retries = 0
             while True:
@@ -38,7 +36,7 @@ class ReplayStateLoader(StateLoaderBase):
                 except subprocess.TimeoutExpired:
                     retries += 1
 
-        # launch new process
+        ## Launch new process
         self._pobj = subprocess.Popen(self._exec_env.args, shell=False,
             stdin  = self._exec_env.stdin,
             stdout = self._exec_env.stdout,
@@ -48,17 +46,8 @@ class ReplayStateLoader(StateLoaderBase):
             env = self._exec_env.env,
         )
 
-        # establish a connection
-        retries = 0
-        while True:
-            try:
-                self._channel = self._ch_env.create()
-                break
-            except:
-                retries += 1
-                if retries == self.CHAN_CREATE_RETRIES:
-                    raise
-                sleep(self.CHAN_CREATE_WAIT)
+        ## Establish a connection
+        self._channel = self._ch_env.create(self._pobj)
 
     @property
     def channel(self):

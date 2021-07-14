@@ -9,5 +9,8 @@ class LoadedException(RuntimeError):
 class StabilityException(RuntimeError):
     pass
 
+class ChannelSetupException(RuntimeError):
+    pass
+
 class ChannelBrokenException(RuntimeError):
     pass
