@@ -5,8 +5,9 @@ from networkio    import (ChannelFactoryBase,
 from statemanager import (StateBase,
                          StateManager)
 from loader       import StateLoaderBase
-import subprocess
 from time         import sleep
+from ptrace.binding import ptrace_traceme
+import subprocess
 
 class ReplayStateLoader(StateLoaderBase):
     PROC_TERMINATE_RETRIES = 5
@@ -44,6 +45,7 @@ class ReplayStateLoader(StateLoaderBase):
             cwd = self._exec_env.cwd,
             restore_signals = True, # TODO check if this should be false
             env = self._exec_env.env,
+            preexec_fn = ptrace_traceme
         )
 
         ## Establish a connection
