@@ -45,6 +45,7 @@ class ChannelBase(ABC):
         self._syscall_whitelist = SOCKET_SYSCALL_NAMES
 
         self._debugger = PtraceDebugger()
+        self._debugger.traceFork()
         self._proc = self._debugger.addProcess(self._pobj.pid, is_attached=True)
         self._proc.syscall_state.ignore_callback = self._ignore_callback
 
@@ -59,17 +60,23 @@ class ChannelBase(ABC):
                        break_on_entry: bool = False,
                        resume_process: bool = True,
                        **kwargs):
-        with ThreadPoolExecutor() as executor:
-            if not self._proc.is_stopped:
-                self._proc.kill(signal.SIGSTOP)
-                while True:
-                    event = self._proc.waitEvent()
-                    if event.signum in (signal.SIGSTOP, signal.SIGTRAP):
-                        break
+        def prepare_process(process, ignore_callback):
+            if not process in self._debugger:
+                debugger.addProcess(process, is_attached=True)
+            process.syscall_state.ignore_callback = ignore_callback
+            process.syscall()
 
-            ## Break on next syscall
-            self._proc.syscall_state.ignore_callback = ignore_callback
-            self._proc.syscall()
+        with ThreadPoolExecutor() as executor:
+            for proc in self._debugger:
+                if not proc.is_stopped:
+                    proc.kill(signal.SIGSTOP)
+                    while True:
+                        event = self._proc.waitEvent()
+                        if event.signum in (signal.SIGSTOP, signal.SIGTRAP):
+                            break
+
+                ## Break on next syscall
+                prepare_process(self._proc, ignore_callback)
 
             ## Execute monitor target
             if monitor_target:
@@ -86,18 +93,19 @@ class ChannelBase(ABC):
                     exitcode = -256
                     if event.exitcode is not None:
                         exitcode = event.exitcode
-                    raise ChannelBrokenException(f"Process exited with code {exitcode}")
+                    raise ChannelBrokenException(f"Process with {event.processs.pid=} exited with code {exitcode}")
                 except ProcessSignal as event:
                     event.display()
                     event.process.syscall(event.signum)
                     exitcode = signal_to_exitcode(event.signum)
                     continue
                 except NewProcessEvent as event:
-                    # TODO monitor child for syscalls as well? may be needed for multi-thread or multi-process targets
+                    # monitor child for syscalls as well. may be needed for multi-thread or multi-process targets
+                    prepare_process(event.process, ignore_callback)
                     event.process.parent.syscall()
                     continue
                 except ProcessExecution as event:
-                    event.process.syscall()
+                    self._debugger.deleteProcess(event.process)
                     continue
 
                 # Process syscall enter or exit
@@ -116,7 +124,8 @@ class ChannelBase(ABC):
 
             ## Resume process and remove syscall breakpoints
             if resume_process:
-                self._proc.cont()
+                for process in self._debugger:
+                    process.cont()
 
             ## Return the target's result
             if monitor_target:
