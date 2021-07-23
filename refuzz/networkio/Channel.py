@@ -1,3 +1,5 @@
+from . import debug
+
 from   abc         import ABC, abstractmethod
 from   common      import (ChannelBrokenException,
                           ChannelSetupException)
@@ -70,9 +72,11 @@ class ChannelBase(ABC):
             for proc in self._debugger:
                 if not proc.is_stopped:
                     proc.kill(signal.SIGSTOP)
+                    debug(f"Sent SIGSTOP to interrupt target with {proc.pid=}")
                     while True:
                         event = self._proc.waitEvent()
                         if event.signum in (signal.SIGSTOP, signal.SIGTRAP):
+                            debug("Target received SIGSTOP/SIGTRAP and was interrupted")
                             break
 
                 ## Break on next syscall
@@ -95,28 +99,35 @@ class ChannelBase(ABC):
                         exitcode = event.exitcode
                     raise ChannelBrokenException(f"Process with {event.processs.pid=} exited with code {exitcode}")
                 except ProcessSignal as event:
+                    debug(f"Target process with {event.process.pid=} received signal with {event.signum=}")
                     event.display()
                     event.process.syscall(event.signum)
                     exitcode = signal_to_exitcode(event.signum)
                     continue
                 except NewProcessEvent as event:
                     # monitor child for syscalls as well. may be needed for multi-thread or multi-process targets
+                    debug(f"Target process forked, adding child process with {event.process.pid=} to debugger")
                     prepare_process(event.process, ignore_callback)
                     event.process.parent.syscall()
                     continue
                 except ProcessExecution as event:
+                    debug(f"Target process with {event.process.pid=} called exec; removing from debugger")
                     self._debugger.deleteProcess(event.process)
                     continue
 
                 # Process syscall enter or exit
+                debug(f"Target proces with {event.process.pid=} requested a syscall")
                 state = event.process.syscall_state
                 syscall = state.event(self._syscall_options)
                 # ensure that the syscall has finished successfully before callback
                 if syscall and syscall.result != -1 and \
                         (break_on_entry or syscall.result is not None):
                     syscall_callback(event.process, syscall, **kwargs)
+                else:
+                    debug(f"syscall request ignored")
 
                 if break_callback():
+                    debug("Breaking out of debug loop")
                     break
 
                 # Break on next syscall
@@ -126,6 +137,7 @@ class ChannelBase(ABC):
             if resume_process:
                 for process in self._debugger:
                     process.cont()
+                    debug(f"Resumed process with {process.pid=}")
 
             ## Return the target's result
             if monitor_target:
