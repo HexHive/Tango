@@ -1,4 +1,3 @@
-import json
 from functools    import cached_property
 from loader       import Environment
 from networkio    import (TCPChannelFactory,
@@ -6,6 +5,8 @@ from networkio    import (TCPChannelFactory,
 from loader       import ReplayStateLoader
 from statemanager import (CoverageStateTracker,
                          StateManager)
+import json
+import os
 
 class FuzzerConfig:
     """
@@ -69,6 +70,8 @@ class FuzzerConfig:
         for stdf in ["stdin", "stdout", "stderr"]:
             if stdf in _config:
                 _config[stdf] = open(_config[stdf], "wt")
+        if not _config.get("env"):
+            _config["env"] = dict(os.environ)
         return Environment(**_config)
 
     @cached_property
