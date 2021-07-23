@@ -25,12 +25,12 @@ class CoverageReader:
         # get the size of the coverage array
         _type = self.typecode_to_type['I']
         _size = ctypes.sizeof(_type)
-        _mem, _map = init_array("/refuzz_size", _type, _size, False, False)
+        _mem, _map = self.init_array("/refuzz_size", _type, _size, False, False)
         _size = _type.from_address(self.address_of_buffer(_map)).value
         _map.close()
         _mem.unlink()
 
-        assert frozenset(tag).issubset(valid_chars)
+        assert frozenset(tag[1:]).issubset(self.valid_chars)
         if tag[0] != "/":
             tag = "/%s" % (tag,)
 

@@ -9,7 +9,7 @@ class CoverageState(StateBase):
         # populate with AFL-style global coverage information
         self._cov = {
             edge: self._count_class_lookup(count)
-            for edge, count in coverage_map.enumerate()
+            for edge, count in enumerate(coverage_map)
             if count != 0
         }
 
