@@ -302,6 +302,7 @@ class TCPChannel(ChannelBase):
                 raise ChannelBrokenException("recv returned 0, socket shutdown")
 
             chunks.append(ret)
+        return b''.join(chunks)
 
     def __del__(self):
         self._socket.close()
