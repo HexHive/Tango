@@ -24,7 +24,7 @@ class ReplayStateLoader(StateLoaderBase):
         ## Kill current process, if any
         if self._pobj:
             # ensure that the channel is closed and the debugger detached
-            del self._channel
+            self._channel.close()
 
             retries = 0
             while True:
