@@ -43,6 +43,10 @@ class CoverageState(StateBase):
     def get_escaper(self) -> InputBase:
         # TODO generate a possible input to escape the current state
         # TODO (basically select an interesting input and mutate it)
+        from input import PreparedInput
+        from interaction import TransmitInteraction, ReceiveInteraction
+        return PreparedInput([TransmitInteraction(b'Hello world!\n'),
+            ReceiveInteraction()])
         pass
 
     def update(self, sman: StateManager, transition: TransitionBase):
@@ -50,7 +54,8 @@ class CoverageState(StateBase):
         pass
 
     def __hash__(self):
-        pass
+        return 0
+        return hash(self._cov)
 
     def __eq__(self, other):
-        pass
+        return self._cov == other._cov

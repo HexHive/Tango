@@ -2,6 +2,8 @@ from input         import (InputBase,
                           PreparedInput)
 from fuzzer        import FuzzerConfig
 import os
+from threading import Timer
+from time import sleep
 
 class FuzzerSession:
     """
@@ -22,6 +24,9 @@ class FuzzerSession:
         self._sman = config.state_manager
         self._seed_dir = config.seed_dir
         self._ch_env = config.ch_env # we may need this for parsing PCAP
+
+        # stats stuff
+        self._counter = 0
 
         self._load_seeds()
 
@@ -50,12 +55,24 @@ class FuzzerSession:
         # FIXME is there ever a proper terminating condition for fuzzing?
         while True:
             cur_state = self._sman.state_tracker.current_state
+            # TODO move escapers from state to state tracker/generator
+            # TODO replace its return value from InputBase to TransitionBase
             input = cur_state.get_escaper()
             self._loader.execute_input(input, self._loader.channel, self._sman)
+            self._sman.step()
+            self._counter += 1
+
+    def _stats(self):
+        while True:
+            print(f"execs/s {self._counter / 5.0}")
+            self._counter = 0
+            sleep(5)
 
     def start(self):
         # reset state after the seed initialization stage
         self._sman.reset_state()
+
+        # Timer(5.0, self._stats).start()
 
         # launch fuzzing loop
         self._loop()

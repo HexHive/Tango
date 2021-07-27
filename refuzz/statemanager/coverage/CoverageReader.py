@@ -34,6 +34,9 @@ class CoverageReader:
         if tag[0] != "/":
             tag = "/%s" % (tag,)
 
+        # TODO REMOVE THIS
+        _size=10
+
         _type = self.typecode_to_type['B'] * _size
         _size = ctypes.sizeof(_type)
 
@@ -44,7 +47,7 @@ class CoverageReader:
     def init_array(tag, typ, size, create, force):
         # assert 0 <= size < sys.maxint
         assert 0 <= size < sys.maxsize
-        flag = (0, posix_ipc.O_CREX)[create]
+        flag = (0 | posix_ipc.O_CREAT, posix_ipc.O_CREX)[create]
         try:
             _mem = posix_ipc.SharedMemory(tag, flags=flag, size=size)
         except posix_ipc.ExistentialError:

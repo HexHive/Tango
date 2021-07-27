@@ -1,0 +1,22 @@
+{
+	"exec": {
+		"path": "../lib/demo_server",
+		"args": ["../lib/demo_server"],
+		"stdout": "./stdout",
+		"stderr": "./stderr"
+	},
+	"channel": {
+		"type": "tcp",
+		"tcp": {
+			"endpoint": "127.0.0.1",
+			"port": 5001
+		}
+	},
+	"loader": {
+		"type": "replay"
+	},
+	"fuzzer": {
+		"type": "coverage",
+		"strategy": "default"
+	}
+}

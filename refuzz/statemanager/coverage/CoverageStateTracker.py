@@ -26,6 +26,7 @@ class CoverageStateTracker(StateTrackerBase):
     @property
     def current_state(self) -> CoverageState:
         # TODO access shmem region or IPC to get coverage info
+        return CoverageState(self._reader.array)
         pass
 
     def update_state(self, state: CoverageState, input: InputBase):
