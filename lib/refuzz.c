@@ -1,5 +1,6 @@
 // Compile binaries with -fsanitize-coverage={func, bb, edge},trace-pc-guard
 
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <sanitizer/coverage_interface.h>
@@ -15,6 +16,14 @@ static uint8_t *edge_cnt;
 static size_t edge_sz;
 
 void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
+    const char *name = getenv("REFUZZ_COVERAGE");
+    if (!name) {
+        fputs("env:REFUZZ_COVERAGE not specified, disabling instrumentation\n", stderr);
+        for (uint32_t *x = start; x < stop; x++)
+            *x = 0;  // disable all guards
+        return;
+    }
+
     static uint64_t N;  // Counter for the guards.
     if (start == stop || *start) return;  // Initialize only once.
     for (uint32_t *x = start; x < stop; x++)
@@ -22,8 +31,6 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
 
     // initialize edge counters
     edge_sz = N * sizeof(uint8_t);
-    const char *name = getenv("REFUZZ_COVERAGE");
-    if (!name) return;
     int fd = shm_open(name, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd == -1) return;
     if (ftruncate(fd, edge_sz) == -1) return;
@@ -46,7 +53,7 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
 void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
     if (!*guard) return;
 
-    if (!__builtin_uadd_overflow(edge_cnt[*guard], 1, &edge_cnt[*guard]))
+    if (!__builtin_add_overflow(edge_cnt[*guard], 1, &edge_cnt[*guard]))
         edge_cnt[*guard] = UINT8_MAX;
 
     msync(edge_cnt, edge_sz, MS_ASYNC | MS_INVALIDATE);
