@@ -3,4 +3,4 @@ decorator==4.4.2
 networkx==2.5.1
 scapy==2.4.5
 posix-ipc==1.0.5
-psutil==5.8.0
+python-ptrace @ git+https://github.com/hazimeh/python-ptrace.git
