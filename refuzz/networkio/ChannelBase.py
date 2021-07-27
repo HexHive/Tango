@@ -25,6 +25,10 @@ class ChannelBase(ABC):
     def receive(self) -> ByteString:
         pass
 
+    @abstractmethod
+    def close(self):
+        pass
+
     @property
     def sockfd(self):
         return self._sockfd

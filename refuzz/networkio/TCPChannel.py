@@ -2,6 +2,8 @@ from . import debug
 
 from typing import ByteString, Callable
 from networkio import ChannelBase, PtraceChannel, TransportChannelFactory
+from   common      import (ChannelBrokenException,
+                          ChannelSetupException)
 from subprocess import Popen
 import errno
 import struct
@@ -9,6 +11,8 @@ import socket
 import select
 import threading
 from dataclasses import dataclass
+from functools import partial
+from ptrace.error import PtraceError
 
 @dataclass
 class TCPChannelFactory(TransportChannelFactory):
@@ -36,6 +40,7 @@ class TCPChannel(PtraceChannel):
             if self._state == self.SOCKET_UNBOUND and syscall.name == 'bind':
                 sockaddr = syscall.arguments[1].value
                 # FIXME apparently, family is 2 bytes, not 4?
+                # maybe use the parser that comes with python-ptrace
                 self._sa_family,  = struct.unpack('@H', process.readBytes(sockaddr, 2))
                 assert (self._sa_family  == socket.AF_INET), "Only IPv4 is supported."
                 self._sin_port, = struct.unpack('!H', process.readBytes(sockaddr + 2, 2))
@@ -92,7 +97,7 @@ class TCPChannel(PtraceChannel):
             sockfd = syscall.result
 
         monitor_target = partial(self._socket.connect, address)
-        self._monitor_syscalls(monitor_target, ignore_callback, break_callback, syscall_callback_accept, resume_process=False, listenfd=listenfd)
+        self._monitor_syscalls(monitor_target, ignore_callback, break_callback, syscall_callback_accept, listenfd=listenfd)
         self._sockfd = sockfd
 
         # wait for the next read, recv, select, or poll
@@ -105,6 +110,7 @@ class TCPChannel(PtraceChannel):
         ignore_callback = lambda x: x.name not in ('read', 'recv', 'recvfrom', 'recvmsg', 'poll', 'ppoll', 'select')
         break_callback = lambda: server_waiting
         def syscall_callback_read(process, syscall):
+            # poll, ppoll
             if syscall.name in ('poll', 'ppoll'):
                 nfds = syscall.arguments[1].value
                 pollfds = syscall.arguments[0].value
@@ -114,6 +120,9 @@ class TCPChannel(PtraceChannel):
                     fd, events, revents = struct.unpack(fmt, process.readBytes(pollfds + i * size, size))
                     if fd == self._sockfd and (events & select.POLLIN) != 0:
                         break
+                else:
+                    return
+            # select
             elif syscall.name == 'select':
                 nfds = syscall.arguments[0].value
                 if nfds <= self._sockfd:
@@ -126,10 +135,25 @@ class TCPChannel(PtraceChannel):
                 fd_set, = struct.unpack(fmt, process.readBytes(readfds + l_idx * size, size))
                 if fd_set & (1 << b_idx) == 0:
                     return
+            # read, recv, recvfrom, recvmsg
             elif syscall.arguments[0].value != self._sockfd:
                 return
             nonlocal server_waiting
             server_waiting = True
+
+            # remove every other process from the debugger
+            for proc in self._debugger:
+                if proc != process:
+                    try:
+                        proc.detach()
+                    except PtraceError:
+                        try:
+                            proc.kill(signal.SIGSTOP)
+                            proc.waitSyscall()
+                            proc.detach()
+                        except:
+                            pass
+                        pass
         self._monitor_syscalls(None, ignore_callback, break_callback, syscall_callback_read, break_on_entry=True)
 
     def send(self, data: ByteString) -> int:
@@ -138,6 +162,7 @@ class TCPChannel(PtraceChannel):
             sent += self._send_sync(data[sent:])
 
         self._poll_sync()
+        debug(f"Sent data to server: {data}")
         return sent
 
     def _send_sync(self, data: ByteString) -> int:
@@ -180,7 +205,7 @@ class TCPChannel(PtraceChannel):
             server_received += syscall.result
 
         monitor_target = partial(send_monitor, data)
-        ret = self._monitor_syscalls(monitor_target, ignore_callback, break_callback, syscall_callback_read, resume_process=False)
+        ret = self._monitor_syscalls(monitor_target, ignore_callback, break_callback, syscall_callback_read)
 
         return ret
 
@@ -189,14 +214,15 @@ class TCPChannel(PtraceChannel):
         while True:
             poll, _, _ = select.select([self._socket], [], [], 0)
             if self._socket not in poll:
-                return b''.join(chunks)
+                data = b''.join(chunks)
+                debug(f"Received data from server: {data}")
+                return data
 
             ret = self._socket.recv(self.RECV_CHUNK_SIZE)
             if ret == b'' and len(chunks) == 0:
                 raise ChannelBrokenException("recv returned 0, socket shutdown")
 
             chunks.append(ret)
-        return b''.join(chunks)
 
     def close(self):
         self._socket.close()
