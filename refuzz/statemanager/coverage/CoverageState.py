@@ -28,10 +28,11 @@ class CoverageState(StateBase):
         lookup[128] = 128
         return lookup
 
+    @classmethod
     @cache
-    def _count_class_lookup(self, count):
+    def _count_class_lookup(cls, count):
         res = 0
-        for bn, lbl in self.lookup().items():
+        for bn, lbl in cls.lookup().items():
             if count >= bn:
                 res = lbl
             else:
