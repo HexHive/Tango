@@ -31,6 +31,7 @@ class StateManager:
         :returns:   Whether or not the step resulted in a state change
         :rtype:     bool
         """
+        self.reset_state()
         pass
 
     def update(self, transition: TransitionBase) -> bool:

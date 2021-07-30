@@ -8,6 +8,6 @@ class InteractionBase(ABC):
     def perform(self, channel: ChannelBase) -> Sequence[InteractionBase]:
         pass
 
-    @abstractmethod
+    # @abstractmethod
     def mutate(self, *args, **kwargs) -> InteractionBase:
         pass

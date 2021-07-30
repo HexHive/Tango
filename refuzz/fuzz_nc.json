@@ -1,0 +1,22 @@
+{
+	"exec": {
+		"path": "/bin/netcat",
+		"args": ["/bin/netcat", "-l", "-t", "51512"],
+		"stdout": "./stdout",
+		"stderr": "./stderr"
+	},
+	"channel": {
+		"type": "tcp",
+		"tcp": {
+			"endpoint": "127.0.0.1",
+			"port": 51512
+		}
+	},
+	"loader": {
+		"type": "replay"
+	},
+	"fuzzer": {
+		"type": "coverage",
+		"strategy": "default"
+	}
+}
