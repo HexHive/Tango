@@ -2,7 +2,7 @@ from statemanager import StateBase, StateManager, TransitionBase
 from input        import InputBase
 from typing       import Sequence
 from collections  import OrderedDict
-from functools    import cache
+from functools    import cache, reduce
 
 class CoverageState(StateBase):
     def __init__(self, coverage_map: Sequence):
@@ -16,7 +16,7 @@ class CoverageState(StateBase):
     @staticmethod
     @cache
     def lookup():
-        lookup = OrderedDict.fromkeys([1, 2, 3, 4, 8, 16, 32, 128])
+        lookup = OrderedDict.fromkeys([0, 1, 2, 3, 4, 8, 16, 32, 128])
         lookup[0] = 0
         lookup[1] = 1
         lookup[2] = 2
@@ -50,7 +50,7 @@ class CoverageState(StateBase):
         pass
 
     def __hash__(self):
-        pass
+        return reduce(lambda x,y: x ^ hash(y), self._cov.items(), 0)
 
     def __eq__(self, other):
         pass
