@@ -57,6 +57,7 @@ class StateLoaderBase(ABC):
                 # poll channel for incoming data
                 data = channel.receive()
                 if data:
+                    # FIXME what if the input already has a ReceiveInteraction?
                     prep_input.append(ReceiveInteraction(data=data))
 
                 # collect state info and update state machine

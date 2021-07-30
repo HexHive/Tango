@@ -1,3 +1,5 @@
+from . import debug
+
 import sys
 import mmap
 import ctypes
@@ -29,6 +31,8 @@ class CoverageReader:
         _size = _type.from_address(self.address_of_buffer(_map)).value
         _map.close()
         _mem.unlink()
+
+        debug(f"Obtained coverage map {_size=}")
 
         assert frozenset(tag[1:]).issubset(self.valid_chars)
         if tag[0] != "/":
