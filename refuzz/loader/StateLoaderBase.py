@@ -6,8 +6,7 @@ from networkio    import (ChannelFactoryBase,
 from input        import (InputBase,
                          PreparedInput)
 from statemanager import (StateBase,
-                         StateManager,
-                         PreparedTransition)
+                         StateManager)
 from interaction  import ReceiveInteraction
 
 class StateLoaderBase(ABC):
@@ -28,43 +27,26 @@ class StateLoaderBase(ABC):
     def channel(self):
         pass
 
-    def execute_input(self, input: InputBase, channel: ChannelBase,
-            sman: StateManager):
+    def execute_input(self, input: InputBase, sman: StateManager):
         """
         Executes the sequence of interactions specified by the input.
 
         :param      input:  An object derived from the InputBase abstract class.
         :type       input:  InputBase
 
-        :param      channel: The communication channel over which the interaction
-                    is performed. This is usually provided by the loader.
-        :type       channel: ChannelBase
-
         :raises:    LoadedException: Forwards the exception that was raised
                     during execution, along with the input that caused it.
         """
-        prep_input = PreparedInput()
-        for interaction in input:
+        with sman.get_context(input) as ctx:
             try:
-                # FIXME figure out what other parameters this needs
-                performed = interaction.perform(channel)
-                prep_input.extend(performed)
+                for interaction in ctx:
+                    # FIXME figure out what other parameters this needs
+                    interaction.perform(self.channel)
+                    # TODO perform fault detection
             except Exception as ex:
-                prep_input.append(interaction)
-                raise LoadedException(ex, prep_input)
+                raise LoadedException(ex, ctx.input_gen())
 
-            try:
-                # poll channel for incoming data
-                data = channel.receive()
-                if data:
-                    # FIXME what if the input already has a ReceiveInteraction?
-                    prep_input.append(ReceiveInteraction(data=data))
-
-                # collect state info and update state machine
-                if sman.update(PreparedTransition(prep_input)):
-                    # if a new state is observed, clear the input
-                    prep_input = PreparedInput()
-
-                # TODO perform fault detection
-            except Exception as ex:
-                raise LoadedException(ex, prep_input)
+        # poll channel for incoming data
+        # FIXME what to do with this data? if input did not request it, it was
+        #   probably useless
+        data = self.channel.receive()

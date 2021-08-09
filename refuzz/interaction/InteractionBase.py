@@ -5,9 +5,13 @@ from typing        import Sequence
 
 class InteractionBase(ABC):
     @abstractmethod
-    def perform(self, channel: ChannelBase) -> Sequence[InteractionBase]:
+    def perform(self, channel: ChannelBase):
         pass
 
-    # @abstractmethod
-    def mutate(self, *args, **kwargs) -> InteractionBase:
+    @abstractmethod
+    def mutate(self, mutator):
+        pass
+
+    @abstractmethod
+    def __eq__(self, other: InteractionBase):
         pass

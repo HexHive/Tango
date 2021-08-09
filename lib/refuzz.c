@@ -53,7 +53,7 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
 void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
     if (!*guard) return;
 
-    if (!__builtin_add_overflow(edge_cnt[*guard], 1, &edge_cnt[*guard]))
+    if (__builtin_add_overflow(edge_cnt[*guard], 1, &edge_cnt[*guard]))
         edge_cnt[*guard] = UINT8_MAX;
 
     msync(edge_cnt, edge_sz, MS_ASYNC | MS_INVALIDATE);

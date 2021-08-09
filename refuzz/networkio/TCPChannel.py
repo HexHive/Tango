@@ -226,8 +226,8 @@ class TCPChannel(PtraceChannel):
 
     def close(self):
         self._socket.close()
-        super(TCPChannel, self).close()
+        super().close()
 
     def __del__(self):
         self.close()
-        super(TCPChannel, self).__del__()
+        super().__del__()

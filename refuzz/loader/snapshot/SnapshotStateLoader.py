@@ -1,4 +1,4 @@
 from statemanager import StateLoaderBase
 
-class ReplayStateLoader(StateLoaderBase):
+class SnapshotStateLoader(StateLoaderBase):
     pass

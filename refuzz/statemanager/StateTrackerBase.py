@@ -1,16 +1,24 @@
 from abc          import ABC, abstractmethod
-from statemanager import StateBase, TransitionBase
+from typing       import Callable
+from statemanager import StateBase
 from input        import InputBase
+from generator    import InputGeneratorBase
 
 class StateTrackerBase(ABC):
-    @property
-    @abstractmethod
-    def initial_state(self) -> StateBase:
-        pass
+    def __init__(self, generator: InputGeneratorBase):
+        # a state tracker might need the generator for a training phase
+        # FIXME maybe make this specific to the state tracker that needs it?
+        self._generator = generator
 
     @property
     @abstractmethod
-    def initial_transition(self) -> TransitionBase:
+    def entry_state(self) -> StateBase:
+        """
+        The state of the target when it is first launched (with no inputs sent)
+
+        :returns:   The state object describing the entry state.
+        :rtype:     StateBase
+        """
         pass
 
     @property
@@ -19,5 +27,6 @@ class StateTrackerBase(ABC):
         pass
 
     @abstractmethod
-    def update_state(self, state: StateBase, input: InputBase):
+    def update_state(self, prev: StateBase, new: StateBase,
+            input_gen: Callable[..., InputBase]):
         pass

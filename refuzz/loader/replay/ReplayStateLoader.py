@@ -71,14 +71,14 @@ class ReplayStateLoader(StateLoaderBase):
         self._launch_target()
 
         # reconstruct target state by replaying inputs
-        for source, destination, transition in path:
+        for source, destination, input in path:
             # check if source matches the current state
             if source != sman.state_tracker.current_state:
                 raise StabilityException(
                     "source state did not match current state"
                 )
-            # perform the transition
-            self.execute_input(transition.input, self._channel, sman)
+            # perform the input
+            self.execute_input(input, sman)
             # check if destination matches the current state
             if destination != sman.state_tracker.current_state:
                 raise StabilityException(
