@@ -9,12 +9,11 @@ from interaction import (InteractionBase,
 
 class PCAPInput(PreparedInput):
     def __init__(self, pcap: str, ch_env: ChannelFactoryBase):
-        super().__init__(self)
         if isinstance(ch_env, (TCPChannelFactory, UDPChannelFactory)):
             layer = Raw
         else:
             layer = None
-        self._extract_layer(pcap, layer)
+        super().__init__(self._extract_layer(pcap, layer))
 
     @classmethod
     def _try_identify_endpoint(cls, packet: Packet) -> Tuple:
@@ -61,9 +60,9 @@ class PCAPInput(PreparedInput):
                 interaction = TransmitInteraction(data=payload)
             else:
                 interaction = ReceiveInteraction(data=payload)
-            self._interactions.append(interaction)
+            yield interaction
 
             delay = p.time - tlast
             tlast = p.time
             if delay >= 1E-3:
-                self._interactions.append(DelayInteraction(float(delay)))
+                yield DelayInteraction(float(delay))

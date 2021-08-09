@@ -5,6 +5,8 @@ from networkio    import (TCPChannelFactory,
 from loader       import ReplayStateLoader
 from statemanager import (CoverageStateTracker,
                          StateManager)
+from generator    import RandomInputGenerator
+from random       import Random
 import json
 import os
 
@@ -45,11 +47,21 @@ class FuzzerConfig:
             "type": "<replay | snapshot | ...>",
             ...
         },
-        "fuzzer": {
+        "input": {
+            "type": "<mutation | generation  | ...>",
+            "spec": "/path/to/spec",
+            "startup": "/path/to/pcap",
+            ...
+        },
+        "statemanager": {
             "type": "<coverage | grammar | hybrid | ...>",
             "strategy": "<depth-first | breadth-first | ...>",
+            ...
+        },
+        "fuzzer": {
             "seeds": "/path/to/pcap/dir",
             "timescale": .0 .. 1.,
+            "entropy": number,
             ...
         }
     }
@@ -98,20 +110,39 @@ class FuzzerConfig:
 
     @cached_property
     def state_tracker(self):
-        _config = self._config["fuzzer"]
-        if _config["type"] == "coverage":
-            return CoverageStateTracker(self.loader)
+        _config = self._config["statemanager"]
+        state_type = _config.get("type", "coverage")
+        if state_type == "coverage":
+            return CoverageStateTracker(self.input_generator, self.loader)
         else:
             raise NotImplemented()
 
     @cached_property
+    def input_generator(self):
+        _config = self._config["input"]
+        input_type = _config.get("type", "mutation")
+        if input_type == "mutation":
+            return RandomInputGenerator(self.startup_pcap, self.seed_dir, self.ch_env)
+        else:
+            raise NotImplemented()
+
+    @cached_property
+    def entropy(self):
+        seed = self._config["fuzzer"].get("entropy")
+        return Random(seed)
+
+    @cached_property
     def scheduler_strategy(self):
-        return self._config["fuzzer"]["strategy"]
+        return self._config["statemanager"].get("strategy")
 
     @cached_property
     def state_manager(self):
-        return StateManager(self.loader, self.state_tracker,
-                self.scheduler_strategy)
+        return StateManager(self.input_generator.startup_input,
+            self.loader, self.state_tracker, self.scheduler_strategy)
+
+    @cached_property
+    def startup_pcap(self):
+        return self._config["input"].get("startup")
 
     @cached_property
     def seed_dir(self):

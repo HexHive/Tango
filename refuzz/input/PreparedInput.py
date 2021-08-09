@@ -8,7 +8,6 @@ class PreparedInput(InputBase):
     to a file.
     """
     def __init__(self, interactions: Iterable[InteractionBase]=None):
-        super(PreparedInput).__init__()
         self._interactions = []
         if interactions:
             self._interactions.extend(interactions)
@@ -22,5 +21,5 @@ class PreparedInput(InputBase):
     def export(self, type="pcap"):
         raise NotImplemented()
 
-    def __iter__(self):
+    def ___iter___(self):
         return iter(self._interactions)

@@ -1,4 +1,4 @@
-from statemanager import StateBase, StateManager, TransitionBase
+from statemanager import StateBase, StateManager
 from input        import InputBase
 from typing       import Sequence
 from collections  import OrderedDict
@@ -6,6 +6,7 @@ from functools    import cache, reduce
 
 class CoverageState(StateBase):
     def __init__(self, coverage_map: Sequence):
+        super().__init__()
         # populate with AFL-style global coverage information
         self._cov = {
             edge: self._count_class_lookup(count)
@@ -45,7 +46,7 @@ class CoverageState(StateBase):
         # TODO (basically select an interesting input and mutate it)
         pass
 
-    def update(self, sman: StateManager, transition: TransitionBase):
+    def update(self, sman: StateManager, input: InputBase):
         # TODO update coverage and add interesting inputs
         pass
 
@@ -53,4 +54,7 @@ class CoverageState(StateBase):
         return reduce(lambda x,y: x ^ hash(y), self._cov.items(), 0)
 
     def __eq__(self, other):
-        pass
+        return self._cov == other._cov
+
+    def __repr__(self):
+        return f'CoverageState({repr(self._cov)})'
