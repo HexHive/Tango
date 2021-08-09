@@ -15,6 +15,12 @@
 	"loader": {
 		"type": "replay"
 	},
+	"input": {
+		"type": "mutation"
+	},
+	"statemanager": {
+		"type": "coverage"
+	},
 	"fuzzer": {
 		"type": "coverage",
 		"strategy": "default"

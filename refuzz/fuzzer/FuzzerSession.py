@@ -1,6 +1,7 @@
 from input         import (InputBase,
                           PreparedInput)
 from fuzzer        import FuzzerConfig
+from common        import StabilityException
 import os
 from threading import Timer
 from time import sleep
@@ -30,6 +31,7 @@ class FuzzerSession:
 
         # stats stuff
         self._counter = 0
+        self._unstable = 0
 
         self._load_seeds()
 
@@ -46,26 +48,39 @@ class FuzzerSession:
     def _loop(self):
         # FIXME is there ever a proper terminating condition for fuzzing?
         while True:
-            cur_state = self._sman.state_tracker.current_state
-            input = self._input_gen.generate(cur_state, self._entropy)
-            self._loader.execute_input(input, self._sman)
-            self._sman.step()
+            try:
+                cur_state = self._sman.state_tracker.current_state
+                input = self._input_gen.generate(cur_state, self._entropy)
+                self._loader.execute_input(input, self._sman)
+                self._sman.step()
+            except StabilityException:
+                self._unstable += 1
+                self._sman.reset_state()
+
             self._counter += 1
 
-    def _stats(self):
-        while True:
-            print(f"execs/s {self._counter / 5.0}")
+    def _stats(self, delay):
+        while self._working:
+            print(f"execs/s {self._counter / delay} cov {len(self._sman._sm._graph.nodes)} unstable {self._unstable}")
             self._counter = 0
-            sleep(5)
+            sleep(delay)
 
     def start(self):
         # reset state after the seed initialization stage
         self._sman.reset_state()
+        self._working = True
 
-        Timer(5.0, self._stats).start()
+        delay = 1.0
+        Timer(delay, self._stats, (delay,)).start()
 
         # launch fuzzing loop
-        self._loop()
+        try:
+            self._loop()
+        except Exception as ex:
+            self._working = False
+            import code
+            code.interact(local=locals())
+            raise
 
         # TODO anything else?
         pass

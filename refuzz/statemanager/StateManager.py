@@ -53,6 +53,8 @@ class StateManager:
         self._startup_input = startup_input
         self._sm = StateMachine(self._last_state)
 
+        self._counter = 0
+
     @property
     def state_machine(self) -> StateMachine:
         return self._sm
@@ -90,7 +92,16 @@ class StateManager:
         :returns:   Whether or not the step resulted in a state change
         :rtype:     bool
         """
-        self.reset_state()
+        self._counter += 1
+        self._counter %= 5000
+
+        if self._counter == 0:
+            import random
+            new_state = random.sample(self._sm._graph.nodes, k=1)[0]
+            self.reset_state(new_state)
+            debug(f'Reset state to {new_state=}')
+
+        # self.reset_state()
         pass
 
     def update(self, input_gen: Callable[..., InputBase]) -> bool:
