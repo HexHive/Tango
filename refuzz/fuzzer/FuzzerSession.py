@@ -76,7 +76,7 @@ class FuzzerSession:
         # launch fuzzing loop
         try:
             self._loop()
-        except Exception as ex:
+        except KeyboardInterrupt as ex:
             self._working = False
             import code
             code.interact(local=locals())
