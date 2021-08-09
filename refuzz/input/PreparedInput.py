@@ -23,3 +23,17 @@ class PreparedInput(InputBase):
 
     def ___iter___(self):
         return iter(self._interactions)
+
+    # def __add__(self, other: PreparedInput):
+    #     return PreparedInput(
+    #         self._interactions + other._interactions
+    #     )
+
+    # def __eq__(self, other: PreparedInput):
+    #     return self._interactions == other._interactions
+
+    # def __getitem__(self, key):
+    #     if isinstance(key, slice):
+    #         return PreparedInput(self._interactions.__getitem__(key))
+    #     else:
+    #         return PreparedInput([self._interactions[key],])
