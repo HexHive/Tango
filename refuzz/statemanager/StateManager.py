@@ -5,7 +5,7 @@ from typing import Callable
 from statemanager import (StateBase,
                          StateMachine,
                          StateTrackerBase)
-from input        import InputBase
+from input        import InputBase, CachingDecorator
 from loader       import StateLoaderBase
 
 class StateManager:
@@ -123,7 +123,8 @@ class StateManager:
                 last_input = self._last_state.last_input + input_gen()
             else:
                 last_input = input_gen()
-            self._sm.update_transition(self._last_state, current_state, last_input)
+            self._sm.update_transition(self._last_state, current_state,
+                CachingDecorator()(last_input, copy=False))
             self._last_state = current_state
             debug(f'Transitioned to {current_state=}')
             updated = True
