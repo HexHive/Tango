@@ -69,6 +69,10 @@ class StateManager:
             # happen. Otherwise, last_input may be None, but the snapshot may
             # have residual effect from previous inputs before the state change.
             self._last_state.last_input = None
+            # we also set _last_state to the entry state in case the loader
+            # needs to execute inputs to reach the target state (e.g. ReplayStateLoader)
+            # so that no new edges are added between the last state and the entry state
+            self._last_state = self._tracker.entry_state
 
         if state is None:
             self._loader.load_state(self._tracker.entry_state, self)
