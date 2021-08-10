@@ -5,7 +5,7 @@ from typing import Callable
 from statemanager import (StateBase,
                          StateMachine,
                          StateTrackerBase)
-from input        import InputBase
+from input        import InputBase, CachingDecorator
 from loader       import StateLoaderBase
 
 class StateManager:
@@ -71,6 +71,10 @@ class StateManager:
             # happen. Otherwise, last_input may be None, but the snapshot may
             # have residual effect from previous inputs before the state change.
             self._last_state.last_input = None
+            # we also set _last_state to the entry state in case the loader
+            # needs to execute inputs to reach the target state (e.g. ReplayStateLoader)
+            # so that no new edges are added between the last state and the entry state
+            self._last_state = self._tracker.entry_state
 
         if state is None:
             self._loader.load_state(self._tracker.entry_state, self)
@@ -135,7 +139,8 @@ class StateManager:
                 last_input = self._last_state.last_input + input_gen()
             else:
                 last_input = input_gen()
-            self._sm.update_transition(self._last_state, current_state, last_input)
+            self._sm.update_transition(self._last_state, current_state,
+                CachingDecorator()(last_input, copy=False))
             self._last_state = current_state
             debug(f'Transitioned to {current_state=}')
             updated = True
