@@ -14,7 +14,7 @@ class InputBase(ABC):
     def __eq__(self, other):
         diff = False
 
-        def safezip(*iterators):
+        def zip_strict(*iterators):
             for x in zip(*iterators):
                 yield x
             failed = False
@@ -29,7 +29,7 @@ class InputBase(ABC):
 
         def eq(*iterators):
             nonlocal diff
-            diff = yield from safezip(*iterators)
+            diff = yield from zip_strict(*iterators)
 
         return all(type(x) == type(y) and x == y
                     for x, y in eq(iter(self), iter(other))) and \
