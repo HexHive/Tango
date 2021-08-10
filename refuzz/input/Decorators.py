@@ -21,7 +21,7 @@ class DecoratorBase(ABC):
         return f"{self.__class__.__name__}({orig()})"
 
     def undecorate(self):
-        assert getattr(self, '_input') is not None, \
+        assert getattr(self, '_input', None) is not None, \
                 "Decorator has not been called before!"
         for name, func in inspect.getmembers(self, predicate=inspect.ismethod):
             if name not in ('___iter___', '___eq___', '___add___', '___getitem___', '___repr___'):
@@ -53,18 +53,16 @@ class CachingDecorator(DecoratorBase):
         self._cached_repr = None
 
     def __call__(self, input, copy=True): # -> InputBase:
+        self._cached_iter = tuple(input)
         self._cached_repr = repr(input)
-        return super().__call__(input, copy)
-
-    def ___iter___(self, orig):
-        seq, copy = tee(orig())
-        yield from seq
-        self._cached_iter = tuple(copy)
-
-        self.undecorate()
+        self._input = deepcopy(input) if copy else input
         self._input.___iter___ = self.___cached_iter___
         self._input.___repr___ = self.___cached_repr___
+        # we delete self._input because it is no longer needed, and a dangling
+        # reference to it will result in redundant deepcopy-ing later
+        inp = self._input
         del self._input
+        return inp
 
     def ___cached_iter___(self):
         yield from self._cached_iter

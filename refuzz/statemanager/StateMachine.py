@@ -1,3 +1,5 @@
+from . import debug
+
 from   itertools    import product as xproduct
 from   statemanager import StateBase
 from   input        import InputBase, PreparedInput
@@ -48,6 +50,7 @@ class StateMachine:
             _, _, data = next(find)
             transition = data['transition']
         except StopIteration:
+            debug(f'New transition discovered from {source} to {destination}')
             transition = collections.deque(maxlen=self._queue_maxlen)
             self._graph.add_edge(source, destination, transition=transition)
             new = True
