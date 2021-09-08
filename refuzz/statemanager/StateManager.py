@@ -127,6 +127,11 @@ class StateManager:
                 last_input = self._last_state.last_input + input_gen()
             else:
                 last_input = input_gen()
+
+            # we clear the last input, so that if we restore this state later,
+            # we would start from a clean slate
+            self._last_state.last_input = None
+
             self._sm.update_transition(self._last_state, current_state,
                 CachingDecorator()(last_input, copy=False))
             self._last_state = current_state
