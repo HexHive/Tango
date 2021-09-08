@@ -19,8 +19,9 @@ class StateLoaderBase(ABC):
     def __init__(self, exec_env: Environment, ch_env: ChannelFactoryBase):
         self._exec_env = exec_env
         self._ch_env = ch_env
-        self._count = 0
-        ProfileLambdaMean("len(input)")(lambda: self._count)
+
+        self._last_input_len = 0
+        ProfileLambdaMean("len(input)")(lambda: self._last_input_len)
 
     @abstractmethod
     def load_state(self, state: StateBase, sman: StateManager):
@@ -44,12 +45,13 @@ class StateLoaderBase(ABC):
         """
         with sman.get_context(input) as ctx:
             try:
+                idx = -1
                 for idx, interaction in enumerate(ctx):
                     # FIXME figure out what other parameters this needs
                     interaction.perform(self.channel)
                     # TODO perform fault detection
                 else:
-                    self._count = idx
+                    self._last_input_len = idx + 1
             except Exception as ex:
                 raise LoadedException(ex, ctx.input_gen())
 
