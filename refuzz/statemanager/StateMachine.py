@@ -7,6 +7,9 @@ from   typing       import Generator, Tuple, List
 import networkx     as     nx
 import collections
 
+from profiler import ProfileLambda
+from statistics import mean
+
 class StateMachine:
     """
     A graph-based representation of the protocol state machine.
@@ -19,6 +22,18 @@ class StateMachine:
         self._graph.add_node(entry_state)
         self._entry_state = entry_state
         self._queue_maxlen = 10
+
+        ProfileLambda("coverage")(lambda: len(self._graph.nodes))
+
+        def unsafe_mean(data):
+            try:
+                return mean(data)
+            except Exception as ex:
+                print(ex)
+                return 0
+        ProfileLambda("transition_length")(lambda: unsafe_mean(len(y)
+                                        for _, _, data in self._graph.edges(data=True)
+                                        for y in data['transition']))
 
     @property
     def entry_state(self):

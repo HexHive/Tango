@@ -11,10 +11,13 @@ class InputBase(ABC):
     def ___repr___(self):
         return f"{self.__class__.__name__}"
 
+    def ___len___(self):
+        raise NotImplemented()
+
     def __eq__(self, other):
         diff = False
 
-        def safezip(*iterators):
+        def zip_strict(*iterators):
             for x in zip(*iterators):
                 yield x
             failed = False
@@ -29,7 +32,7 @@ class InputBase(ABC):
 
         def eq(*iterators):
             nonlocal diff
-            diff = yield from safezip(*iterators)
+            diff = yield from zip_strict(*iterators)
 
         return all(type(x) == type(y) and x == y
                     for x, y in eq(iter(self), iter(other))) and \
@@ -54,3 +57,6 @@ class InputBase(ABC):
 
     def __repr__(self):
         return self.___repr___()
+
+    def __len__(self):
+        return self.___len___()

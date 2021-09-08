@@ -6,6 +6,8 @@ import os
 from threading import Timer
 from time import sleep
 
+from profiler import ProfileLambda, ProfiledObjects, ProfilingStoppedEvent
+
 class FuzzerSession:
     """
     This class initializes and tracks the global state of the fuzzer.
@@ -29,9 +31,9 @@ class FuzzerSession:
         ## After this point, the StateManager and StateTracker are both
         #  initialized and should be able to identify states and populate the SM
 
-        # stats stuff
-        self._counter = 0
+        # Collecting some stats
         self._unstable = 0
+        ProfileLambda("unstable")(lambda: self._unstable)
 
         self._load_seeds()
 
@@ -57,18 +59,16 @@ class FuzzerSession:
                 self._unstable += 1
                 self._sman.reset_state()
 
-            self._counter += 1
-
     def _stats(self, delay):
-        while self._working:
-            print(f"execs/s {self._counter / delay} cov {len(self._sman._sm._graph.nodes)} unstable {self._unstable}")
-            self._counter = 0
-            sleep(delay)
+        while not ProfilingStoppedEvent.wait(delay):
+            for name, obj in ProfiledObjects.items():
+                print(f"{name}: {obj.value}", end=' ')
+            else:
+                print('')
 
     def start(self):
         # reset state after the seed initialization stage
         self._sman.reset_state()
-        self._working = True
 
         delay = 1.0
         Timer(delay, self._stats, (delay,)).start()
@@ -77,10 +77,9 @@ class FuzzerSession:
         try:
             self._loop()
         except KeyboardInterrupt as ex:
-            self._working = False
+            ProfilingStoppedEvent.set()
             import code
             code.interact(local=locals())
             raise
 
         # TODO anything else?
-        pass
