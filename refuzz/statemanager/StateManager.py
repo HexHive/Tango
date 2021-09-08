@@ -46,9 +46,11 @@ class StateManager:
             pass
 
     def __init__(self, startup_input: InputBase, loader: StateLoaderBase,
-            tracker: StateTrackerBase, scheduler: str):
+            tracker: StateTrackerBase, scheduler: str, cache_inputs: bool):
         self._loader = loader
         self._tracker = tracker
+        self._cache_inputs = cache_inputs
+
         self._last_state = self._tracker.entry_state
         self._startup_input = startup_input
         self._sm = StateMachine(self._last_state)
@@ -127,8 +129,12 @@ class StateManager:
                 last_input = self._last_state.last_input + input_gen()
             else:
                 last_input = input_gen()
+
+            if self._cache_inputs:
+                last_input = CachingDecorator()(last_input, copy=False)
+
             self._sm.update_transition(self._last_state, current_state,
-                CachingDecorator()(last_input, copy=False))
+                last_input)
             self._last_state = current_state
             debug(f'Transitioned to {current_state=}')
             updated = True

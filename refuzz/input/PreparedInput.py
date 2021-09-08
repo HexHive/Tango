@@ -24,6 +24,9 @@ class PreparedInput(InputBase):
     def ___iter___(self):
         return iter(self._interactions)
 
+    def ___len___(self):
+        return len(self._interactions)
+
     # def __add__(self, other: PreparedInput):
     #     return PreparedInput(
     #         self._interactions + other._interactions

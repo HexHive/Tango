@@ -9,6 +9,8 @@ from statemanager import (StateBase,
                          StateManager)
 from interaction  import ReceiveInteraction
 
+from profiler import ProfileFrequency, ProfileLambdaMean
+
 class StateLoaderBase(ABC):
     """
     The state loader maintains a running process and provides the capability of
@@ -17,6 +19,8 @@ class StateLoaderBase(ABC):
     def __init__(self, exec_env: Environment, ch_env: ChannelFactoryBase):
         self._exec_env = exec_env
         self._ch_env = ch_env
+        self._count = 0
+        ProfileLambdaMean("len(input)")(lambda: self._count)
 
     @abstractmethod
     def load_state(self, state: StateBase, sman: StateManager):
@@ -27,6 +31,7 @@ class StateLoaderBase(ABC):
     def channel(self):
         pass
 
+    @ProfileFrequency("execs")
     def execute_input(self, input: InputBase, sman: StateManager):
         """
         Executes the sequence of interactions specified by the input.
@@ -39,10 +44,12 @@ class StateLoaderBase(ABC):
         """
         with sman.get_context(input) as ctx:
             try:
-                for interaction in ctx:
+                for idx, interaction in enumerate(ctx):
                     # FIXME figure out what other parameters this needs
                     interaction.perform(self.channel)
                     # TODO perform fault detection
+                else:
+                    self._count = idx
             except Exception as ex:
                 raise LoadedException(ex, ctx.input_gen())
 

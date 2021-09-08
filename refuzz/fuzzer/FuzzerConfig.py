@@ -56,6 +56,7 @@ class FuzzerConfig:
         "statemanager": {
             "type": "<coverage | grammar | hybrid | ...>",
             "strategy": "<depth-first | breadth-first | ...>",
+            "cache_inputs": <true | false>,
             ...
         },
         "fuzzer": {
@@ -137,8 +138,11 @@ class FuzzerConfig:
 
     @cached_property
     def state_manager(self):
+        _config = self._config["statemanager"]
+        cache_inputs = _config.get("cache_inputs", True)
         return StateManager(self.input_generator.startup_input,
-            self.loader, self.state_tracker, self.scheduler_strategy)
+            self.loader, self.state_tracker, self.scheduler_strategy,
+            cache_inputs)
 
     @cached_property
     def startup_pcap(self):
