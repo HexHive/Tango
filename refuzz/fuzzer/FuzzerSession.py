@@ -59,7 +59,10 @@ class FuzzerSession:
     def _stats(self, delay):
         while not ProfilingStoppedEvent.wait(delay):
             for name, obj in ProfiledObjects.items():
-                print(f"{name}: {obj.value}", end=' ')
+                try:
+                    print(f"{name}: {obj.value}", end=' ')
+                except Exception:
+                    pass
             else:
                 print('')
 
