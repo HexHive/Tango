@@ -151,7 +151,7 @@ class TCPChannel(PtraceChannel):
                             proc.kill(signal.SIGSTOP)
                             proc.waitSyscall()
                             proc.detach()
-                        except:
+                        except Exception:
                             pass
                         pass
         self._monitor_syscalls(None, ignore_callback, break_callback, syscall_callback_read, break_on_entry=True)

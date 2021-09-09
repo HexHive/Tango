@@ -23,7 +23,7 @@ class InputBase(ABC):
                     next(x)
                     failed = True
                     break
-                except:
+                except Exception:
                     pass
             return failed
 

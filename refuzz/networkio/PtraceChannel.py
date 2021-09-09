@@ -162,11 +162,11 @@ class PtraceChannel(ChannelBase):
         for process in self._debugger:
             try:
                 process.cont()
-            except:
+            except Exception:
                 pass
         try:
             self._debugger.quit()
-        except:
+        except Exception:
             pass
 
     def __del__(self):
