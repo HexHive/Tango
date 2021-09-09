@@ -2,8 +2,8 @@ from profiler import ProfilerBase
 from threading import Condition
 
 class ProfileEvent(ProfilerBase):
-    def __init__(self, name, **kwargs):
-        super().__init__(name, **kwargs)
+    def __init__(self, name):
+        super().__init__(name)
         self._cv = Condition()
         self._args = None
 
