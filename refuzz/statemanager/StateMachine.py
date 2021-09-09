@@ -9,6 +9,8 @@ import collections
 
 from profiler import ProfileLambda, ProfileEvent
 from statistics import mean
+from datetime import datetime
+now = datetime.now
 
 class StateMachine:
     """
@@ -39,7 +41,14 @@ class StateMachine:
     def entry_state(self):
         return self._entry_state
 
-    @ProfileEvent("update_transition")
+    @ProfileEvent('update_state')
+    def update_state(self, state: StateBase):
+        time = now()
+        if state not in self._graph.nodes:
+            self._graph.add_node(state, added=time)
+        self._graph.add_node(state, last_visit=time)
+
+    @ProfileEvent('update_transition')
     def update_transition(self, source: StateBase, destination: StateBase,
             input: InputBase):
         """
@@ -52,23 +61,24 @@ class StateMachine:
         :param      input:        The input that causes the transition.
         :type       input:        InputBase
         """
+        time = now()
         new = False
         if destination not in self._graph.nodes:
-            self._graph.add_node(destination)
+            self.update_state(destination)
             new = True
 
         if source not in self._graph.nodes:
             raise KeyError("Source state not present in state machine.")
 
         try:
-            find = filter(lambda edge: edge[1] == destination,
-                                self._graph.out_edges(source, data=True))
-            _, _, data = next(find)
+            data = self._graph.edges[source, destination]
+            data['last_visit'] = time
             transition = data['transition']
-        except StopIteration:
+        except KeyError:
             debug(f'New transition discovered from {source} to {destination}')
             transition = collections.deque(maxlen=self._queue_maxlen)
-            self._graph.add_edge(source, destination, transition=transition)
+            self._graph.add_edge(source, destination, transition=transition,
+                added=time, last_visit=time)
             new = True
 
         exists = not new and any(inp == input for inp in transition)

@@ -122,21 +122,23 @@ class StateManager:
 
         # the tracker may return None as current_state, in case it has not yet
         # finished the training phase (preprocessing seeds)
-        if current_state is not None and current_state != self._last_state:
-            # TODO optionally call the transition pruning routine to shorten the
-            # last input
-            if self._last_state.last_input is not None:
-                last_input = self._last_state.last_input + input_gen()
-            else:
-                last_input = input_gen()
+        if current_state is not None:
+            self._sm.update_state(current_state)
+            if current_state != self._last_state:
+                # TODO optionally call the transition pruning routine to shorten the
+                # last input
+                if self._last_state.last_input is not None:
+                    last_input = self._last_state.last_input + input_gen()
+                else:
+                    last_input = input_gen()
 
-            if self._cache_inputs:
-                last_input = CachingDecorator()(last_input, copy=False)
+                if self._cache_inputs:
+                    last_input = CachingDecorator()(last_input, copy=False)
 
-            self._sm.update_transition(self._last_state, current_state,
-                last_input)
-            self._last_state = current_state
-            debug(f'Transitioned to {current_state=}')
-            updated = True
+                self._sm.update_transition(self._last_state, current_state,
+                    last_input)
+                self._last_state = current_state
+                debug(f'Transitioned to {current_state=}')
+                updated = True
 
         return updated
