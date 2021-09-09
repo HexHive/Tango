@@ -7,7 +7,7 @@ from   typing       import Generator, Tuple, List
 import networkx     as     nx
 import collections
 
-from profiler import ProfileLambda
+from profiler import ProfileLambda, ProfileEvent
 from statistics import mean
 
 class StateMachine:
@@ -39,6 +39,7 @@ class StateMachine:
     def entry_state(self):
         return self._entry_state
 
+    @ProfileEvent("update_transition")
     def update_transition(self, source: StateBase, destination: StateBase,
             input: InputBase):
         """
