@@ -26,6 +26,14 @@
 				<div class="statistics">
 					<div class="row">
 						<div class="col s8">
+							<a class="left">Time elapsed</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="elapsed"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
 							<a class="left">Inputs per second</a>
 						</div>
 						<div class="col s4">
@@ -89,6 +97,7 @@
 			try {
 				msg = JSON.parse(event.data);
 			} catch(e) {
+				return;
 				// debugger;
 			}
 			switch(msg.cmd) {

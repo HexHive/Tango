@@ -3,7 +3,10 @@ from input         import (InputBase,
 from fuzzer        import FuzzerConfig
 import os
 
-from profiler import ProfileLambda, ProfiledObjects, ProfilingStoppedEvent
+from profiler import (ProfileLambda,
+                     ProfiledObjects,
+                     ProfilingStoppedEvent,
+                     ProfileTimeElapsed)
 
 from webui import WebRenderer
 
@@ -61,6 +64,8 @@ class FuzzerSession:
     def start(self):
         # reset state after the seed initialization stage
         self._sman.reset_state()
+
+        ProfileTimeElapsed('elapsed')
 
         WebRenderer().start()
 

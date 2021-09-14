@@ -1,7 +1,9 @@
+from webui import WebLogHandler
 from profiler import ProfiledObjects
 import networkx as nx
 import json
 import asyncio
+import logging
 import datetime
 now = datetime.datetime.now
 
@@ -28,6 +30,9 @@ class WebDataLoader:
 
         ProfiledObjects['update_state'].listener(period=0.1)(self.update_graph)
         ProfiledObjects['execute_input'].listener(period=1)(self.update_stats)
+
+        # handler = WebLogHandler(websocket)
+        # logging.addHandler(handler)
 
     @classmethod
     def format_color(cls, r, g, b, a=None):

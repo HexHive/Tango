@@ -1,4 +1,4 @@
-from webui import WebDataLoader, WebLogHandler
+from webui import WebDataLoader
 from profiler import ProfilingStoppedEvent as stopped
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from functools import partial
@@ -6,7 +6,6 @@ from threading import Thread
 import os
 import asyncio
 import websockets
-import logging
 
 WWW_PATH = os.path.join(os.path.dirname(__file__), 'www')
 
@@ -41,6 +40,4 @@ class WebRenderer:
 
     async def _websocket_handler(self, websocket, path):
         WebDataLoader(websocket)
-        # handler = WebLogHandler(websocket)
-        # logging.addHandler(handler)
         await asyncio.Future()

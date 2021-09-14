@@ -12,3 +12,4 @@ from .ProfileEvent import ProfileEvent
 from .ProfileValue import ProfileValue
 from .ProfileValueMean import ProfileValueMean
 from .ProfileCount import ProfileCount
+from .ProfileTimeElapsed import ProfileTimeElapsed
