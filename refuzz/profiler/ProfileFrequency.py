@@ -19,4 +19,4 @@ class ProfileFrequency(PeriodicProfiler):
 
     @property
     def value(self):
-        return self._frequency
+        return self.truncate(self._frequency)

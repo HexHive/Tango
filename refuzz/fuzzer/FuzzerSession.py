@@ -6,7 +6,12 @@ import os
 from threading import Timer
 from time import sleep
 
-from profiler import ProfileLambda, ProfiledObjects, ProfilingStoppedEvent
+from profiler import (ProfileLambda,
+                     ProfiledObjects,
+                     ProfilingStoppedEvent,
+                     ProfileTimeElapsed)
+
+from webui import WebRenderer
 
 class FuzzerSession:
     """
@@ -59,19 +64,13 @@ class FuzzerSession:
                 self._unstable += 1
                 self._sman.reset_state()
 
-    def _stats(self, delay):
-        while not ProfilingStoppedEvent.wait(delay):
-            for name, obj in ProfiledObjects.items():
-                print(f"{name}: {obj.value}", end=' ')
-            else:
-                print('')
-
     def start(self):
         # reset state after the seed initialization stage
         self._sman.reset_state()
 
-        delay = 1.0
-        Timer(delay, self._stats, (delay,)).start()
+        ProfileTimeElapsed('elapsed')
+
+        WebRenderer().start()
 
         # launch fuzzing loop
         try:

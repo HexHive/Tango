@@ -7,8 +7,10 @@ from   typing       import Generator, Tuple, List
 import networkx     as     nx
 import collections
 
-from profiler import ProfileLambda
+from profiler import ProfileValue, ProfileValueMean, ProfileEvent
 from statistics import mean
+from datetime import datetime
+now = datetime.now
 
 class StateMachine:
     """
@@ -23,22 +25,20 @@ class StateMachine:
         self._entry_state = entry_state
         self._queue_maxlen = 10
 
-        ProfileLambda("coverage")(lambda: len(self._graph.nodes))
-
-        def unsafe_mean(data):
-            try:
-                return mean(data)
-            except Exception as ex:
-                print(ex)
-                return 0
-        ProfileLambda("transition_length")(lambda: unsafe_mean(len(y)
-                                        for _, _, data in self._graph.edges(data=True)
-                                        for y in data['transition']))
-
     @property
     def entry_state(self):
         return self._entry_state
 
+    @ProfileEvent('update_state')
+    def update_state(self, state: StateBase):
+        time = now()
+        if state not in self._graph.nodes:
+            self._graph.add_node(state, added=time)
+        self._graph.add_node(state, last_visit=time)
+
+        ProfileValue("coverage")(len(self._graph.nodes))
+
+    @ProfileEvent('update_transition')
     def update_transition(self, source: StateBase, destination: StateBase,
             input: InputBase):
         """
@@ -51,28 +51,31 @@ class StateMachine:
         :param      input:        The input that causes the transition.
         :type       input:        InputBase
         """
+        time = now()
         new = False
         if destination not in self._graph.nodes:
-            self._graph.add_node(destination)
+            self.update_state(destination)
             new = True
 
         if source not in self._graph.nodes:
             raise KeyError("Source state not present in state machine.")
 
         try:
-            find = filter(lambda edge: edge[1] == destination,
-                                self._graph.out_edges(source, data=True))
-            _, _, data = next(find)
+            data = self._graph.edges[source, destination]
+            data['last_visit'] = time
             transition = data['transition']
-        except StopIteration:
+        except KeyError:
             debug(f'New transition discovered from {source} to {destination}')
             transition = collections.deque(maxlen=self._queue_maxlen)
-            self._graph.add_edge(source, destination, transition=transition)
+            self._graph.add_edge(source, destination, transition=transition,
+                added=time, last_visit=time)
             new = True
 
         exists = not new and any(inp == input for inp in transition)
         if not exists:
             transition.append(input)
+            ProfileValueMean("transition_length", samples=0)(len(input))
+
 
     def dissolve_state(self, state: StateBase):
         """
