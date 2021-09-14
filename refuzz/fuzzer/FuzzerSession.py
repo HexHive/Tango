@@ -5,6 +5,8 @@ import os
 
 from profiler import ProfileLambda, ProfiledObjects, ProfilingStoppedEvent
 
+from webui import WebRenderer
+
 class FuzzerSession:
     """
     This class initializes and tracks the global state of the fuzzer.
@@ -56,22 +58,11 @@ class FuzzerSession:
                 self._unstable += 1
                 self._sman.reset_state()
 
-    def _stats(self, delay):
-        while not ProfilingStoppedEvent.wait(delay):
-            for name, obj in ProfiledObjects.items():
-                try:
-                    print(f"{name}: {obj.value}", end=' ')
-                except Exception:
-                    pass
-            else:
-                print('')
-
     def start(self):
         # reset state after the seed initialization stage
         self._sman.reset_state()
 
-        delay = 1.0
-        Timer(delay, self._stats, (delay,)).start()
+        WebRenderer().start()
 
         # launch fuzzing loop
         self._loop()

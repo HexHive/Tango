@@ -7,10 +7,10 @@ class ProfileValue(ProfilerBase):
         else:
             return super(ProfileValue, cls).__new__(cls)
 
-    def __init__(self, name):
+    def __init__(self, name, **kwargs):
         if name in objects:
             return
-        super().__init__(name)
+        super().__init__(name, **kwargs)
 
     def __call__(self, obj):
         self._value = obj

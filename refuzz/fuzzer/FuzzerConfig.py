@@ -9,6 +9,7 @@ from generator    import RandomInputGenerator
 from random       import Random
 import json
 import os
+import logging
 
 class FuzzerConfig:
     """
@@ -76,6 +77,8 @@ class FuzzerConfig:
         """
         with open(file, "rt") as f:
             self._config = json.load(f)
+
+        logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
     @cached_property
     def exec_env(self):

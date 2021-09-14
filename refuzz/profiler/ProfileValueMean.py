@@ -3,10 +3,10 @@ from collections import deque
 from statistics import mean
 
 class ProfileValueMean(ProfileValue):
-    def __init__(self, name, samples=10):
+    def __init__(self, name, samples=10, **kwargs):
         if name in objects:
             return
-        super().__init__(name)
+        super().__init__(name, **kwargs)
         self._maxlen = samples
         if self._maxlen > 0:
             self._samples = deque(maxlen=self._maxlen)
@@ -32,4 +32,4 @@ class ProfileValueMean(ProfileValue):
 
     @property
     def value(self):
-        return self._calculate()
+        return self.truncate(self._calculate())

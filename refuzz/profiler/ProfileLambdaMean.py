@@ -19,4 +19,4 @@ class ProfileLambdaMean(PeriodicProfiler):
 
     @property
     def value(self):
-        return self._mean
+        return self.truncate(self._mean)

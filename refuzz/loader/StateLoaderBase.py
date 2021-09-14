@@ -9,7 +9,7 @@ from statemanager import (StateBase,
                          StateManager)
 from interaction  import ReceiveInteraction
 
-from profiler import ProfileFrequency, ProfileValueMean
+from profiler import ProfileFrequency, ProfileValueMean, ProfileEvent, ProfileCount
 
 class StateLoaderBase(ABC):
     """
@@ -29,6 +29,7 @@ class StateLoaderBase(ABC):
     def channel(self):
         pass
 
+    @ProfileEvent("execute_input")
     @ProfileFrequency("execs")
     def execute_input(self, input: InputBase, sman: StateManager):
         """
@@ -48,7 +49,8 @@ class StateLoaderBase(ABC):
                     interaction.perform(self.channel)
                     # TODO perform fault detection
                 else:
-                    ProfileValueMean("len(input)", samples=100)(idx + 1)
+                    ProfileValueMean("input_len", samples=100)(idx + 1)
+                    ProfileCount("interactions")(idx + 1)
             except Exception as ex:
                 raise LoadedException(ex, ctx.input_gen())
 

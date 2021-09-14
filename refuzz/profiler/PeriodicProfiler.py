@@ -3,8 +3,8 @@ from profiler import ProfilerBase, ProfilingStoppedEvent as stopped
 from threading import Thread
 
 class PeriodicProfiler(ProfilerBase):
-    def __init__(self, name, period=1):
-        super().__init__(name)
+    def __init__(self, name, period=1, **kwargs):
+        super().__init__(name, **kwargs)
         self._period = period
         self._thread = Thread(target=self._thread)
 
