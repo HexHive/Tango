@@ -3,7 +3,8 @@ from . import debug
 from typing import Callable
 from networkio import ChannelBase
 from   common      import (ChannelBrokenException,
-                          ChannelSetupException)
+                          ChannelSetupException,
+                          ChannelTimeoutException)
 from ptrace.debugger import   (PtraceDebugger,
                                PtraceProcess,
                                ProcessEvent,
@@ -15,6 +16,7 @@ from ptrace.func_call import FunctionCallOptions
 from ptrace.syscall   import PtraceSyscall, SOCKET_SYSCALL_NAMES
 from ptrace.tools import signal_to_exitcode
 from concurrent.futures import ThreadPoolExecutor
+from threading import Event, Thread
 from subprocess import Popen
 import signal
 
@@ -58,6 +60,7 @@ class PtraceChannel(ChannelBase):
                        break_callback: Callable[..., bool],
                        syscall_callback: Callable[[PtraceProcess, PtraceSyscall], None],
                        break_on_entry: bool = False,
+                       timeout: float = None,
                        **kwargs):
 
         def process_syscall(process, syscall):
@@ -79,6 +82,8 @@ class PtraceChannel(ChannelBase):
                     exitcode = event.exitcode
                 raise ChannelBrokenException(f"Process with {event.process.pid=} exited with code {exitcode}")
             except ProcessSignal as event:
+                if event.signum == signal.SIGUSR2:
+                    raise ChannelTimeoutException("Channel timeout when waiting for syscall")
                 debug(f"Target process with {event.process.pid=} received signal with {event.signum=}")
                 event.display()
                 signum = event.signum
@@ -126,6 +131,16 @@ class PtraceChannel(ChannelBase):
                 event.process.syscall()
                 return syscall
 
+        def timeout_handler(event):
+            if not event.wait(timeout * self._timescale):
+                # send timeout signal to be intercepted by ptrace
+                try:
+                    # get any child process, fail gracefully if all are dead
+                    proc = next(self._debugger)
+                    proc.kill(signal.SIGUSR2)
+                except Exception as ex:
+                    warning(ex)
+
         with ThreadPoolExecutor() as executor:
             for process in self._debugger:
                 # update the ignore_callback of processes in the debugger
@@ -136,6 +151,11 @@ class PtraceChannel(ChannelBase):
                 future = executor.submit(monitor_target)
 
             ## Listen for and process syscalls
+            break_event = Event()
+            if timeout is not None:
+                timeout_timer = Thread(target=timeout_handler, args=(break_event,))
+                timeout_timer.start()
+
             while True:
                 if not self._debugger:
                     raise ChannelBrokenException("Process was terminated while waiting for syscalls")
@@ -151,6 +171,7 @@ class PtraceChannel(ChannelBase):
 
                 if break_callback():
                     debug("Syscall monitoring finished, breaking out of debug loop")
+                    break_event.set()
                     break
 
             ## Return the target's result

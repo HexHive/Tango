@@ -14,3 +14,6 @@ class ChannelSetupException(RuntimeError):
 
 class ChannelBrokenException(RuntimeError):
     pass
+
+class ChannelTimeoutException(RuntimeError):
+    pass
