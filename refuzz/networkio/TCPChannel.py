@@ -1,6 +1,6 @@
 from . import debug
 
-from typing import ByteString, Callable
+from typing import ByteString
 from networkio import ChannelBase, PtraceChannel, TransportChannelFactory
 from   common      import (ChannelBrokenException,
                           ChannelSetupException)
@@ -20,8 +20,7 @@ class TCPChannelFactory(TransportChannelFactory):
     data_timeout: float = 5.0 # seconds
     def create(self, pobj: Popen) -> ChannelBase:
         return TCPChannel(pobj,
-                          self.tx_callback, self.rx_callback,
-                          self.endpoint,    self.port,
+                          self.endpoint, self.port,
                           timescale=self.timescale)
 
 class TCPChannel(PtraceChannel):
@@ -50,9 +49,8 @@ class TCPChannel(PtraceChannel):
                 self._state = self.SOCKET_LISTENING
                 return (self._sa_family, self._sin_addr, self._sin_port)
 
-    def __init__(self, pobj: Popen, tx_callback: Callable, rx_callback: Callable,
-                 endpoint: str, port: int, timescale: float):
-        super().__init__(pobj, tx_callback, rx_callback, timescale)
+    def __init__(self, pobj: Popen, endpoint: str, port: int, timescale: float):
+        super().__init__(pobj, timescale)
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.connect((endpoint, port))
 

@@ -21,9 +21,8 @@ import signal
 SOCKET_SYSCALL_NAMES = SOCKET_SYSCALL_NAMES.union(('read', 'write'))
 
 class PtraceChannel(ChannelBase):
-    def __init__(self, pobj: Popen, tx_callback: Callable, rx_callback: Callable,
-            timescale: float):
-        super().__init__(pobj, tx_callback, rx_callback, timescale)
+    def __init__(self, pobj: Popen, timescale: float):
+        super().__init__(pobj, timescale)
 
         debug("Setting up new ptrace-enabled channel")
 
