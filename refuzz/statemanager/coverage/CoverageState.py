@@ -5,6 +5,8 @@ from collections  import OrderedDict
 from functools    import cache, reduce
 
 class CoverageState(StateBase):
+    # FIXME implement a __new__ that looks up the cov map in a cache and avoids
+    # reallocating a new object for the same cov map
     def __init__(self, coverage_map: Sequence):
         super().__init__()
         # populate with AFL-style global coverage information
