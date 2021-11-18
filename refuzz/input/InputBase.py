@@ -11,6 +11,9 @@ class InputBase(ABC):
     def ___repr___(self):
         return f"{self.__class__.__name__}"
 
+    def ___len___(self):
+        raise NotImplemented()
+
     def __eq__(self, other):
         diff = False
 
@@ -54,3 +57,6 @@ class InputBase(ABC):
 
     def __repr__(self):
         return self.___repr___()
+
+    def __len__(self):
+        return self.___len___()

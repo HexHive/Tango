@@ -1,0 +1,133 @@
+<html>
+<head>
+	<script src="/js/viz.js"></script>
+	<script src="/js/full.render.js"></script>
+
+	<link rel="stylesheet" href="/css/jquery-ui.css">
+	<script src="/js/jquery-1.12.4.js"></script>
+	<script src="/js/jquery-ui.js"></script>
+
+	<link rel="stylesheet" href="/css/materialize.min.css">
+	<script src="/js/materialize.min.js"></script>
+
+	<link href="/css/style.css" rel="stylesheet" type="text/css">
+</head>
+<body>
+	<header>
+		<nav class="top-nav">
+				<div class="nav-wrapper z-depth-0">
+					<h2 class='header center'>TangoFuzz</h2>
+				</div>
+		</nav>
+	</header>
+	<main>
+		<div class="dashboard">
+			<div class="left-pane">
+				<div class="statistics">
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Time elapsed</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="elapsed"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Inputs per second</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="execs"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Total interactions</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="interactions"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Average interactions per input</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="input_len"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Total states covered</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="coverage"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Average transition length</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="transition_length"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Unstable executions</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="unstable"></a>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="right-pane">
+				<svg id="dgsvg" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"></svg>
+			</div>
+		</div>
+	</main>
+
+	<script>
+		let socket = new WebSocket("ws://127.0.0.1:8081");
+		let viz = new Viz();
+		let svg = $('#dgsvg')[0]
+
+		socket.onmessage = function(event) {
+			try {
+				msg = JSON.parse(event.data);
+			} catch(e) {
+				return;
+				// debugger;
+			}
+			switch(msg.cmd) {
+				case "update_graph":
+					viz.renderSVGElement(msg.items.dot)
+					.then(function(element) {
+						svg.innerHTML = element.innerHTML;
+						svg.setAttribute('viewBox', element.getAttribute('viewBox'));
+					})
+					.catch(error => {
+						viz = new Viz();
+						console.error(error);
+					});
+					break;
+				case "update_stats":
+					for (const [stat, value] of Object.entries(msg.items)) {
+						$('[id="'+stat+'"]').html(value)
+					}
+					break;
+				default:
+					break;
+			}
+		}
+	</script>
+	<script>
+		$(function() {
+			$('.dashboard .left-pane').resizable({
+				handles: 'e'
+			});
+		});
+	</script>
+</body>
+</html>

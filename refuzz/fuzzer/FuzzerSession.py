@@ -3,6 +3,13 @@ from input         import (InputBase,
 from fuzzer        import FuzzerConfig
 import os
 
+from profiler import (ProfileLambda,
+                     ProfiledObjects,
+                     ProfilingStoppedEvent,
+                     ProfileTimeElapsed)
+
+from webui import WebRenderer
+
 class FuzzerSession:
     """
     This class initializes and tracks the global state of the fuzzer.
@@ -26,6 +33,10 @@ class FuzzerSession:
         ## After this point, the StateManager and StateTracker are both
         #  initialized and should be able to identify states and populate the SM
 
+        # Collecting some stats
+        self._unstable = 0
+        ProfileLambda("unstable")(lambda: self._unstable)
+
         self._load_seeds()
 
     def _load_seeds(self):
@@ -41,17 +52,24 @@ class FuzzerSession:
     def _loop(self):
         # FIXME is there ever a proper terminating condition for fuzzing?
         while True:
-            cur_state = self._sman.state_tracker.current_state
-            input = self._input_gen.generate(cur_state, self._entropy)
-            self._loader.execute_input(input, self._sman)
-            self._sman.step()
+            try:
+                cur_state = self._sman.state_tracker.current_state
+                input = self._input_gen.generate(cur_state, self._entropy)
+                self._loader.execute_input(input, self._sman)
+                self._sman.step()
+            except StabilityException:
+                self._unstable += 1
+                self._sman.reset_state()
 
     def start(self):
         # reset state after the seed initialization stage
         self._sman.reset_state()
 
+        ProfileTimeElapsed('elapsed')
+
+        WebRenderer().start()
+
         # launch fuzzing loop
         self._loop()
 
         # TODO anything else?
-        pass

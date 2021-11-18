@@ -46,9 +46,11 @@ class StateManager:
             pass
 
     def __init__(self, startup_input: InputBase, loader: StateLoaderBase,
-            tracker: StateTrackerBase, scheduler: str):
+            tracker: StateTrackerBase, scheduler: str, cache_inputs: bool):
         self._loader = loader
         self._tracker = tracker
+        self._cache_inputs = cache_inputs
+
         self._last_state = self._tracker.entry_state
         self._startup_input = startup_input
         self._sm = StateMachine(self._last_state)
@@ -120,22 +122,23 @@ class StateManager:
 
         # the tracker may return None as current_state, in case it has not yet
         # finished the training phase (preprocessing seeds)
-        if current_state is not None and current_state != self._last_state:
-            # TODO optionally call the transition pruning routine to shorten the
-            # last input
-            if self._last_state.last_input is not None:
-                last_input = self._last_state.last_input + input_gen()
-            else:
-                last_input = input_gen()
+        if current_state is not None:
+            self._sm.update_state(current_state)
+            if current_state != self._last_state:
+                # TODO optionally call the transition pruning routine to shorten the
+                # last input
+                if self._last_state.last_input is not None:
+                    last_input = self._last_state.last_input + input_gen()
+                else:
+                    last_input = input_gen()
 
-            # we clear the last input, so that if we restore this state later,
-            # we would start from a clean slate
-            self._last_state.last_input = None
+                if self._cache_inputs:
+                    last_input = CachingDecorator()(last_input, copy=False)
 
-            self._sm.update_transition(self._last_state, current_state,
-                CachingDecorator()(last_input, copy=False))
-            self._last_state = current_state
-            debug(f'Transitioned to {current_state=}')
-            updated = True
+                self._sm.update_transition(self._last_state, current_state,
+                    last_input)
+                self._last_state = current_state
+                debug(f'Transitioned to {current_state=}')
+                updated = True
 
         return updated

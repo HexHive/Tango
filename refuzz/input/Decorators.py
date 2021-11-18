@@ -8,7 +8,7 @@ class DecoratorBase(ABC):
     def __call__(self, input, copy=True): # -> InputBase:
         self._input = deepcopy(input) if copy else input
         for name, func in inspect.getmembers(self, predicate=inspect.ismethod):
-            if name not in ('___iter___', '___eq___', '___add___', '___getitem___', '___repr___'):
+            if name not in ('___iter___', '___eq___', '___add___', '___getitem___', '___repr___', '___len___'):
                 continue
             oldfunc = getattr(self._input, name, None)
             newfunc = partial(func, oldfunc)
@@ -24,7 +24,7 @@ class DecoratorBase(ABC):
         assert getattr(self, '_input', None) is not None, \
                 "Decorator has not been called before!"
         for name, func in inspect.getmembers(self, predicate=inspect.ismethod):
-            if name not in ('___iter___', '___eq___', '___add___', '___getitem___', '___repr___'):
+            if name not in ('___iter___', '___eq___', '___add___', '___getitem___', '___repr___', '___len___'):
                 continue
             newfunc = getattr(self._input, name, None)
             oldfunc = newfunc.args[0]
@@ -58,6 +58,7 @@ class CachingDecorator(DecoratorBase):
         self._input = deepcopy(input) if copy else input
         self._input.___iter___ = self.___cached_iter___
         self._input.___repr___ = self.___cached_repr___
+        self._input.___len___ = self.___cached_len___
         # we delete self._input because it is no longer needed, and a dangling
         # reference to it will result in redundant deepcopy-ing later
         inp = self._input
@@ -69,6 +70,9 @@ class CachingDecorator(DecoratorBase):
 
     def ___cached_repr___(self):
         return self._cached_repr
+
+    def ___cached_len___(self):
+        return len(self._cached_iter)
 
 class SlicingDecorator(DecoratorBase):
     def __init__(self, idx):
@@ -113,6 +117,9 @@ class SlicingDecorator(DecoratorBase):
             fmt = f'{self._start}:{self._stop}:{self._step}'
         return f"{orig()}[{fmt}]"
 
+    def ___len___(self, orig):
+        raise NotImplemented()
+
 class JoiningDecorator(DecoratorBase):
     def __init__(self, *others):
         self._others = list(others)
@@ -132,3 +139,6 @@ class JoiningDecorator(DecoratorBase):
         first = orig()
         others = ' + '.join(repr(x) for x in self._others)
         return f'{first} + {others}'
+
+    def ___len___(self, orig):
+        raise NotImplemented()
