@@ -1,4 +1,4 @@
-from . import debug
+from . import debug, warning
 
 from typing import Callable
 from networkio import ChannelBase
@@ -136,7 +136,7 @@ class PtraceChannel(ChannelBase):
                 # send timeout signal to be intercepted by ptrace
                 try:
                     # get any child process, fail gracefully if all are dead
-                    proc = next(self._debugger)
+                    proc = next(iter(self._debugger))
                     proc.kill(signal.SIGUSR2)
                 except Exception as ex:
                     warning(ex)
