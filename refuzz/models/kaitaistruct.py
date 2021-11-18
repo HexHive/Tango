@@ -1,0 +1,1 @@
+../../ext/kaitai_struct_python_runtime/kaitaistruct.py
