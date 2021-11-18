@@ -1,4 +1,5 @@
 from .Exceptions import (LoadedException,
                         StabilityException,
                         ChannelSetupException,
-                        ChannelBrokenException)
+                        ChannelBrokenException,
+                        ChannelTimeoutException)

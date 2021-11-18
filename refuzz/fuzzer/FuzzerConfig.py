@@ -94,13 +94,9 @@ class FuzzerConfig:
     def ch_env(self):
         _config = self._config["channel"]
         if _config["type"] == "tcp":
-            return TCPChannelFactory(**_config["tcp"], timescale=self.timescale,
-                    tx_callback=None, rx_callback=None
-                )
+            return TCPChannelFactory(**_config["tcp"], timescale=self.timescale)
         elif _config["type"] == "udp":
-            return UDPChannelFactory(**_config["udp"], timescale=self.timescale,
-                    tx_callback=None, rx_callback=None
-                )
+            return UDPChannelFactory(**_config["udp"], timescale=self.timescale)
         else:
             raise NotImplemented()
 
