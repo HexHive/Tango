@@ -27,13 +27,13 @@ int __wrap_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
     uint32_t optlen;
 
     /* get and set SO_REUSEADDR */
-    getsockopt(sockfd, SOL_SOCKET, SO_BROADCAST, &optval, &optlen);
+    getsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &optval, &optlen);
     if (optval != 0) {
-        printf("Socket: %d has enabled SO_BROADCAST\n", sockfd);
+        printf("Socket: %d has enabled SO_REUSEADDR\n", sockfd);
     } else {
         optval = 1;
         setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-        printf("Enable SO_BRODCAST on socket: %d\n", sockfd);
+        printf("Enable SO_REUSEADDR on socket: %d\n", sockfd);
     }
 
     /* go to bind then */
