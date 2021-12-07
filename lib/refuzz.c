@@ -1,4 +1,9 @@
 // Compile binaries with -fsanitize-coverage={func, bb, edge},trace-pc-guard
+// Minimum clang version: 13.0
+
+#if !__has_feature(coverage_sanitizer)
+#error Incompatible compiler! Please use Clang 13.0 or higher
+#endif
 
 #include <stdio.h>
 #include <stdint.h>
@@ -9,6 +14,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 
 #define COVERAGE_SIZE_TAG "/refuzz_size"
 
@@ -46,7 +52,6 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
     close(fd);
     if (!sz) return;
     *sz = edge_sz;
-    msync(sz, sizeof(uint32_t), MS_SYNC | MS_INVALIDATE);
     munmap(sz, sizeof(uint32_t));
 }
 
@@ -55,6 +60,52 @@ void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
 
     if (__builtin_add_overflow(edge_cnt[*guard], 1, &edge_cnt[*guard]))
         edge_cnt[*guard] = UINT8_MAX;
+}
 
-    msync(edge_cnt, edge_sz, MS_ASYNC | MS_INVALIDATE);
+__attribute__((no_sanitize("coverage")))
+static inline void __reset_cov_map() {
+    for (int i = 0; i < edge_sz; ++i)
+        edge_cnt[i] = 0;
+}
+
+__attribute__((used, no_sanitize("coverage")))
+static void _forkserver() {
+    /* clobbers:
+     * rax, rcx, rdx, rsi, rdi
+     */
+    while(1) {
+        __reset_cov_map();
+        int child_pid = fork();
+        if (child_pid) {
+            asm("int $3"); // trap and wait until fuzzer wakes us up
+            int status, ret;
+            //waitpid(child_pid, &status, 0);
+            do {
+                ret = waitpid(-1, &status, WNOHANG);
+            } while (ret > 0);
+        } else {
+            break;
+        }
+    }
+}
+
+__attribute__((naked, used, no_sanitize("coverage")))
+void forkserver() {
+    asm volatile (
+        "push %%rax\n"
+        "push %%rcx\n"
+        "push %%rdx\n"
+        "push %%rsi\n"
+        "push %%rdi\n"
+        "call _forkserver\n"
+        "pop %%rdi\n"
+        "pop %%rsi\n"
+        "pop %%rdx\n"
+        "pop %%rcx\n"
+        "pop %%rax\n"
+        "ret"
+        : /* No outputs */
+        : /* No inputs */
+        : /* No clobbers */
+    );
 }
