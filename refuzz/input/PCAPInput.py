@@ -25,8 +25,8 @@ class PCAPInput(PreparedInput):
             UDP: "sport"
         }
         for layer, src in layers.items():
-            if layer in p:
-                endpoint.append(getattr(p.getlayer(layer), src))
+            if layer in packet:
+                endpoint.append(getattr(packet.getlayer(layer), src))
         if not endpoint:
             raise RuntimeError("Could not identify endpoint in packet")
         return tuple(endpoint)
@@ -64,5 +64,5 @@ class PCAPInput(PreparedInput):
 
             delay = p.time - tlast
             tlast = p.time
-            if delay >= 1E-3:
+            if delay >= 1:
                 yield DelayInteraction(float(delay))
