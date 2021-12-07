@@ -15,27 +15,44 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <unistd.h>
+#include <signal.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/prctl.h>
+
+static struct linger no_linger = {0};
+static uint32_t reuse = 1;
 
 int __wrap_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 int __real_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 
-int __wrap_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
-    uint32_t optval;
-    uint32_t optlen;
+pid_t __wrap_fork();
+pid_t __real_fork();
 
-    /* get and set SO_REUSEADDR */
-    getsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &optval, &optlen);
-    if (optval != 0) {
-        printf("Socket: %d has enabled SO_REUSEADDR\n", sockfd);
-    } else {
-        optval = 1;
-        setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-        printf("Enable SO_REUSEADDR on socket: %d\n", sockfd);
-    }
+/* Refer to this SO answer on the nitty-gritty about TIME_WAIT
+ * https://stackoverflow.com/a/14388707
+ */
+int __wrap_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+    setsockopt(sockfd, SOL_SOCKET, SO_LINGER, &no_linger, sizeof(no_linger));
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
+    printf("Enable address-port reuse on socket: %d\n", sockfd);
 
     /* go to bind then */
     return __real_bind(sockfd, addr, addrlen);
+}
+
+pid_t __wrap_fork() {
+    pid_t ppid = getpid();
+    pid_t child_pid = __real_fork();
+    if (child_pid == 0) {
+        prctl(PR_SET_PDEATHSIG, SIGTERM);
+        if (getppid() != ppid)
+            exit(-256);
+    }
+    return child_pid;
 }
