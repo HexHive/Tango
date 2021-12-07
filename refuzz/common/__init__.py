@@ -5,3 +5,4 @@ from .Exceptions import (LoadedException,
                         ChannelBrokenException,
                         ChannelTimeoutException,
                         ProcessCrashedException)
+from .Logger import ColoredLogger
