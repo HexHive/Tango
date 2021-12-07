@@ -34,6 +34,9 @@ class HavocMutator(MutatorBase):
 
         # self._entropy.setstate(old_state)
 
+    def ___repr___(self, orig):
+        return f'HavocMutatedInput:{self._input.id} ({self._input_id})'
+
     def mutate_int(self, n: int):
         def to_bytes(n, order='little'):
             nbytes = (n.bit_length() - 1) // 8 + 1

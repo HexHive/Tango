@@ -4,6 +4,12 @@ from typing import Union
 from input import JoiningDecorator, SlicingDecorator
 
 class InputBase(ABC):
+    _COUNTER = 0
+
+    def __init__(self):
+        self._COUNTER += 1
+        self.id = self._COUNTER
+
     @abstractmethod
     def ___iter___(self):
         pass

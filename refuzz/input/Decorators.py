@@ -15,6 +15,8 @@ class DecoratorBase(ABC):
             setattr(self._input, name, newfunc)
 
         setattr(self._input, '___decorator___', self)
+        self._input_id = self._input.id
+        self._input.id = self._input._COUNTER + 1
         return self._input
 
     def ___repr___(self, orig):
@@ -115,7 +117,7 @@ class SlicingDecorator(DecoratorBase):
                 fmt = f'{self._start}::{self._step}'
         else:
             fmt = f'{self._start}:{self._stop}:{self._step}'
-        return f"{orig()}[{fmt}]"
+        return f'SlicedInput:{self._input.id} (0x{self._input_id:016X}[fmt])'
 
     def ___len___(self, orig):
         raise NotImplemented()
@@ -136,9 +138,8 @@ class JoiningDecorator(DecoratorBase):
         yield from chain(orig(), *self._others)
 
     def ___repr___(self, orig):
-        first = orig()
-        others = ' + '.join(repr(x) for x in self._others)
-        return f'{first} + {others}'
+        ids = (f'0x{x.id:016X}' for x in self._others)
+        return 'JoinedInput:{self._input.id} ({" || ".join((self._input_id, *ids))})'
 
     def ___len___(self, orig):
         raise NotImplemented()

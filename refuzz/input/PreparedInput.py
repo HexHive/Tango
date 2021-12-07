@@ -8,6 +8,7 @@ class PreparedInput(InputBase):
     to a file.
     """
     def __init__(self, interactions: Iterable[InteractionBase]=None):
+        super().__init__()
         self._interactions = []
         if interactions:
             self._interactions.extend(interactions)
