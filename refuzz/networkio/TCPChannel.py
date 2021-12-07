@@ -66,7 +66,7 @@ class TCPChannel(PtraceChannel):
             if syscall.name == 'socket':
                 domain = syscall.arguments[0].value
                 typ = syscall.arguments[1].value
-                if domain != socket.AF_INET or typ != socket.SOCK_STREAM:
+                if domain != socket.AF_INET or (typ & socket.SOCK_STREAM) == 0:
                     return
                 fd = syscall.result
                 fds[fd] = self.ListenerSocketState()
