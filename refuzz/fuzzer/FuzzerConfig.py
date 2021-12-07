@@ -11,6 +11,7 @@ from random       import Random
 import json
 import os
 import logging
+import ctypes
 
 class FuzzerConfig:
     """
@@ -67,6 +68,7 @@ class FuzzerConfig:
             "seeds": "/path/to/pcap/dir",
             "timescale": .0 .. 1.,
             "entropy": number,
+            "lib": "/path/to/tangofuzz/lib"
             ...
         }
     }
@@ -81,6 +83,11 @@ class FuzzerConfig:
         with open(file, "rt") as f:
             self._config = json.load(f)
 
+        if self.lib_dir:
+            so_path = os.path.join(self.lib_dir, "rebind.so")
+            self._bind_lib = ctypes.CDLL(so_path)
+        else:
+            self._bind_lib = None
 
     @cached_property
     def exec_env(self):
@@ -90,6 +97,13 @@ class FuzzerConfig:
                 _config[stdf] = open(_config[stdf], "wt")
         if not _config.get("env"):
             _config["env"] = dict(os.environ)
+        _config["args"][0] = os.path.realpath(_config["args"][0])
+        if not (path := _config.get("path")):
+            _config["path"] = _config["args"][0]
+        else:
+            _config["path"] = os.path.realpath(path)
+        if (cwd := _config.get("cwd")):
+            _config["cwd"] = os.path.realpath(cwd)
         return Environment(**_config)
 
     @cached_property
@@ -122,7 +136,8 @@ class FuzzerConfig:
         _config = self._config["statemanager"]
         state_type = _config.get("type", "coverage")
         if state_type == "coverage":
-            return CoverageStateTracker(self.input_generator, self.loader)
+            return CoverageStateTracker(self.input_generator, self.loader,
+                bind_lib=self._bind_lib)
         else:
             raise NotImplemented()
 
@@ -159,6 +174,12 @@ class FuzzerConfig:
     @cached_property
     def seed_dir(self):
         return self._config["fuzzer"].get("seeds")
+
+    @cached_property
+    def lib_dir(self):
+        if (path := self._config["fuzzer"].get("lib")):
+            return os.path.realpath(path)
+        return None
 
     @cached_property
     def timescale(self):

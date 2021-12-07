@@ -1,4 +1,4 @@
-from . import debug
+from . import debug, info
 
 import sys
 import mmap
@@ -32,7 +32,7 @@ class CoverageReader:
         _map.close()
         _mem.unlink()
 
-        debug(f"Obtained coverage map {_size=}")
+        info(f"Obtained coverage map {_size=}")
 
         assert frozenset(tag[1:]).issubset(self.valid_chars)
         if tag[0] != "/":
@@ -70,6 +70,10 @@ class CoverageReader:
     @property
     def array(self):
         return self._array
+
+    @property
+    def address(self):
+        return self._map
 
     def __del__(self):
         if self._map is not None:

@@ -2,24 +2,48 @@ from statemanager import StateBase, StateManager
 from input        import InputBase
 from typing       import Sequence
 from collections  import OrderedDict
-from functools    import cache, reduce
+from functools    import cache, reduce, partial
+from ctypes       import POINTER as P, c_ubyte as B, c_size_t as S, cast as C
 
 class CoverageState(StateBase):
-    # FIXME implement a __new__ that looks up the cov map in a cache and avoids
-    # reallocating a new object for the same cov map
-    def __init__(self, coverage_map: Sequence):
-        super().__init__()
-        # populate with AFL-style global coverage information
-        self._cov = {
-            edge: self._count_class_lookup(count)
-            for edge, count in enumerate(coverage_map)
-            if count != 0
-        }
+    _cache = {}
+
+    def __new__(cls, coverage_map: Sequence, address: int, bind_lib):
+        if not bind_lib:
+            # populate with AFL-style global coverage information
+            cov = {
+                edge: cls._count_class_lookup(count)
+                for edge, count in enumerate(coverage_map)
+                if count != 0
+            }
+            _hash = cls._hash_cov(cov, address)
+            if cached := cls._cache.get(_hash):
+                return cached
+            new = super(CoverageState, cls).__new__(cls)
+            new._cov = cov
+            new._map = address
+            cls._cache[_hash] = new
+            super(CoverageState, new).__init__()
+            return new
+        else:
+            _hash = bind_lib.hash_cov(C(address, P(B)), S(len(coverage_map)))
+            if cached := cls._cache.get(_hash):
+                return cached
+            new = super(CoverageState, cls).__new__(cls)
+            new._cov = coverage_map
+            new._map = address
+            new._hash_cov = lambda cov, map: _hash
+            cls._cache[_hash] = new
+            super(CoverageState, new).__init__()
+            return new
+
+    def __init__(self, coverage_map: Sequence, address: int, bind_lib):
+        pass
 
     @staticmethod
     @cache
     def lookup():
-        lookup = OrderedDict.fromkeys([0, 1, 2, 3, 4, 8, 16, 32, 128])
+        lookup = OrderedDict()
         lookup[0] = 0
         lookup[1] = 1
         lookup[2] = 2
@@ -52,11 +76,15 @@ class CoverageState(StateBase):
         # TODO update coverage and add interesting inputs
         pass
 
+    @classmethod
+    def _hash_cov(cls, cov, map):
+        return reduce(lambda x,y: x ^ hash(y), cov.items(), 0)
+
     def __hash__(self):
-        return reduce(lambda x,y: x ^ hash(y), self._cov.items(), 0)
+        return self._hash_cov(self._cov, self._map)
 
     def __eq__(self, other):
-        return self._cov == other._cov
+        return hash(self) == hash(other)
 
     def __repr__(self):
-        return f'CoverageState({repr(self._cov)})'
+        return f'CoverageState({hex(hash(self))})'

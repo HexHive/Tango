@@ -8,8 +8,11 @@ from input        import InputBase
 from generator    import InputGeneratorBase
 
 class CoverageStateTracker(StateTrackerBase):
-    def __init__(self, generator: InputGeneratorBase, loader: StateLoaderBase):
+    def __init__(self, generator: InputGeneratorBase, loader: StateLoaderBase,
+            bind_lib = None):
         super().__init__(generator)
+
+        self._bind_lib = bind_lib
 
         # set environment variables and load program with loader
         loader._exec_env.env.update({
@@ -17,7 +20,9 @@ class CoverageStateTracker(StateTrackerBase):
             })
         loader.load_state(None, None)
         self._reader = CoverageReader('/refuzz_cov')
-        self._entry_state = CoverageState(self._reader.array)
+        self._entry_state = CoverageState(self._reader.array,
+            self._reader.address_of_buffer(self._reader._map),
+            bind_lib=self._bind_lib)
 
     @property
     def entry_state(self) -> CoverageState:
@@ -25,7 +30,9 @@ class CoverageStateTracker(StateTrackerBase):
 
     @property
     def current_state(self) -> CoverageState:
-        return CoverageState(self._reader.array)
+        return CoverageState(self._reader.array,
+            self._reader.address_of_buffer(self._reader._map),
+            bind_lib=self._bind_lib)
 
     def update_state(self, prev: StateBase, new: StateBase,
             input_gen: Callable[..., InputBase]):
