@@ -4,4 +4,5 @@ networkx==2.5.1
 scapy==2.4.5
 posix-ipc==1.0.5
 python-ptrace @ git+https://github.com/hazimeh/python-ptrace.git
+pyelftools @ git+https://github.com/eliben/pyelftools.git
 websockets==10.0
