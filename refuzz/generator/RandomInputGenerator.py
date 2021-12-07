@@ -16,7 +16,7 @@ class RandomInputGenerator(InputGeneratorBase):
             out_edges = list(state.out_edges)
             if out_edges:
                 _, dst, data = entropy.choice(out_edges)
-                candidate = entropy.choice(data['transition'])
+                candidate = data['minimized']
             elif self.seeds:
                 candidate = entropy.choice(self.seeds)
             else:

@@ -73,7 +73,8 @@ class StateMachine:
             debug(f'New transition discovered from {source} to {destination}')
             transition = collections.deque(maxlen=self._queue_maxlen)
             self._graph.add_edge(source, destination, transition=transition,
-                added=time, last_visit=time)
+                added=time, last_visit=time, minimized=input)
+            ProfileValueMean("minimized_length", samples=0)(len(input))
             new = True
 
         exists = not new and any(inp == input for inp in transition)
@@ -92,8 +93,9 @@ class StateMachine:
         """
         def flatten(edges):
             for src, dst, data in edges:
+                minimized = data['minimized']
                 for input in data['transition']:
-                    yield src, dst, input
+                    yield src, dst, minimized, input
 
         if state not in self._graph.nodes:
             raise KeyError("State not present in state machine.")
@@ -104,34 +106,35 @@ class StateMachine:
             flatten(self._graph.in_edges(state, data=True)),
             flatten(self._graph.out_edges(state, data=True))
         )
-        for (src_in, _, input_in), (_, dst_out, input_out) in t_product:
+        for (src_in, _, min_in, input_in), (_, dst_out, min_out, input_out) in t_product:
             stitched = input_in + input_out
+            minimized = min_in + min_out
             self.update_transition(
                 source=src_in,
                 destination=dst_out,
-                transition=stitched
+                transition=stitched,
+                minimized=minimized
             )
         self._graph.remove_node(state)
 
     def get_paths(self, destination: StateBase, source: StateBase=None) \
         -> Generator[List[Tuple[StateBase, StateBase, InputBase]], None, None]:
         """
-        Generates all paths to destination from source. If source is None, the entry
-        point of the state machine is used.
+        Generates all minimized paths to destination from source. If source is
+        None, the entry point of the state machine is used.
 
         :param      destination:  The destination state.
         :type       destination:  StateBase
         :param      source:       The source state.
         :type       source:       StateBase
 
-        :returns:   Generator object, each item is a list of consecutive edge tuples
-                    on the same path.
+        :returns:   Generator object, each item is a list of consecutive edge
+                    tuples on the same path.
         :rtype:     generator
         """
         def get_edge_with_inputs(src, dst):
             data = self._graph.get_edge_data(src, dst)
-            for input in data['transition']:
-                yield src, dst, input
+            yield src, dst, data['minimized']
 
         source = source or self._entry_state
         if destination == source:
