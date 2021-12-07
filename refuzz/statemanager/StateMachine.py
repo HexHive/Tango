@@ -1,6 +1,7 @@
 from . import debug
 
 from   itertools    import product as xproduct
+from   functools    import partial
 from   statemanager import StateBase
 from   input        import InputBase, PreparedInput
 from   typing       import Generator, Tuple, List
@@ -21,7 +22,7 @@ class StateMachine:
     """
     def __init__(self, entry_state: StateBase):
         self._graph = nx.DiGraph()
-        self._graph.add_node(entry_state)
+        self.update_state(entry_state)
         self._entry_state = entry_state
         self._queue_maxlen = 10
 
@@ -32,11 +33,15 @@ class StateMachine:
     @ProfileEvent('update_state')
     def update_state(self, state: StateBase):
         time = now()
+        new = False
         if state not in self._graph.nodes:
             self._graph.add_node(state, added=time)
+            state.out_edges = lambda **kwargs: partial(self._graph.out_edges, state)(**kwargs) if state in self._graph.nodes else ()
+            new = True
         self._graph.add_node(state, last_visit=time)
 
         ProfileValue("coverage")(len(self._graph.nodes))
+        return new
 
     @ProfileEvent('update_transition')
     def update_transition(self, source: StateBase, destination: StateBase,

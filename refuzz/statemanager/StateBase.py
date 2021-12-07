@@ -4,6 +4,7 @@ from input        import InputBase
 class StateBase(ABC):
     def __init__(self):
         self._last_input = None
+        self._out_edges = None
 
     @abstractmethod
     def __hash__(self):
@@ -24,3 +25,12 @@ class StateBase(ABC):
     @abstractmethod
     def get_escaper(self) -> InputBase:
         pass
+
+    @property
+    def out_edges(self):
+        if self._out_edges:
+            yield from self._out_edges(data=True)
+
+    @out_edges.setter
+    def out_edges(self, fn_edges):
+        self._out_edges = fn_edges

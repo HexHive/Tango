@@ -93,6 +93,23 @@ class HavocMutator(MutatorBase):
                         new = DelayInteraction(delay)
                     yield new
         else:
+            oper = self.RandomOperation(self._entropy.randint(4, 4))
+            if oper == self.RandomOperation.CREATE:
+                # FIXME use range(3) to enable delays, but they affect throughput
+                inter = self.RandomInteraction(self._entropy.choices(
+                        range(2),
+                        cum_weights=range(998, 1000)
+                    )[0])
+                if inter == self.RandomInteraction.TRANSMIT:
+                    buffer = self._entropy.randbytes(self._entropy.randint(1, 256))
+                    new = TransmitInteraction(buffer)
+                elif inter == self.RandomInteraction.RECEIVE:
+                    new = ReceiveInteraction()
+                elif inter == self.RandomInteraction.DELAY:
+                    delay = self._entropy.random() * 5
+                    new = DelayInteraction(delay)
+                yield new
+
             # when interaction is None, we should flush the reorder buffer
             yield from self._entropy.sample(self._reorder, k=len(self._reorder))
             self._reorder.clear()

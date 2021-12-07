@@ -13,7 +13,11 @@ class RandomInputGenerator(InputGeneratorBase):
         # TODO move escapers from state to state tracker/generator?
         candidate = state.get_escaper()
         if candidate is None:
-            if self.seeds:
+            out_edges = list(state.out_edges)
+            if out_edges:
+                _, dst, data = entropy.choice(out_edges)
+                candidate = entropy.choice(data['transition'])
+            elif self.seeds:
                 candidate = entropy.choice(self.seeds)
             else:
                 candidate = PreparedInput()
