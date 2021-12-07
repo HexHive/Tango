@@ -1,0 +1,32 @@
+{
+	"exec": {
+		"path": "./lib/demo_server",
+		"args": ["./lib/demo_server"],
+        "stdout": "./stdout",
+        "stderr": "./stderr"
+	},
+	"channel": {
+		"type": "tcp",
+		"tcp": {
+			"endpoint": "127.0.0.1",
+			"port": 5001,
+			"connect_timeout": 1,
+            "data_timeout": 1
+		}
+	},
+	"loader": {
+		"type": "replay",
+		"forkserver": true,
+		"disable_aslr": true
+	},
+	"input": {
+		"type": "mutation"
+	},
+	"statemanager": {
+		"type": "coverage"
+	},
+	"fuzzer": {
+		"type": "coverage",
+		"strategy": "default"
+	}
+}
