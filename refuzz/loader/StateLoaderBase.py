@@ -1,5 +1,6 @@
-from abc          import ABC,abstractmethod
-from common       import LoadedException
+from . import critical
+from abc          import ABC, abstractmethod
+from common       import LoadedException, ChannelBrokenException
 from loader       import Environment
 from networkio    import (ChannelFactoryBase,
                          ChannelBase)
@@ -8,20 +9,30 @@ from input        import (InputBase,
 from statemanager import (StateBase,
                          StateManager)
 from interaction  import ReceiveInteraction
-
 from profiler import ProfileFrequency, ProfileValueMean, ProfileEvent, ProfileCount
+import ctypes
+
+from ptrace import PtraceError
 
 class StateLoaderBase(ABC):
     """
     The state loader maintains a running process and provides the capability of
     switching program states.
     """
-    def __init__(self, exec_env: Environment, ch_env: ChannelFactoryBase):
+    def __init__(self, exec_env: Environment, ch_env: ChannelFactoryBase,
+            no_aslr: bool):
         self._exec_env = exec_env
         self._ch_env = ch_env
 
+        if no_aslr:
+            ADDR_NO_RANDOMIZE = 0x0040000
+            personality = ctypes.CDLL(None).personality
+            personality.restype = ctypes.c_int
+            personality.argtypes = [ctypes.c_ulong]
+            personality(ADDR_NO_RANDOMIZE)
+
     @abstractmethod
-    def load_state(self, state: StateBase, sman: StateManager):
+    def load_state(self, state: StateBase, sman: StateManager, update: bool):
         pass
 
     @property
@@ -31,7 +42,7 @@ class StateLoaderBase(ABC):
 
     @ProfileEvent("execute_input")
     @ProfileFrequency("execs")
-    def execute_input(self, input: InputBase, sman: StateManager):
+    def execute_input(self, input: InputBase, sman: StateManager, update: bool = True):
         """
         Executes the sequence of interactions specified by the input.
 
@@ -41,20 +52,35 @@ class StateLoaderBase(ABC):
         :raises:    LoadedException: Forwards the exception that was raised
                     during execution, along with the input that caused it.
         """
-        with sman.get_context(input) as ctx:
-            try:
-                idx = -1
-                for idx, interaction in enumerate(ctx):
-                    # FIXME figure out what other parameters this needs
+        if update:
+            with sman.get_context(input) as ctx:
+                try:
+                    idx = -1
+                    for idx, interaction in enumerate(ctx):
+                        # FIXME figure out what other parameters this needs
+                        interaction.perform(self.channel)
+                        # TODO perform fault detection
+                    else:
+                        ProfileValueMean("input_len", samples=100)(idx + 1)
+                        ProfileCount("total_interactions")(idx + 1)
+                except Exception as ex:
+                    raise LoadedException(ex, ctx.input_gen())
+        else:
+            idx = -1
+            for idx, interaction in enumerate(input):
+                try:
                     interaction.perform(self.channel)
-                    # TODO perform fault detection
-                else:
-                    ProfileValueMean("input_len", samples=100)(idx + 1)
-                    ProfileCount("interactions")(idx + 1)
-            except Exception as ex:
-                raise LoadedException(ex, ctx.input_gen())
+                except Exception as ex:
+                    raise LoadedException(ex, input[:idx + 1])
+            else:
+                ProfileCount("total_interactions")(idx + 1)
 
         # poll channel for incoming data
         # FIXME what to do with this data? if input did not request it, it was
         #   probably useless
-        data = self.channel.receive()
+        try:
+            # server may have killed the connection at this point and we need to
+            # report it
+            data = self.channel.receive()
+        except ChannelBrokenException as ex:
+            raise LoadedException(ex, input)

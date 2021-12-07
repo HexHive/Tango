@@ -1,7 +1,7 @@
 from . import debug, info
 
 from typing import ByteString
-from networkio import ChannelBase, PtraceChannel, TransportChannelFactory
+from networkio import ChannelBase, PtraceForkChannel, TransportChannelFactory
 from   common      import (ChannelBrokenException,
                           ChannelSetupException)
 from subprocess import Popen
@@ -11,21 +11,30 @@ import socket
 import select
 import threading
 from dataclasses import dataclass
-from functools import partial
+from functools import partial, cached_property
 from ptrace.error import PtraceError
 
 @dataclass
-class TCPChannelFactory(TransportChannelFactory):
-    connect_timeout: float = 5.0 # seconds
-    data_timeout: float = 5.0 # seconds
+class TCPForkChannelFactory(TransportChannelFactory):
+    connect_timeout: float = None # seconds
+    data_timeout: float = None # seconds
+
     def create(self, pobj: Popen) -> ChannelBase:
-        return TCPChannel(pobj,
+        self._pobj = pobj
+        ch = self.forkchannel
+        ch.connect((self.endpoint, self.port))
+        return ch
+
+    @cached_property
+    def forkchannel(self):
+        return TCPForkChannel(self._pobj,
                           self.endpoint, self.port,
                           timescale=self.timescale,
                           connect_timeout=self.connect_timeout,
                           data_timeout=self.data_timeout)
 
-class TCPChannel(PtraceChannel):
+
+class TCPForkChannel(PtraceForkChannel):
     RECV_CHUNK_SIZE = 4096
 
     class ListenerSocketState:
@@ -56,33 +65,34 @@ class TCPChannel(PtraceChannel):
     def __init__(self, pobj: Popen, endpoint: str, port: int, timescale: float,
                     connect_timeout: float, data_timeout: float):
         super().__init__(pobj, timescale)
-        self._connect_timeout = connect_timeout * timescale
-        self._data_timeout = data_timeout * timescale
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.connect((endpoint, port))
+        self._connect_timeout = connect_timeout * timescale if connect_timeout else None
+        self._data_timeout = data_timeout * timescale if data_timeout else None
+        self._socket = None 
+        self._target = None
+        self.setup((endpoint, port))
 
-    def connect(self, address: tuple):
+    def setup(self, address: tuple):
         def syscall_callback_listen(process, syscall, fds, listeners):
             if syscall.name == 'socket':
                 domain = syscall.arguments[0].value
                 typ = syscall.arguments[1].value
-                if domain != socket.AF_INET or typ != socket.SOCK_STREAM:
+                if domain != socket.AF_INET or (typ & socket.SOCK_STREAM) == 0:
                     return
                 fd = syscall.result
                 fds[fd] = self.ListenerSocketState()
-                # FIXME call setsockopt(fd, SO_REUSEADDR) to avoid delays when
-                #  relaunching the target. Steps:
-                #  * save program state (all registers basically)
-                #  * set up registers for setsockopt syscall
-                #  * change instr pointer to execute the syscall (may need to inject the instruction somewhere in memory?)
-                #  * restore saved program state and instruction pointer
-            else:
+            elif syscall.name in ('bind', 'listen'):
                 fd = syscall.arguments[0].value
                 if fd not in fds:
                     return
                 result = fds[fd].event(process, syscall)
                 if result is not None:
                     listeners[fd] = result
+                    candidates = [x[0] for x in listeners.items() if x[1][2] == address[1]]
+                    if candidates:
+                        self._listenfd = candidates[0]
+                        # At this point, the target is paused just after the listen syscall that
+                        # matches our condition. Now, we should invoke the forkserver
+                        self._invoke_forkserver(process)
 
         ## Wait for a socket that is listening on the same port
         # FIXME check for matching address too
@@ -92,8 +102,8 @@ class TCPChannel(PtraceChannel):
 
         self._monitor_syscalls(None, ignore_callback, break_callback, syscall_callback_listen, fds={}, listeners=listeners, timeout=self._connect_timeout)
 
-        listenfd = next(x[0] for x in listeners.items() if x[1][2] == address[1])
-
+    def connect(self, address: tuple):
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         ## Now that we've verified the server is listening, we can connect
         ## Listen for a call to accept() to get the connected socket fd
         sockfd = -1
@@ -106,8 +116,9 @@ class TCPChannel(PtraceChannel):
                 return
             sockfd = syscall.result
 
-        monitor_target = partial(self._socket.connect, address)
-        self._monitor_syscalls(monitor_target, ignore_callback, break_callback, syscall_callback_accept, listenfd=listenfd, timeout=self._connect_timeout)
+        monitor_target = lambda: self._socket.connect(address)
+        self._target, _ = self._monitor_syscalls(monitor_target, ignore_callback, break_callback, syscall_callback_accept, listenfd=self._listenfd, timeout=self._connect_timeout)
+        debug("Socket is now connected!")
         self._sockfd = sockfd
 
         # wait for the next read, recv, select, or poll
@@ -151,19 +162,6 @@ class TCPChannel(PtraceChannel):
             nonlocal server_waiting
             server_waiting = True
 
-            # remove every other process from the debugger
-            for proc in self._debugger:
-                if proc != process:
-                    try:
-                        proc.detach()
-                    except PtraceError:
-                        try:
-                            proc.kill(signal.SIGSTOP)
-                            proc.waitSyscall()
-                            proc.detach()
-                        except Exception:
-                            pass
-                        pass
         self._monitor_syscalls(None, ignore_callback, break_callback, syscall_callback_read, break_on_entry=True, timeout=self._data_timeout)
 
     def send(self, data: ByteString) -> int:
@@ -214,8 +212,8 @@ class TCPChannel(PtraceChannel):
                 raise ChannelBrokenException("Server failed to read data off socket")
             server_received += syscall.result
 
-        monitor_target = partial(send_monitor, data)
-        ret = self._monitor_syscalls(monitor_target, ignore_callback, break_callback, syscall_callback_read, timeout=self._data_timeout)
+        monitor_target = lambda: send_monitor(data)
+        _, ret = self._monitor_syscalls(monitor_target, ignore_callback, break_callback, syscall_callback_read, timeout=self._data_timeout)
 
         return ret
 
@@ -241,10 +239,12 @@ class TCPChannel(PtraceChannel):
 
             chunks.append(ret)
 
-    def close(self):
-        self._socket.close()
-        super().close()
+    @property
+    def current_target(self):
+        return self._target
 
-    def __del__(self):
-        self.close()
-        super().__del__()
+    def close(self, terminate=False):
+        if self._socket is not None:
+            self._socket.close()
+            self._socket = None
+        super().close(terminate=terminate)

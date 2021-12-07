@@ -7,12 +7,11 @@ from statemanager import (StateBase,
 from loader       import StateLoaderBase
 from time         import sleep
 from ptrace.binding import ptrace_traceme
+from os import kill
+from signal import SIGTERM, SIGKILL
 import subprocess
 
-class ReplayStateLoader(StateLoaderBase):
-    PROC_TERMINATE_RETRIES = 5
-    PROC_TERMINATE_WAIT = 0.1 # seconds
-
+class ReplayForkStateLoader(StateLoaderBase):
     def __init__(self, exec_env: Environment, ch_env: ChannelFactoryBase,
             no_aslr: bool):
         # initialize the base class
@@ -20,38 +19,24 @@ class ReplayStateLoader(StateLoaderBase):
         self._pobj = None # Popen object of child process
 
     def _launch_target(self):
-        # TODO later replace this by a forkserver to reduce reset costs
-
-        ## Kill current process, if any
-        if self._pobj:
-            # ensure that the channel is closed and the debugger detached
-            self._channel.close()
-
-            retries = 0
-            while True:
-                if retries == self.PROC_TERMINATE_RETRIES:
-                    # TODO add logging to indicate force kill
-                    # FIXME is safe termination necessary?
-                    self._pobj.kill()
-                    break
-                self._pobj.terminate()
-                try:
-                    self._pobj.wait(self.PROC_TERMINATE_WAIT)
-                    break
-                except subprocess.TimeoutExpired:
-                    retries += 1
-
-        ## Launch new process
-        self._pobj = subprocess.Popen(self._exec_env.args, shell=False,
-            executable = self._exec_env.path,
-            stdin  = self._exec_env.stdin,
-            stdout = self._exec_env.stdout,
-            stderr = self._exec_env.stderr,
-            cwd = self._exec_env.cwd,
-            restore_signals = True, # TODO check if this should be false
-            env = self._exec_env.env,
-            preexec_fn = ptrace_traceme
-        )
+        if not self._pobj:
+            ## Launch new process
+            self._pobj = subprocess.Popen(self._exec_env.args, shell=False,
+                executable = self._exec_env.path,
+                stdin  = self._exec_env.stdin,
+                stdout = self._exec_env.stdout,
+                stderr = self._exec_env.stderr,
+                cwd = self._exec_env.cwd,
+                restore_signals = True, # TODO check if this should be false
+                env = self._exec_env.env,
+                preexec_fn = ptrace_traceme
+            )
+        elif self._channel:
+            ## Kill current process, if any
+            try:
+                self._channel.close(terminate=True)
+            except ProcessLookupError:
+                pass
 
         ## Establish a connection
         self._channel = self._ch_env.create(self._pobj)

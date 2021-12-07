@@ -6,3 +6,4 @@ for func in ('debug', 'info', 'warning', 'error', 'critical'):
 from .Environment                import Environment
 from .StateLoaderBase            import StateLoaderBase
 from .replay.ReplayStateLoader   import ReplayStateLoader
+from .replay.ReplayForkStateLoader   import ReplayForkStateLoader

@@ -1,8 +1,9 @@
 from functools    import cached_property
 from loader       import Environment
 from networkio    import (TCPChannelFactory,
+                         TCPForkChannelFactory,
                          UDPChannelFactory)
-from loader       import ReplayStateLoader
+from loader       import ReplayStateLoader, ReplayForkStateLoader
 from statemanager import (CoverageStateTracker,
                          StateManager)
 from generator    import RandomInputGenerator
@@ -46,6 +47,8 @@ class FuzzerConfig:
         },
         "loader": {
             "type": "<replay | snapshot | ...>",
+            "forkserver": <true | false>,
+            "disable_aslr": <true | false>
             ...
         },
         "input": {
@@ -78,7 +81,6 @@ class FuzzerConfig:
         with open(file, "rt") as f:
             self._config = json.load(f)
 
-        logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
     @cached_property
     def exec_env(self):
@@ -93,18 +95,25 @@ class FuzzerConfig:
     @cached_property
     def ch_env(self):
         _config = self._config["channel"]
-        if _config["type"] == "tcp":
-            return TCPChannelFactory(**_config["tcp"], timescale=self.timescale)
-        elif _config["type"] == "udp":
-            return UDPChannelFactory(**_config["udp"], timescale=self.timescale)
+        if not self.use_forkserver:
+            if _config["type"] == "tcp":
+                return TCPChannelFactory(**_config["tcp"], timescale=self.timescale)
+            else:
+                raise NotImplemented()
         else:
-            raise NotImplemented()
+            if _config["type"] == "tcp":
+                return TCPForkChannelFactory(**_config["tcp"], timescale=self.timescale)
+            else:
+                raise NotImplemented()
 
     @cached_property
     def loader(self):
         _config = self._config["loader"]
         if _config["type"] == "replay":
-            return ReplayStateLoader(self.exec_env, self.ch_env)
+            if not self.use_forkserver:
+                return ReplayStateLoader(self.exec_env, self.ch_env, self.disable_aslr)
+            else:
+                return ReplayForkStateLoader(self.exec_env, self.ch_env, self.disable_aslr)
         else:
             raise NotImplemented()
 
@@ -154,3 +163,11 @@ class FuzzerConfig:
     @cached_property
     def timescale(self):
         return self._config["fuzzer"].get("timescale", 1.0)
+
+    @cached_property
+    def use_forkserver(self):
+        return self._config["loader"].get("forkserver", False)
+
+    @cached_property
+    def disable_aslr(self):
+        return self._config["loader"].get("disable_aslr", False)
