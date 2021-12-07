@@ -89,6 +89,16 @@ class StateManager:
             self._loader.execute_input(self._startup_input, self, update=update)
         else:
             self._loader.load_state(state, self, update=update)
+            if update:
+                self._last_state = state
+
+    def get_context(self, input: InputBase) -> StateManager.StateManagerContext:
+        return self.StateManagerContext(self, input)
+
+    def step(self) -> bool:
+        """
+        Updates the state queues according to the scheduler.
+        May need to receive information about the current state to update it.
 
         :returns:   Whether or not the step resulted in a state change
         :rtype:     bool
