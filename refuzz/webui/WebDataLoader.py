@@ -53,16 +53,24 @@ class WebDataLoader:
     def fade_coeff(cls, fade, value):
         return max(0, (fade - value) / fade)
 
-    def update_graph(self, sm, state, ret):
+    def update_graph(self, sm, state, ret=None):
         # update graph representation to be sent over WS
         # * color graph nodes and edges based on last_visit and added
         # * dump a DOT representation of the graph
         # * send over WS
 
         # first we get a copy so that we can re-assign node and edge attributes
-        G = sm._graph.copy()
+        try:
+            # FIXME not the best way to fix this
+            G = sm._graph.copy()
+        except Exception:
+            return
 
+        to_delete = []
         for node, data in G.nodes(data=True):
+            if len(G.in_edges(node)) == 0 and len(G.out_edges(node)) == 0:
+                to_delete.append(node)
+                continue
             age = (now() - data.get('last_visit', self.NA_DATE)).total_seconds()
             coeff = self.fade_coeff(self._fade, age)
             lerp = self.lerp_color(
@@ -83,6 +91,9 @@ class WebDataLoader:
             data['fillcolor'] = fillcolor
             data['penwidth'] = penwidth
 
+        for node in to_delete:
+            G.remove_node(node)
+
         for src, dst, data in G.edges(data=True):
             age = (now() - data.get('last_visit', self.NA_DATE)).total_seconds()
             coeff = self.fade_coeff(self._fade, age)
@@ -98,12 +109,15 @@ class WebDataLoader:
                 self.DEFAULT_EDGE_PEN_WIDTH,
                 self.NEW_EDGE_PEN_WIDTH,
                 coeff)
+            label = f"min={len(data['minimized'])}"
 
             data.clear()
             data['color'] = color
             data['penwidth'] = penwidth
+            data['label'] = label
 
         A = nx.nx_agraph.to_agraph(G)
+        A.graph_attr['rankdir'] = 'LR'
         A.node_attr['style'] = 'filled'
         dot = A.string()
         msg = json.dumps({

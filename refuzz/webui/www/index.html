@@ -26,10 +26,34 @@
 				<div class="statistics">
 					<div class="row">
 						<div class="col s8">
+							<a class="left">Status</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="status"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
 							<a class="left">Time elapsed</a>
 						</div>
 						<div class="col s4">
 							<a class="right" id="elapsed"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Resets per second</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="resets"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Interactions per second</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="interactions"></a>
 						</div>
 					</div>
 					<div class="row">
@@ -45,7 +69,7 @@
 							<a class="left">Total interactions</a>
 						</div>
 						<div class="col s4">
-							<a class="right" id="interactions"></a>
+							<a class="right" id="total_interactions"></a>
 						</div>
 					</div>
 					<div class="row">
@@ -74,10 +98,42 @@
 					</div>
 					<div class="row">
 						<div class="col s8">
+							<a class="left">Average minimized length</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="minimized_length"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
 							<a class="left">Unstable executions</a>
 						</div>
 						<div class="col s4">
 							<a class="right" id="unstable"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Imprecise executions</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="imprecise"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Crashes</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="crash"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Timeouts</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="timeout"></a>
 						</div>
 					</div>
 				</div>
@@ -89,21 +145,28 @@
 	</main>
 
 	<script>
-		let socket = new WebSocket("ws://127.0.0.1:8081");
+		'use strict';
+		const socket = new WebSocket("ws://" + location.hostname + ":8081");
+		const svg = $('#dgsvg')[0]
 		let viz = new Viz();
-		let svg = $('#dgsvg')[0]
+		let parser = new DOMParser();
+		var msg;
+		var resolved = true;
 
-		socket.onmessage = function(event) {
-			try {
-				msg = JSON.parse(event.data);
-			} catch(e) {
-				return;
-				// debugger;
-			}
-			switch(msg.cmd) {
+		async function processCmd(event) {
+			if (resolved) {
+				resolved = false;
+				try {
+					msg = JSON.parse(event.data);
+				} catch(e) {
+					location.reload();
+					return;
+				}
+				switch(msg.cmd) {
 				case "update_graph":
-					viz.renderSVGElement(msg.items.dot)
+					await viz.renderString(msg.items.dot)
 					.then(function(element) {
+						element = parser.parseFromString(element, "image/svg+xml").documentElement;
 						svg.innerHTML = element.innerHTML;
 						svg.setAttribute('viewBox', element.getAttribute('viewBox'));
 					})
@@ -113,14 +176,20 @@
 					});
 					break;
 				case "update_stats":
-					for (const [stat, value] of Object.entries(msg.items)) {
+					for await (const [stat, value] of Object.entries(msg.items)) {
 						$('[id="'+stat+'"]').html(value)
 					}
 					break;
 				default:
 					break;
+				}
+				resolved = true;
+			} else {
+				console.log("ignoring request");
 			}
 		}
+
+		socket.onmessage = processCmd; 
 	</script>
 	<script>
 		$(function() {
