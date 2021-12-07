@@ -29,7 +29,7 @@ class WebDataLoader:
         self._fade = last_update_fade_out
 
         ProfiledObjects['update_state'].listener(period=0.1)(self.update_graph)
-        ProfiledObjects['execute_input'].listener(period=1)(self.update_stats)
+        ProfiledObjects['perform_interaction'].listener(period=1)(self.update_stats)
 
         # handler = WebLogHandler(websocket)
         # logging.addHandler(handler)
@@ -115,7 +115,7 @@ class WebDataLoader:
 
         asyncio.run(self._ws.send(msg))
 
-    def update_stats(self, loader, input, sman, ret):
+    def update_stats(self, interaction, channel, ret=None):
         # FIXME this is not thread-safe, and the websocket experience a data race
         stats = {'items': {}}
         for name, obj in ProfiledObjects.items():

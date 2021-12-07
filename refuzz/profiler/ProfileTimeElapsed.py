@@ -5,7 +5,8 @@ now = datetime.datetime.now
 class ProfileTimeElapsed(ProfilerBase):
     def __init__(self, name, **kwargs):
         super().__init__(name, **kwargs)
-        self._now = now()
+        if not self._init_called:
+            self._now = now()
 
     def __call__(self, obj):
         raise NotImplemented()

@@ -1,27 +1,27 @@
 from profiler import ProfilerBase, ProfilingStoppedEvent
-from threading import Condition, Thread
+from threading import Event, Thread
 from functools import partial
 
 class ProfileEvent(ProfilerBase):
     def __init__(self, name, **kwargs):
         super().__init__(name, **kwargs)
-        self._cv = Condition()
-        self._args = None
-        self._listeners = []
+        if not self._init_called:
+            self._cv = Event()
+            self._args = None
+            self._listeners = []
 
     def __del__(self):
-        with self._cv:
-            self._cv.notify_all()
+        self._cv.set()
         for th in self._listeners:
             th.join()
 
     def __call__(self, obj):
         def func(*args, **kwargs):
-            with self._cv:
-                ret = obj(*args, **kwargs)
-                self._args = (args, kwargs)
-                self._ret = ret
-                self._cv.notify_all()
+            ret = obj(*args, **kwargs)
+            self._args = (args, kwargs)
+            self._ret = ret
+            self._cv.set()
+            return ret
         return func
 
     @property
@@ -37,15 +37,14 @@ class ProfileEvent(ProfilerBase):
         return self._ret
 
     def __enter__(self):
-        self._cv.__enter__()
         while self._args is None:
             self._cv.wait()
+        self._cv.clear()
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self._args = None
         self._ret = None
-        self._cv.__exit__(exc_type, exc_value, exc_traceback)
 
     def _listener_internal(self, cb, period):
         def worker():

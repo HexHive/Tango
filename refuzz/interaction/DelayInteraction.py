@@ -3,6 +3,7 @@ from interaction import InteractionBase
 from networkio   import ChannelBase
 from typing      import Sequence
 from time        import sleep
+from profiler    import ProfileFrequency, ProfileEvent
 
 class DelayInteraction(InteractionBase):
     def __init__(self, time: float):
@@ -11,6 +12,8 @@ class DelayInteraction(InteractionBase):
         # configurable
         self._maxdelay = 5
 
+    @ProfileEvent("perform_interaction")
+    @ProfileFrequency("interactions", period=1)
     def perform(self, channel: ChannelBase):
         sleep(self._time * channel._timescale)
 

@@ -5,8 +5,9 @@ from statistics import mean
 class ProfileLambdaMean(PeriodicProfiler):
     def __init__(self, name, samples=10, **kwargs):
         super().__init__(name, **kwargs)
-        self._samples = deque(maxlen=samples)
-        self._mean = None
+        if not self._init_called:
+            self._samples = deque(maxlen=samples)
+            self._mean = None
 
     def __call__(self, obj):
         obj = super().__call__(obj)

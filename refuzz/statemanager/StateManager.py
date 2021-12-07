@@ -7,6 +7,7 @@ from statemanager import (StateBase,
                          StateTrackerBase)
 from input        import InputBase, CachingDecorator
 from loader       import StateLoaderBase
+from profiler     import ProfileValue, ProfileFrequency, ProfileCount
 
 class StateManager:
     class StateManagerContext:
