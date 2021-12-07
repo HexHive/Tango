@@ -1,6 +1,15 @@
+from . import debug, critical
+
 from input         import (InputBase,
                           PreparedInput)
 from fuzzer        import FuzzerConfig
+from common        import (StabilityException,
+                          StatePrecisionException,
+                          LoadedException,
+                          ChannelTimeoutException,
+                          ChannelBrokenException,
+                          ChannelSetupException,
+                          ProcessCrashedException)
 import os
 
 from profiler import (ProfileLambda,
@@ -36,6 +45,10 @@ class FuzzerSession:
         # Collecting some stats
         self._unstable = 0
         ProfileLambda("unstable")(lambda: self._unstable)
+        self._crash = 0
+        ProfileLambda("crash")(lambda: self._crash)
+        self._timeout = 0
+        ProfileLambda("timeout")(lambda: self._timeout)
 
         self._load_seeds()
 
@@ -53,13 +66,43 @@ class FuzzerSession:
         # FIXME is there ever a proper terminating condition for fuzzing?
         while True:
             try:
-                cur_state = self._sman.state_tracker.current_state
-                input = self._input_gen.generate(cur_state, self._entropy)
-                self._loader.execute_input(input, self._sman)
-                self._sman.step()
-            except StabilityException:
-                self._unstable += 1
+                # FIXME should probably reset to StateManager's current target state
                 self._sman.reset_state()
+                while True:
+                    try:
+                        cur_state = self._sman.state_tracker.current_state
+                        input = self._input_gen.generate(cur_state, self._entropy)
+                        self._loader.execute_input(input, self._sman)
+                        self._sman.step()
+                    except LoadedException as ex:
+                        try:
+                            raise ex.exception
+                        except StabilityException:
+                            self._unstable += 1
+                        except StatePrecisionException:
+                            debug("Encountered imprecise state transition")
+                        except ProcessCrashedException:
+                            # TODO save crashing input
+                            self._crash += 1
+                        except ChannelTimeoutException:
+                            # TODO save timeout input
+                            critical("Received channel timeout exception")
+                            self._timeout += 1
+                        except ChannelBrokenException:
+                            # TODO save crashing/breaking input
+                            critical("Received channel broken exception")
+                        except ChannelSetupException:
+                            # TODO save broken setup input
+                            critical("Received channel setup exception")
+                        except Exception as ex:
+                            critical(f"Encountered unhandled loaded exception {ex = }")
+                        # FIXME should probably reset to StateManager's current target state
+                        self._sman.reset_state()
+                    except Exception as ex:
+                        critical(f"Encountered weird exception {ex = }")
+                        self._sman.reset_state()
+            except Exception:
+                critical(f"Encountered exception while resetting state! {ex = }")
 
     def start(self):
         # reset state after the seed initialization stage
