@@ -101,7 +101,7 @@ class FuzzerSession:
                     except Exception as ex:
                         critical(f"Encountered weird exception {ex = }")
                         self._sman.reset_state()
-            except Exception:
+            except Exception as ex:
                 critical(f"Encountered exception while resetting state! {ex = }")
 
     def start(self):
