@@ -5,3 +5,5 @@ scapy==2.4.5
 posix-ipc==1.0.5
 pyelftools @ git+https://github.com/eliben/pyelftools.git
 websockets==10.0
+pygraphviz==1.7
+#libgraphviz-dev (from apt)
