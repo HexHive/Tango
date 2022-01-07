@@ -1,5 +1,5 @@
 from __future__ import annotations
-from . import debug, info
+from . import debug, info, critical
 
 from common import StabilityException, StatePrecisionException
 from typing import Callable
@@ -171,7 +171,9 @@ class StateManager:
                         debug(f"Dissolving {current_state = }")
                         self._sm.dissolve_state(current_state)
                     stable = False
-                except Exception:
+                    ProfileCount('unstable')(1)
+                except Exception as ex:
+                    critical(f'{ex}')
                     if new:
                         debug(f"Dissolving {current_state = }")
                         self._sm.dissolve_state(current_state)
