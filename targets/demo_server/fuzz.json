@@ -1,7 +1,7 @@
 {
 	"exec": {
-		"path": "./lib/demo_server",
-		"args": ["./lib/demo_server"],
+		"path": "./targets/demo_server/demo_server",
+		"args": ["./targets/demo_server/demo_server"],
         "stdout": "./stdout",
         "stderr": "./stderr"
 	},
@@ -27,6 +27,6 @@
 	},
 	"fuzzer": {
 		"type": "coverage",
-		"strategy": "default"
+		"lib": "./lib"
 	}
 }
