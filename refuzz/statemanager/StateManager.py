@@ -127,7 +127,7 @@ class StateManager:
         current_state = self._tracker.current_state
 
         # update the current state (e.g., if it needs to track interesting cov)
-        self._tracker.update_state(self._last_state, current_state, input_gen)
+        self._tracker.update(self._last_state, current_state, input_gen)
 
         # the tracker may return None as current_state, in case it has not yet
         # finished the training phase (preprocessing seeds)

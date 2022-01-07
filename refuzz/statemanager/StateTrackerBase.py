@@ -27,6 +27,6 @@ class StateTrackerBase(ABC):
         pass
 
     @abstractmethod
-    def update_state(self, prev: StateBase, new: StateBase,
+    def update(self, prev: StateBase, new: StateBase,
             input_gen: Callable[..., InputBase]):
         pass

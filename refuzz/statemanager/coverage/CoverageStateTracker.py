@@ -34,7 +34,7 @@ class CoverageStateTracker(StateTrackerBase):
             self._reader.address_of_buffer(self._reader._map),
             bind_lib=self._bind_lib)
 
-    def update_state(self, prev: StateBase, new: StateBase,
+    def update(self, prev: StateBase, new: StateBase,
             input_gen: Callable[..., InputBase]):
         super().update_state(prev, new, input_gen)
         # TODO update other stuffz
