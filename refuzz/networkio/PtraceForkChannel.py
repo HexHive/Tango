@@ -238,6 +238,7 @@ class PtraceForkChannel(ChannelBase):
             break_event = Event()
             if timeout is not None:
                 timeout_timer = Thread(target=timeout_handler, args=(break_event,))
+                timeout_timer.daemon = True
                 timeout_timer.start()
 
             while True:

@@ -8,6 +8,7 @@ class PeriodicProfiler(ProfilerBase):
         if not self._init_called:
             self._period = period
             self._thread = Thread(target=self._thread_worker)
+            self._thread.daemon = True
 
     def __call__(self, obj):
         if not self._init_called:

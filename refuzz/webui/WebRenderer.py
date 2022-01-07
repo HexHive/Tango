@@ -22,13 +22,17 @@ class WebRenderer:
         self._start_websockets()
 
     def _start_httpd(self):
-        Thread(target=self._httpd.serve_forever).start()
+        th = Thread(target=self._httpd.serve_forever)
+        th.daemon = True
+        th.start()
 
     def _start_watchdog(self):
         def shutdown_thread():
             stopped.wait()
             self._httpd.shutdown()
-        Thread(target=shutdown_thread).start()
+        th = Thread(target=shutdown_thread)
+        th.daemon = True
+        th.start()
 
     def _start_websockets(self):
         async def websockets_worker():
@@ -36,7 +40,9 @@ class WebRenderer:
                 await asyncio.Future()
         def websockets_thread():
             asyncio.run(websockets_worker())
-        Thread(target=websockets_thread).start()
+        th = Thread(target=websockets_thread)
+        th.daemon = True
+        th.start()
 
     async def _websocket_handler(self, websocket, path):
         WebDataLoader(websocket)

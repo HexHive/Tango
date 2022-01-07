@@ -8,4 +8,11 @@ logging.getLogger().handlers.clear()
 logging.setLoggerClass(ColoredLogger)
 root_logger = ColoredLogger()
 
-import common, fuzzer, input, interaction, loader, mutator, statemanager
+import common, fuzzer, generator, input, interaction, loader, models, mutator, \
+       networkio, profiler, ptrace, statemanager, tests
+
+import atexit
+from profiler import ProfilingStoppedEvent
+def exit_handler():
+    ProfilingStoppedEvent.set()
+atexit.register(exit_handler)

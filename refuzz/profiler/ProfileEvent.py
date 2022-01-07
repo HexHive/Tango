@@ -57,6 +57,7 @@ class ProfileEvent(ProfilerBase):
                     cb(*self._args[0], **self._args[1], ret=self._ret)
 
         th = Thread(target=worker)
+        th.daemon = True
         self._listeners.append(th)
         th.start()
         return None
