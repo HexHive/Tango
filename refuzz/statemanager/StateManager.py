@@ -95,15 +95,17 @@ class StateManager:
     def get_context(self, input: InputBase) -> StateManager.StateManagerContext:
         return self.StateManagerContext(self, input)
 
-    def step(self) -> bool:
+    def step(self, input: InputBase) -> bool:
         """
-        Updates the state queues according to the scheduler.
-        May need to receive information about the current state to update it.
+        Executes the input and updates the state queues according to the
+        scheduler. May need to receive information about the current state to
+        update it.
 
         :returns:   Whether or not the step resulted in a state change
         :rtype:     bool
         """
-        pass
+        self._loader.execute_input(input, self, update=True)
+        # TODO invoke scheduler
 
     def update(self, input_gen: Callable[..., InputBase]) -> bool:
         """

@@ -65,8 +65,7 @@ class FuzzerSession:
                     try:
                         cur_state = self._sman.state_tracker.current_state
                         input = self._input_gen.generate(cur_state, self._entropy)
-                        self._loader.execute_input(input, self._sman)
-                        self._sman.step()
+                        self._sman.step(input)
                     except LoadedException as ex:
                         try:
                             raise ex.exception
