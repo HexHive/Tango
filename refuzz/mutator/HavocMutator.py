@@ -46,7 +46,7 @@ class HavocMutator(MutatorBase):
                     yield from self._mutate(None, reorder_buffer, entropy)
 
     def ___repr___(self, orig):
-        return f'HavocMutatedInput:{self._input.id} ({self._input_id})'
+        return f'HavocMutatedInput:0x{self._input.id:016X} (0x{self._input_id:016X})'
 
     def mutate_int(self, n: int, entropy: Random):
         def to_bytes(n, order='little'):

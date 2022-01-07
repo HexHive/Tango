@@ -7,15 +7,14 @@ class InputBase(ABC):
     _COUNTER = 0
 
     def __init__(self):
-        self._COUNTER += 1
-        self.id = self._COUNTER
+        self.id = self.uniq_id
 
     @abstractmethod
     def ___iter___(self):
         pass
 
     def ___repr___(self):
-        return f"{self.__class__.__name__}"
+        return f"{self.__class__.__name__}:0x{self.id:016X}"
 
     def ___len___(self):
         raise NotImplemented()
@@ -52,6 +51,12 @@ class InputBase(ABC):
 
     def __getitem__(self, idx: Union[int, slice]):
         return SlicingDecorator(idx)(self)
+
+    @classmethod
+    @property
+    def uniq_id(cls):
+        cls._COUNTER += 1
+        return cls._COUNTER
 
     ## Decoratable functions ##
     # These definitions are needed so that a decorator can override the behavior

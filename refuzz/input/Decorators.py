@@ -6,7 +6,13 @@ import inspect
 
 class DecoratorBase(ABC):
     def __call__(self, input, copy=True): # -> InputBase:
-        self._input = deepcopy(input) if copy else input
+        self._input_id = input.id
+        if copy:
+            self._input = deepcopy(input)
+            self._input.id = self._input.uniq_id
+        else:
+            self._input = input
+
         for name, func in inspect.getmembers(self, predicate=inspect.ismethod):
             if name not in ('___iter___', '___eq___', '___add___', '___getitem___', '___repr___', '___len___'):
                 continue
@@ -15,8 +21,6 @@ class DecoratorBase(ABC):
             setattr(self._input, name, newfunc)
 
         setattr(self._input, '___decorator___', self)
-        self._input_id = self._input.id
-        self._input.id = self._input._COUNTER + 1
         return self._input
 
     def ___repr___(self, orig):
@@ -117,7 +121,7 @@ class SlicingDecorator(DecoratorBase):
                 fmt = f'{self._start}::{self._step}'
         else:
             fmt = f'{self._start}:{self._stop}:{self._step}'
-        return f'SlicedInput:{self._input.id} (0x{self._input_id:016X}[fmt])'
+        return f'SlicedInput:0x{self._input.id:016X} (0x{self._input_id:016X}[{fmt}])'
 
     def ___len___(self, orig):
         raise NotImplemented()
@@ -138,8 +142,9 @@ class JoiningDecorator(DecoratorBase):
         yield from chain(orig(), *self._others)
 
     def ___repr___(self, orig):
+        id = f'0x{self._input_id:016X}'
         ids = (f'0x{x.id:016X}' for x in self._others)
-        return 'JoinedInput:{self._input.id} ({" || ".join((self._input_id, *ids))})'
+        return f'JoinedInput:0x{self._input.id:016X} ({" || ".join((id, *ids))})'
 
     def ___len___(self, orig):
         raise NotImplemented()
