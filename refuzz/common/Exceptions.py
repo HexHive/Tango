@@ -1,7 +1,10 @@
 class LoadedException(RuntimeError):
     def __new__(cls, ex, payload=None):
         if isinstance(ex, LoadedException):
-            return ex
+            new = super(LoadedException, cls).__new__(cls)
+            new._ex = ex._ex
+            new._payload = payload
+            return new
         else:
             new = super(LoadedException, cls).__new__(cls)
             new._ex = ex
