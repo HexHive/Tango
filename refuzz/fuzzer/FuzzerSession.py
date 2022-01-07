@@ -99,7 +99,8 @@ class FuzzerSession:
             except KeyboardInterrupt:
                 from code import InteractiveConsole
                 repl = InteractiveConsole(locals=locals())
-                repl.interact(banner="Fuzzing paused", exitmsg="Fuzzing resumed")
+                repl.interact(banner="Fuzzing paused (type exit() to quit)",
+                    exitmsg="Fuzzing resumed")
 
     def start(self):
         # reset state after the seed initialization stage
