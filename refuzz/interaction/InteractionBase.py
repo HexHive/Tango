@@ -9,7 +9,7 @@ class InteractionBase(ABC):
         pass
 
     @abstractmethod
-    def mutate(self, mutator):
+    def mutate(self, mutator, entropy):
         pass
 
     @abstractmethod

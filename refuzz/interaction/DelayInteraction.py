@@ -18,12 +18,12 @@ class DelayInteraction(InteractionBase):
         sleep(self._time * channel._timescale)
 
     def __eq__(self, other: DelayInteraction):
-        return self._time == other._time
+        return isinstance(other, DelayInteraction) and self._time == other._time
 
-    def mutate(self, mutator):
+    def mutate(self, mutator, entropy):
         a, b = self._time.as_integer_ratio()
 
-        b = mutator.mutate_int(b) or 1
-        a = (mutator.mutate_int(a) % b) * self._maxdelay
+        b = mutator.mutate_int(b, entropy) or 1
+        a = (mutator.mutate_int(a, entropy) % b) * self._maxdelay
 
         self._time = a / b

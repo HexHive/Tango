@@ -15,8 +15,8 @@ class TransmitInteraction(InteractionBase):
         # TODO hook target's recv calls and identify packet boundaries
 
     def __eq__(self, other: TransmitInteraction):
-        return self._data == other._data
+        return isinstance(other, TransmitInteraction) and self._data == other._data
 
-    def mutate(self, mutator):
+    def mutate(self, mutator, entropy):
         self._data = bytearray(self._data)
-        mutator.mutate_buffer(self._data)
+        mutator.mutate_buffer(self._data, entropy)

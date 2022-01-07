@@ -22,4 +22,4 @@ class RandomInputGenerator(InputGeneratorBase):
             else:
                 candidate = PreparedInput()
 
-        return CachingDecorator()(HavocMutator(entropy)(candidate), copy=False)
+        return HavocMutator(entropy)(candidate)
