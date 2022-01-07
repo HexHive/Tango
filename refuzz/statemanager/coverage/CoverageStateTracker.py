@@ -36,5 +36,5 @@ class CoverageStateTracker(StateTrackerBase):
 
     def update(self, prev: StateBase, new: StateBase,
             input_gen: Callable[..., InputBase]):
-        super().update_state(prev, new, input_gen)
+        super().update(prev, new, input_gen)
         # TODO update other stuffz
