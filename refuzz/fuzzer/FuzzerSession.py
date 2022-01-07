@@ -13,6 +13,7 @@ from common        import (StabilityException,
 import os
 
 from profiler import (ProfileLambda,
+                     ProfileCount,
                      ProfiledObjects,
                      ProfilingStoppedEvent,
                      ProfileTimeElapsed)
@@ -42,14 +43,6 @@ class FuzzerSession:
         ## After this point, the StateManager and StateTracker are both
         #  initialized and should be able to identify states and populate the SM
 
-        # Collecting some stats
-        self._unstable = 0
-        ProfileLambda("unstable")(lambda: self._unstable)
-        self._crash = 0
-        ProfileLambda("crash")(lambda: self._crash)
-        self._timeout = 0
-        ProfileLambda("timeout")(lambda: self._timeout)
-
         self._load_seeds()
 
     def _load_seeds(self):
@@ -78,16 +71,17 @@ class FuzzerSession:
                         try:
                             raise ex.exception
                         except StabilityException:
-                            self._unstable += 1
+                            ProfileCount('unstable')(1)
                         except StatePrecisionException:
                             debug("Encountered imprecise state transition")
+                            ProfileCount('imprecise')(1)
                         except ProcessCrashedException:
                             # TODO save crashing input
-                            self._crash += 1
+                            ProfileCount('crash')(1)
                         except ChannelTimeoutException:
                             # TODO save timeout input
                             critical("Received channel timeout exception")
-                            self._timeout += 1
+                            ProfileCount('timeout')(1)
                         except ChannelBrokenException:
                             # TODO save crashing/breaking input
                             critical("Received channel broken exception")
@@ -103,6 +97,10 @@ class FuzzerSession:
                         self._sman.reset_state()
             except Exception as ex:
                 critical(f"Encountered exception while resetting state! {ex = }")
+            except KeyboardInterrupt:
+                from code import InteractiveConsole
+                repl = InteractiveConsole(locals=locals())
+                repl.interact(banner="Fuzzing paused", exitmsg="Fuzzing resumed")
 
     def start(self):
         # reset state after the seed initialization stage
