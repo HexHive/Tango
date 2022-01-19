@@ -4,6 +4,7 @@ from networkio   import ChannelBase
 from typing      import Sequence
 from time        import sleep
 from profiler    import ProfileFrequency, ProfileEvent
+from math        import isclose
 
 class DelayInteraction(InteractionBase):
     def __init__(self, time: float):
@@ -18,7 +19,8 @@ class DelayInteraction(InteractionBase):
         sleep(self._time * channel._timescale)
 
     def __eq__(self, other: DelayInteraction):
-        return isinstance(other, DelayInteraction) and self._time == other._time
+        return isinstance(other, DelayInteraction) and \
+            isclose(self._time, other._time, rel_tol=0.01)
 
     def mutate(self, mutator, entropy):
         a, b = self._time.as_integer_ratio()

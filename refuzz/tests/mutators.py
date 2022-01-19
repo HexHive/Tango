@@ -1,7 +1,7 @@
 from interaction import (ReceiveInteraction as rx,
                         TransmitInteraction as tx,
                         DelayInteraction as sleep)
-from input import PreparedInput, CachingDecorator
+from input import PreparedInput, MemoryCachingDecorator
 from mutator import HavocMutator
 from random import Random
 
@@ -16,12 +16,12 @@ def main():
     inp_copy = inp[:]
 
     havoc1 = HavocMutator(rand)(inp)
-    havoc1_cached = CachingDecorator()(havoc1, copy=True)
+    havoc1_cached = MemoryCachingDecorator()(havoc1, copy=True)
     havoc2 = HavocMutator(rand)(inp)
-    havoc2_cached = CachingDecorator()(havoc2, copy=True)
+    havoc2_cached = MemoryCachingDecorator()(havoc2, copy=True)
     havoc3 = HavocMutator(rand)(havoc1)
-    havoc3_cached = CachingDecorator()(havoc3, copy=True)
-    havoc1_again = CachingDecorator()(havoc1, copy=True)
+    havoc3_cached = MemoryCachingDecorator()(havoc3, copy=True)
+    havoc1_again = MemoryCachingDecorator()(havoc1, copy=True)
 
     assert havoc1 == havoc1
     assert havoc2 == havoc2

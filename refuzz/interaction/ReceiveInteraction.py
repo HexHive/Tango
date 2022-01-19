@@ -5,14 +5,15 @@ from typing      import ByteString
 from profiler    import ProfileFrequency, ProfileEvent
 
 class ReceiveInteraction(InteractionBase):
-    def __init__(self, size: int = 0, data: ByteString = None):
+    def __init__(self, size: int = 0, data: ByteString = None, expected: ByteString = None):
         self._size = size
-        self._expected = data
+        self._expected = expected
+        self._data = data
 
     @ProfileEvent("perform_interaction")
     @ProfileFrequency("interactions", period=1)
     def perform(self, channel: ChannelBase):
-        self.data = channel.receive()
+        self._data = channel.receive()
         # TODO verify size? verify data??
 
     def __eq__(self, other: ReceiveInteraction):

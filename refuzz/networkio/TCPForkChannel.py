@@ -19,6 +19,8 @@ class TCPForkChannelFactory(TransportChannelFactory):
     connect_timeout: float = None # seconds
     data_timeout: float = None # seconds
 
+    protocol: str = "tcp"
+
     def create(self, pobj: Popen) -> ChannelBase:
         self._pobj = pobj
         ch = self.forkchannel

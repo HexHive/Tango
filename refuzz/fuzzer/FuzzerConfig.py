@@ -12,6 +12,7 @@ import json
 import os
 import logging
 import ctypes
+from pathlib import Path
 
 class FuzzerConfig:
     """
@@ -49,7 +50,7 @@ class FuzzerConfig:
         "loader": {
             "type": "<replay | snapshot | ...>",
             "forkserver": <true | false>,
-            "disable_aslr": <true | false>
+            "disable_aslr": <true | false>,
             ...
         },
         "input": {
@@ -65,10 +66,11 @@ class FuzzerConfig:
             ...
         },
         "fuzzer": {
+            "workdir": "/path/to/workdir",
             "seeds": "/path/to/pcap/dir",
             "timescale": .0 .. 1.,
             "entropy": number,
-            "lib": "/path/to/tangofuzz/lib"
+            "lib": "/path/to/tangofuzz/lib",
             ...
         }
     }
@@ -165,7 +167,7 @@ class FuzzerConfig:
         cache_inputs = _config.get("cache_inputs", True)
         return StateManager(self.input_generator.startup_input,
             self.loader, self.state_tracker, self.scheduler_strategy,
-            cache_inputs)
+            cache_inputs, self.work_dir, self.ch_env.protocol)
 
     @cached_property
     def startup_pcap(self):
@@ -180,6 +182,22 @@ class FuzzerConfig:
         if (path := self._config["fuzzer"].get("lib")):
             return os.path.realpath(path)
         return None
+
+    @cached_property
+    def work_dir(self):
+        def mktree(root, tree):
+            if tree:
+                for b, t in tree.items():
+                    mktree(os.path.join(root, b), t)
+            else:
+                Path(root).mkdir(parents=True, exist_ok=False)
+
+        wd = self._config["fuzzer"]["workdir"]
+        tree = {
+            "queue": {}
+        }
+        mktree(wd, tree)
+        return wd
 
     @cached_property
     def timescale(self):

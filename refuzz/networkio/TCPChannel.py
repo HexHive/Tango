@@ -16,8 +16,11 @@ from ptrace.error import PtraceError
 
 @dataclass
 class TCPChannelFactory(TransportChannelFactory):
-    connect_timeout: float = 5.0 # seconds
-    data_timeout: float = 5.0 # seconds
+    connect_timeout: float = None # seconds
+    data_timeout: float = None # seconds
+
+    protocol: str = "tcp"
+
     def create(self, pobj: Popen) -> ChannelBase:
         return TCPChannel(pobj,
                           self.endpoint, self.port,

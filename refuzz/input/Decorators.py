@@ -3,15 +3,14 @@ from functools import partial
 from itertools import islice, tee, chain
 from copy import deepcopy, copy
 import inspect
+import unicodedata
+import re
+import os
+import io
 
 class DecoratorBase(ABC):
     def __call__(self, input, copy=True): # -> InputBase:
-        self._input_id = input.id
-        if copy:
-            self._input = deepcopy(input)
-            self._input.id = self._input.uniq_id
-        else:
-            self._input = input
+        self._handle_copy(input, copy)
 
         for name, func in inspect.getmembers(self, predicate=inspect.ismethod):
             if name not in ('___iter___', '___eq___', '___add___', '___getitem___', '___repr___', '___len___'):
@@ -22,6 +21,14 @@ class DecoratorBase(ABC):
 
         setattr(self._input, '___decorator___', self)
         return self._input
+
+    def _handle_copy(self, input, copy):
+        self._input_id = input.id
+        if copy:
+            self._input = deepcopy(input)
+            self._input.id = self._input.uniq_id
+        else:
+            self._input = input
 
     def ___repr___(self, orig):
         return f"{self.__class__.__name__}({orig()})"
@@ -53,17 +60,19 @@ class DecoratorBase(ABC):
             method = getattr(method, '__func__', method)  # fallback to __qualname__ parsing
         return getattr(method, '__objclass__', None)  # handle special descriptor objects
 
-class CachingDecorator(DecoratorBase):
+class MemoryCachingDecorator(DecoratorBase):
     def __init__(self):
         self._cached_iter = None
         self._cached_repr = None
 
     def __call__(self, input, copy=True): # -> InputBase:
-        self._cached_iter = tuple(input)
+        self._handle_copy(input, copy)
+
         self._cached_repr = repr(input)
-        self._input = deepcopy(input) if copy else input
-        self._input.___iter___ = self.___cached_iter___
+        self._cached_iter = tuple(input)
+        self._cached_len = len(self._cached_iter)
         self._input.___repr___ = self.___cached_repr___
+        self._input.___iter___ = self.___cached_iter___
         self._input.___len___ = self.___cached_len___
         # we delete self._input because it is no longer needed, and a dangling
         # reference to it will result in redundant deepcopy-ing later
@@ -78,7 +87,60 @@ class CachingDecorator(DecoratorBase):
         return self._cached_repr
 
     def ___cached_len___(self):
-        return len(self._cached_iter)
+        return self._cached_len
+
+class FileCachingDecorator(MemoryCachingDecorator):
+    IO_BUFFER_SIZE = 0
+
+    def __init__(self, workdir, protocol):
+        self._cached_repr = None
+        self._workdir = workdir
+        self._protocol = protocol
+
+    def __call__(self, input, copy=True): # -> InputBase:
+        self._handle_copy(input, copy)
+
+        self._cached_repr = repr(input)
+        self._input.___repr___ = self.___cached_repr___
+
+        seq = tuple(input)
+        self._cached_len = len(seq)
+        self._input.___len___ = self.___cached_len___
+
+        filename = self.slugify(self._cached_repr)
+        self._path = os.path.join(workdir, "queue", filename)
+
+        with open(self._path, "w+b", buffering=self.IO_BUFFER_SIZE) as file:
+            # FIXME remove this ugly hack; had to be here due to circular dependency
+            from input import PCAPInput
+            pcap = PCAPInput(file, interactions=seq, protocol=self._protocol)
+            pcap.write_pcap()
+
+        self._input.___iter___ = self.___cached_iter___
+
+    @staticmethod
+    def slugify(value, allow_unicode=False):
+        """
+        Taken from https://github.com/django/django/blob/master/django/utils/text.py
+        Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
+        dashes to single dashes. Remove characters that aren't alphanumerics,
+        underscores, or hyphens. Convert to lowercase. Also strip leading and
+        trailing whitespace, dashes, and underscores.
+        """
+        value = str(value)
+        if allow_unicode:
+            value = unicodedata.normalize('NFKC', value)
+        else:
+            value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+        value = re.sub(r'[^\w\s-]', '', value.lower())
+        return re.sub(r'[-\s]+', '-', value).strip('-_')
+
+    def ___cached_iter___(self):
+        with open(self._path, "rb", buffering=self.IO_BUFFER_SIZE) as file:
+            # FIXME remove this ugly hack; had to be here due to circular dependency
+            from input import PCAPInput
+            pcap = PCAPInput(file, protocol=self._protocol)
+            yield from pcap.read_pcap()
 
 class SlicingDecorator(DecoratorBase):
     def __init__(self, idx):

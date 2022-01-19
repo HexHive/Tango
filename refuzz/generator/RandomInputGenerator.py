@@ -1,7 +1,7 @@
 from generator import InputGeneratorBase
 from networkio   import ChannelFactoryBase
 from statemanager import StateBase
-from input import InputBase, PreparedInput, CachingDecorator
+from input import InputBase, PreparedInput
 from random import Random
 from mutator import HavocMutator
 

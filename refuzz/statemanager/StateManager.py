@@ -6,7 +6,7 @@ from typing import Callable
 from statemanager import (StateBase,
                          StateMachine,
                          StateTrackerBase)
-from input        import InputBase, CachingDecorator
+from input        import InputBase, MemoryCachingDecorator, FileCachingDecorator
 from loader       import StateLoaderBase
 from profiler     import ProfileValue, ProfileFrequency, ProfileCount
 
@@ -48,10 +48,13 @@ class StateManager:
             pass
 
     def __init__(self, startup_input: InputBase, loader: StateLoaderBase,
-            tracker: StateTrackerBase, scheduler: str, cache_inputs: bool):
+            tracker: StateTrackerBase, scheduler: str, cache_inputs: bool,
+            workdir: str, protocol: str):
         self._loader = loader
         self._tracker = tracker
         self._cache_inputs = cache_inputs
+        self._workdir = workdir
+        self._protocol = protocol
 
         self._last_state = self._tracker.entry_state
         self._startup_input = startup_input
@@ -182,7 +185,7 @@ class StateManager:
 
                 if stable:
                     if self._cache_inputs:
-                        last_input = CachingDecorator()(last_input, copy=False)
+                        last_input = MemoryCachingDecorator()(last_input, copy=False)
                         if new:
                             # call the transition pruning routine to shorten the last input
                             debug("Attempting to minimize transition")
@@ -248,7 +251,7 @@ class StateManager:
                 success &= dst == self._tracker.current_state
                 if success:
                     reduced = True
-                    lin_input = CachingDecorator()(tmp_lin_input, copy=False)
+                    lin_input = MemoryCachingDecorator()(tmp_lin_input, copy=False)
                     end -= step
                 else:
                     cur += step
@@ -263,6 +266,6 @@ class StateManager:
             raise StabilityException("destination state did not match current state")
 
         if reduced:
-            return CachingDecorator()(lin_input, copy=False)
+            return FileCachingDecorator(self._workdir, self._protocol)(lin_input, copy=False)
         else:
-            return input
+            return FileCachingDecorator(self._workdir, self._protocol)(input, copy=True)
