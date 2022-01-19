@@ -74,8 +74,9 @@ class FuzzerSession:
                         except StatePrecisionException:
                             debug("Encountered imprecise state transition")
                             ProfileCount('imprecise')(1)
-                        except ProcessCrashedException:
+                        except ProcessCrashedException as ex:
                             # TODO save crashing input
+                            critical(f"Process crashed: {ex = }")
                             ProfileCount('crash')(1)
                         except ChannelTimeoutException:
                             # TODO save timeout input
