@@ -266,6 +266,8 @@ class StateManager:
             raise StabilityException("destination state did not match current state")
 
         if reduced:
-            return FileCachingDecorator(self._workdir, self._protocol)(lin_input, copy=False)
+            result = FileCachingDecorator(self._workdir, self._protocol)(lin_input, copy=False)
         else:
-            return FileCachingDecorator(self._workdir, self._protocol)(input, copy=True)
+            result = FileCachingDecorator(self._workdir, self._protocol)(input, copy=True)
+
+        return result

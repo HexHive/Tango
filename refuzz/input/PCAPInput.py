@@ -43,14 +43,18 @@ class PCAPInput(PreparedInput):
             super().__init__(interactions)
 
     @classmethod
-    def _try_identify_endpoint(cls, packet: Packet) -> Tuple:
-        endpoint = []
+    def _try_identify_endpoints(cls, packet: Packet) -> Tuple:
+        sender = []
+        receiver = []
         for layer, src in cls.LAYER_SOURCE.items():
             if layer in packet:
-                endpoint.append(getattr(packet.getlayer(layer), src))
-        if not endpoint:
-            raise RuntimeError("Could not identify endpoint in packet")
-        return tuple(endpoint)
+                sender.append(getattr(packet.getlayer(layer), src))
+        for layer, dst in cls.LAYER_DESTINATION.items():
+            if layer in packet:
+                receiver.append(getattr(packet.getlayer(layer), dst))
+        if not sender or not receiver:
+            raise RuntimeError("Could not identify endpoints in packet")
+        return (tuple(sender), tuple(receiver))
 
     def read_pcap(self):
         if self._protocol in ("tcp", "udp"):
@@ -60,9 +64,10 @@ class PCAPInput(PreparedInput):
         plist = PcapReader(self._pcap).read_all()
         endpoints = []
         for p in plist:
-            endpoint = self._try_identify_endpoint(p)
-            if endpoint not in endpoints:
-                endpoints.append(endpoint)
+            eps = self._try_identify_endpoints(p)
+            for endpoint in eps:
+                if endpoint not in endpoints:
+                    endpoints.append(endpoint)
         if len(endpoints) != 2:
             raise RuntimeError(
                 f"PCAP file has {len(endpoints)} endpoints (expected 2)"
@@ -74,7 +79,7 @@ class PCAPInput(PreparedInput):
         tlast = plist[0].time
         for p in plist:
             # FIXME this operation is done previously, optimize
-            endpoint = self._try_identify_endpoint(p)
+            src, dst = self._try_identify_endpoints(p)
 
             if layer:
                 payload = bytes(p.getlayer(layer))
@@ -86,7 +91,7 @@ class PCAPInput(PreparedInput):
             if delay >= self.DELAY_THRESHOLD:
                 yield DelayInteraction(float(delay))
 
-            if endpoint == endpoints[0]:
+            if src == endpoints[0]:
                 interaction = TransmitInteraction(data=payload)
             else:
                 interaction = ReceiveInteraction(data=payload)
@@ -106,6 +111,7 @@ class PCAPInput(PreparedInput):
 
         cur_time = time.time()
         writer = PcapWriter(self._pcap)
+        client_sent = False
         for interaction in self:
             if isinstance(interaction, DelayInteraction):
                 if interaction._time >= self.DELAY_THRESHOLD:
@@ -113,7 +119,10 @@ class PCAPInput(PreparedInput):
                 continue
             elif isinstance(interaction, TransmitInteraction):
                 src, dst = cli, srv
+                client_sent = True
             elif isinstance(interaction, ReceiveInteraction):
+                if not client_sent:
+                    continue
                 src, dst = srv, cli
             p = Ether() / IP() / \
                     layer(**{self.LAYER_SOURCE[layer]: src, self.LAYER_DESTINATION[layer]: dst}) / \

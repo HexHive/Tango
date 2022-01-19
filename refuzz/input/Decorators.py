@@ -108,7 +108,7 @@ class FileCachingDecorator(MemoryCachingDecorator):
         self._input.___len___ = self.___cached_len___
 
         filename = self.slugify(self._cached_repr)
-        self._path = os.path.join(workdir, "queue", filename)
+        self._path = os.path.join(self._workdir, "queue", filename)
 
         with open(self._path, "w+b", buffering=self.IO_BUFFER_SIZE) as file:
             # FIXME remove this ugly hack; had to be here due to circular dependency
@@ -117,6 +117,10 @@ class FileCachingDecorator(MemoryCachingDecorator):
             pcap.write_pcap()
 
         self._input.___iter___ = self.___cached_iter___
+
+        inp = self._input
+        del self._input
+        return inp
 
     @staticmethod
     def slugify(value, allow_unicode=False):
@@ -140,7 +144,7 @@ class FileCachingDecorator(MemoryCachingDecorator):
             # FIXME remove this ugly hack; had to be here due to circular dependency
             from input import PCAPInput
             pcap = PCAPInput(file, protocol=self._protocol)
-            yield from pcap.read_pcap()
+            yield from pcap
 
 class SlicingDecorator(DecoratorBase):
     def __init__(self, idx):
