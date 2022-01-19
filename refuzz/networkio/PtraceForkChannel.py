@@ -126,8 +126,10 @@ class PtraceForkChannel(ChannelBase):
                     self._wakeup_forkserver()
                 if exitcode == 0:
                     raise ChannelBrokenException(f"Process with {event.process.pid=} exited normally")
-                elif self.current_target and event.process == self.current_target:
+                elif self.current_target and event.process == self.current_target and exitcode in (1, *range(128, 128 + 65)):
                     raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with code {exitcode}")
+                else:
+                    raise ChannelBrokenException(f"Process with {event.process.pid=} exited with code {exitcode}")
             except ProcessSignal as event:
                 if event.signum == signal.SIGUSR2:
                     raise ChannelTimeoutException("Channel timeout when waiting for syscall")

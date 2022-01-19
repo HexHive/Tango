@@ -71,10 +71,7 @@ class PtraceChannel(ChannelBase):
             if syscall and syscall.result != -1 and \
                     (break_on_entry or syscall.result is not None):
                 syscall_callback(process, syscall, **kwargs)
-                debug(f"syscall processed: {syscall.format()}")
-            else:
-                # debug(f"syscall request ignored")
-                pass
+                debug(f"syscall processed: [{process.pid}] {syscall.format()}")
 
         def process_auxiliary_event(event):
             try:
@@ -83,15 +80,27 @@ class PtraceChannel(ChannelBase):
                 exitcode = -256
                 if event.exitcode is not None:
                     exitcode = event.exitcode
+                warning(f"Process with {event.process.pid=} exited, deleting from debugger")
+                warning(f"Reason: {event}")
                 self._debugger.deleteProcess(event.process)
                 if exitcode == 0:
                     raise ChannelBrokenException(f"Process with {event.process.pid=} exited normally")
-                else:
+                elif exitcode in (1, *range(128, 128 + 65)):
                     raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with code {exitcode}")
+                else:
+                    raise ChannelBrokenException(f"Process with {event.process.pid=} exited with code {exitcode}")
 
             except ProcessSignal as event:
                 if event.signum == signal.SIGUSR2:
                     raise ChannelTimeoutException("Channel timeout when waiting for syscall")
+                elif event.signum in (signal.SIGINT, signal.SIGWINCH):
+                    # Ctrl-C or resizing the window should not be passed to child
+                    event.process.syscall()
+                    return
+                elif event.signum == signal.SIGSTOP:
+                    critical(f"{event.process.pid=} received rogue SIGSTOP, resuming for now")
+                    event.process.syscall()
+                    return
                 debug(f"Target process with {event.process.pid=} received signal with {event.signum=}")
                 event.display(log=warning)
                 signum = event.signum
@@ -100,7 +109,7 @@ class PtraceChannel(ChannelBase):
                 return
             except NewProcessEvent as event:
                 # monitor child for syscalls as well. may be needed for multi-thread or multi-process targets
-                debug(f"Target process forked, adding child process with {event.process.pid=} to debugger")
+                debug(f"Target process with {event.process.parent.pid=} forked, adding child process with {event.process.pid=} to debugger")
                 self._prepare_process(event.process, ignore_callback, syscall=True)
                 event.process.parent.syscall()
                 return
@@ -173,6 +182,7 @@ class PtraceChannel(ChannelBase):
                     raise ChannelBrokenException("Process was terminated while waiting for syscalls")
 
                 try:
+                    debug("Waiting for syscall...")
                     event = self._debugger.waitSyscall()
                     # even if it is a syscall, we raise it to pass it to process_event()
                     raise event
