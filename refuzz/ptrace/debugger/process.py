@@ -383,7 +383,6 @@ class PtraceProcess(object):
         return ProcessExit(self)
 
     def processExited(self, code):
-        import pdb; pdb.set_trace()
         if RUNNING_BSD and not self.exited:
             # on FreeBSD, we have to waitpid() twice
             # to avoid zombi process!?
