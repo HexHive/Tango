@@ -70,9 +70,6 @@ static inline void __reset_cov_map() {
 
 __attribute__((used, no_sanitize("coverage")))
 static void _forkserver() {
-    /* clobbers:
-     * rax, rcx, rdx, rsi, rdi
-     */
     while(1) {
         __reset_cov_map();
         int child_pid = fork();
@@ -97,7 +94,15 @@ void forkserver() {
         "push %%rdx\n"
         "push %%rsi\n"
         "push %%rdi\n"
+        "push %%r8\n"
+        "push %%r9\n"
+        "push %%r10\n"
+        "push %%r11\n"
         "call _forkserver\n"
+        "pop %%r11\n"
+        "pop %%r10\n"
+        "pop %%r9\n"
+        "pop %%r8\n"
         "pop %%rdi\n"
         "pop %%rsi\n"
         "pop %%rdx\n"
