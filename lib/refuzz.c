@@ -24,7 +24,6 @@ static size_t edge_sz;
 void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
     const char *name = getenv("REFUZZ_COVERAGE");
     if (!name) {
-        fputs("env:REFUZZ_COVERAGE not specified, disabling instrumentation\n", stderr);
         for (uint32_t *x = start; x < stop; x++)
             *x = 0;  // disable all guards
         return;
