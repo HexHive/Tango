@@ -14,7 +14,7 @@ class InputBase(ABC):
         pass
 
     def ___repr___(self):
-        return f"{self.__class__.__name__}:0x{self.id:016X}"
+        return f"{self.__class__.__name__}:0x{self.id:08X}"
 
     def ___len___(self):
         raise NotImplemented()

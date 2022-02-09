@@ -68,6 +68,15 @@ class StateManager:
     def state_tracker(self) -> StateTrackerBase:
         return self._tracker
 
+    #FIXME this should later be moved into a strategy class
+    @property
+    def target_state(self):
+        return self._sm._target_state
+
+    @target_state.setter
+    def target_state(self, value):
+        self._sm._target_state = value
+
     @ProfileFrequency('resets')
     def reset_state(self, state=None, update=True):
         if update:
@@ -192,10 +201,10 @@ class StateManager:
                             try:
                                 last_input = self._minimize_transition(
                                     self._last_state, current_state, last_input)
-                            except Exception:
+                            except Exception as ex:
                                 # Minimization failed, again probably due to an
                                 # indeterministic target
-                                debug("Minimization failed, using original input")
+                                debug(f"Minimization failed, using original input {ex=}")
 
                     self._sm.update_transition(self._last_state, current_state,
                         last_input)
@@ -266,8 +275,10 @@ class StateManager:
             raise StabilityException("destination state did not match current state")
 
         if reduced:
-            result = FileCachingDecorator(self._workdir, self._protocol)(lin_input, copy=False)
+            result = FileCachingDecorator(self._workdir, "queue", self._protocol)(lin_input, self, copy=False)
+            # result = MemoryCachingDecorator()(lin_input, copy=False)
         else:
-            result = FileCachingDecorator(self._workdir, self._protocol)(input, copy=True)
+            result = FileCachingDecorator(self._workdir, "queue", self._protocol)(input, self, copy=True)
+            # result = MemoryCachingDecorator()(input, copy=True)
 
         return result

@@ -1,7 +1,8 @@
 from . import debug, critical
 
 from input         import (InputBase,
-                          PreparedInput)
+                          PreparedInput,
+                          FileCachingDecorator)
 from fuzzer        import FuzzerConfig
 from common        import (StabilityException,
                           StatePrecisionException,
@@ -39,6 +40,8 @@ class FuzzerSession:
         self._loader = config.loader
         self._sman = config.state_manager
         self._entropy = config.entropy
+        self._workdir = config.work_dir
+        self._protocol = config.ch_env.protocol
 
         ## After this point, the StateManager and StateTracker are both
         #  initialized and should be able to identify states and populate the SM
@@ -59,8 +62,9 @@ class FuzzerSession:
         # FIXME is there ever a proper terminating condition for fuzzing?
         while True:
             try:
-                # FIXME should probably reset to StateManager's current target state
-                self._sman.reset_state()
+                # reset to StateManager's current target state
+                # FIXME this should probably be done by the exploration strategy
+                self._sman.reset_state(self._sman.target_state)
                 while True:
                     try:
                         cur_state = self._sman.state_tracker.current_state
@@ -74,10 +78,11 @@ class FuzzerSession:
                         except StatePrecisionException:
                             debug("Encountered imprecise state transition")
                             ProfileCount('imprecise')(1)
-                        except ProcessCrashedException as ex:
+                        except ProcessCrashedException as pc:
                             # TODO save crashing input
-                            critical(f"Process crashed: {ex = }")
+                            critical(f"Process crashed: {pc = }")
                             ProfileCount('crash')(1)
+                            FileCachingDecorator(self._workdir, "crash", self._protocol)(ex.payload, self._sman, copy=True)
                         except ChannelTimeoutException:
                             # TODO save timeout input
                             critical("Received channel timeout exception")
@@ -90,11 +95,11 @@ class FuzzerSession:
                             critical("Received channel setup exception")
                         except Exception as ex:
                             critical(f"Encountered unhandled loaded exception {ex = }")
-                        # FIXME should probably reset to StateManager's current target state
-                        self._sman.reset_state()
+                        # FIXME reset to StateManager's current target state
+                        self._sman.reset_state(self._sman.target_state)
                     except Exception as ex:
                         critical(f"Encountered weird exception {ex = }")
-                        self._sman.reset_state()
+                        self._sman.reset_state(self._sman.target_state)
             except Exception as ex:
                 critical(f"Encountered exception while resetting state! {ex = }")
             except KeyboardInterrupt:

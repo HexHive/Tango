@@ -67,6 +67,7 @@ class FuzzerConfig:
         },
         "fuzzer": {
             "workdir": "/path/to/workdir",
+            "resume": <true | false>,
             "seeds": "/path/to/pcap/dir",
             "timescale": .0 .. 1.,
             "entropy": number,
@@ -190,14 +191,19 @@ class FuzzerConfig:
                 for b, t in tree.items():
                     mktree(os.path.join(root, b), t)
             else:
-                Path(root).mkdir(parents=True, exist_ok=False)
+                Path(root).mkdir(parents=True, exist_ok=self.resume)
 
         wd = self._config["fuzzer"]["workdir"]
         tree = {
-            "queue": {}
+            "queue": {},
+            "crash": {}
         }
         mktree(wd, tree)
         return wd
+
+    @cached_property
+    def resume(self):
+        return self._config["fuzzer"].get("resume", False)
 
     @cached_property
     def timescale(self):

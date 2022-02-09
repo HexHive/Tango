@@ -1,5 +1,5 @@
 from abc import ABC
-from functools import partial
+from functools import partial, reduce
 from itertools import islice, tee, chain
 from copy import deepcopy, copy
 import inspect
@@ -7,6 +7,7 @@ import unicodedata
 import re
 import os
 import io
+import operator
 
 class DecoratorBase(ABC):
     def __call__(self, input, copy=True): # -> InputBase:
@@ -74,6 +75,7 @@ class MemoryCachingDecorator(DecoratorBase):
         self._input.___repr___ = self.___cached_repr___
         self._input.___iter___ = self.___cached_iter___
         self._input.___len___ = self.___cached_len___
+
         # we delete self._input because it is no longer needed, and a dangling
         # reference to it will result in redundant deepcopy-ing later
         inp = self._input
@@ -92,34 +94,26 @@ class MemoryCachingDecorator(DecoratorBase):
 class FileCachingDecorator(MemoryCachingDecorator):
     IO_BUFFER_SIZE = 0
 
-    def __init__(self, workdir, protocol):
-        self._cached_repr = None
-        self._workdir = workdir
+    def __init__(self, workdir, subdir, protocol):
+        super().__init__()
+        self._dir = os.path.join(workdir, subdir)
         self._protocol = protocol
 
-    def __call__(self, input, copy=True): # -> InputBase:
-        self._handle_copy(input, copy)
+    def __call__(self, input, sman, copy=True): # -> InputBase:
+        path = reduce(operator.add, (x[2] for x in next(sman.state_machine.get_paths(sman._last_state))))
+        self._prefix_len = len(tuple(path))
+        joined = path + input
+        inp = super().__call__(input, copy=copy)
 
-        self._cached_repr = repr(input)
-        self._input.___repr___ = self.___cached_repr___
+        input_typ = self.get_parent_class(inp.___iter___)
+        filename = self.slugify(f'0x{inp.id:08X}_{input_typ.__name__}')
+        self._path = os.path.join(self._dir, f'{filename}.pcap')
 
-        seq = tuple(input)
-        self._cached_len = len(seq)
-        self._input.___len___ = self.___cached_len___
-
-        filename = self.slugify(self._cached_repr)
-        self._path = os.path.join(self._workdir, "queue", filename)
-
-        with open(self._path, "w+b", buffering=self.IO_BUFFER_SIZE) as file:
+        with open(self._path, "wb", buffering=self.IO_BUFFER_SIZE) as file:
             # FIXME remove this ugly hack; had to be here due to circular dependency
             from input import PCAPInput
-            pcap = PCAPInput(file, interactions=seq, protocol=self._protocol)
-            pcap.write_pcap()
+            pcap = PCAPInput(file, interactions=tuple(joined), protocol=self._protocol)
 
-        self._input.___iter___ = self.___cached_iter___
-
-        inp = self._input
-        del self._input
         return inp
 
     @staticmethod
@@ -139,12 +133,12 @@ class FileCachingDecorator(MemoryCachingDecorator):
         value = re.sub(r'[^\w\s-]', '', value.lower())
         return re.sub(r'[-\s]+', '-', value).strip('-_')
 
-    def ___cached_iter___(self):
-        with open(self._path, "rb", buffering=self.IO_BUFFER_SIZE) as file:
-            # FIXME remove this ugly hack; had to be here due to circular dependency
-            from input import PCAPInput
-            pcap = PCAPInput(file, protocol=self._protocol)
-            yield from pcap
+    # def ___cached_iter___(self):
+    #     with open(self._path, "rb", buffering=self.IO_BUFFER_SIZE) as file:
+    #         # FIXME remove this ugly hack; had to be here due to circular dependency
+    #         from input import PCAPInput
+    #         pcap = PCAPInput(file, protocol=self._protocol)
+    #         yield from pcap._interactions[self._prefix_len:]
 
 class SlicingDecorator(DecoratorBase):
     def __init__(self, idx):
@@ -161,7 +155,7 @@ class SlicingDecorator(DecoratorBase):
     def __call__(self, input, copy=True): # -> InputBase:
         if self.get_parent_class(input.___iter___) is self.__class__ and \
                 input.___decorator___._step == self._step:
-            self._input = deepcopy(input) if copy else input
+            self._handle_copy(input, copy)
             self._input.___decorator___._start += self._start
             if self._stop is not None:
                 stop = self._input.___decorator___._start + (self._stop - self._start)
@@ -187,7 +181,7 @@ class SlicingDecorator(DecoratorBase):
                 fmt = f'{self._start}::{self._step}'
         else:
             fmt = f'{self._start}:{self._stop}:{self._step}'
-        return f'SlicedInput:0x{self._input.id:016X} (0x{self._input_id:016X}[{fmt}])'
+        return f'SlicedInput:0x{self._input.id:08X} (0x{self._input_id:08X}[{fmt}])'
 
     def ___len___(self, orig):
         raise NotImplemented()
@@ -198,7 +192,7 @@ class JoiningDecorator(DecoratorBase):
 
     def __call__(self, input, copy=True): # -> InputBase:
         if self.get_parent_class(input.___iter___) is self.__class__:
-            self._input = deepcopy(input) if copy else input
+            self._handle_copy(input, copy)
             self._input.___decorator___._others.extend(self._others)
             return self._input
         else:
@@ -208,9 +202,9 @@ class JoiningDecorator(DecoratorBase):
         yield from chain(orig(), *self._others)
 
     def ___repr___(self, orig):
-        id = f'0x{self._input_id:016X}'
-        ids = (f'0x{x.id:016X}' for x in self._others)
-        return f'JoinedInput:0x{self._input.id:016X} ({" || ".join((id, *ids))})'
+        id = f'0x{self._input_id:08X}'
+        ids = (f'0x{x.id:08X}' for x in self._others)
+        return f'JoinedInput:0x{self._input.id:08X} ({" || ".join((id, *ids))})'
 
     def ___len___(self, orig):
         raise NotImplemented()

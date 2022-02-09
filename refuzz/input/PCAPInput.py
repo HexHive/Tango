@@ -41,6 +41,7 @@ class PCAPInput(PreparedInput):
             super().__init__(self.read_pcap())
         else:
             super().__init__(interactions)
+            self.write_pcap()
 
     @classmethod
     def _try_identify_endpoints(cls, packet: Packet) -> Tuple:
@@ -124,7 +125,7 @@ class PCAPInput(PreparedInput):
                 if not client_sent:
                     continue
                 src, dst = srv, cli
-            p = Ether() / IP() / \
+            p = Ether(src='aa:aa:aa:aa:aa:aa', dst='aa:aa:aa:aa:aa:aa') / IP() / \
                     layer(**{self.LAYER_SOURCE[layer]: src, self.LAYER_DESTINATION[layer]: dst}) / \
                         Raw(load=interaction._data)
             p.time = cur_time

@@ -11,6 +11,7 @@ class WebDataLoader:
     NA_DATE = datetime.datetime.fromtimestamp(0)
 
     NODE_LINE_COLOR = (110, 123, 139)
+    TARGET_LINE_COLOR = (255, 0, 0)
 
     DEFAULT_NODE_PEN_WIDTH = 1.0
     NEW_NODE_PEN_WIDTH = 5
@@ -87,9 +88,13 @@ class WebDataLoader:
                 coeff)
 
             data.clear()
-            data['color'] = self.format_color(*self.NODE_LINE_COLOR)
             data['fillcolor'] = fillcolor
             data['penwidth'] = penwidth
+            if node == sm._target_state:
+                data['color'] = self.format_color(*self.TARGET_LINE_COLOR)
+                data['penwidth'] = self.NEW_NODE_PEN_WIDTH
+            else:
+                data['color'] = self.format_color(*self.NODE_LINE_COLOR)
 
         for node in to_delete:
             G.remove_node(node)
