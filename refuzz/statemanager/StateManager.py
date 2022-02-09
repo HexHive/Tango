@@ -60,6 +60,8 @@ class StateManager:
         self._startup_input = startup_input
         self._sm = StateMachine(self._last_state)
 
+        self.target_state = self._tracker.entry_state
+
     @property
     def state_machine(self) -> StateMachine:
         return self._sm
