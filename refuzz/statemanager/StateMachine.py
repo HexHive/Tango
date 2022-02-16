@@ -3,7 +3,7 @@ from . import debug
 from   itertools    import product as xproduct
 from   functools    import partial
 from   statemanager import StateBase
-from   input        import InputBase, PreparedInput
+from   input        import InputBase, PreparedInput, MemoryCachingDecorator
 from   typing       import Generator, Tuple, List
 import networkx     as     nx
 import collections
@@ -107,17 +107,21 @@ class StateMachine:
             flatten(self._graph.out_edges(state, data=True))
         )
         for (src_in, _, min_in, input_in), (_, dst_out, min_out, input_out) in t_product:
-            stitched = input_in + input_out
-            minimized = min_in + min_out
+            # FIXME inputs are cached to add the __len__() functionality so that
+            # the WebUI graph can be properly displayed
+            # FIXME this should be remedied by introducing length propagation
+            # of inputs, where all inputs support the __len__() function
+            stitched = MemoryCachingDecorator()(input_in + input_out, copy=False)
+            minimized = MemoryCachingDecorator()(min_in + min_out, copy=False)
+
             self.update_transition(
                 source=src_in,
                 destination=dst_out,
-                transition=stitched,
-                minimized=minimized
+                input=minimized
             )
         self._graph.remove_node(state)
 
-    def get_paths(self, destination: StateBase, source: StateBase=None) \
+    def get_min_paths(self, destination: StateBase, source: StateBase=None) \
         -> Generator[List[Tuple[StateBase, StateBase, InputBase]], None, None]:
         """
         Generates all minimized paths to destination from source. If source is
@@ -132,9 +136,30 @@ class StateMachine:
                     tuples on the same path.
         :rtype:     generator
         """
+        return self.get_paths(destination, source, minimized_only=True)
+
+    def get_paths(self, destination: StateBase, source: StateBase=None,
+            minimized_only=False) \
+        -> Generator[List[Tuple[StateBase, StateBase, InputBase]], None, None]:
+        """
+        Generates all paths to destination from source. If source is None, the
+        entry point of the state machine is used.
+
+        :param      destination:  The destination state.
+        :type       destination:  StateBase
+        :param      source:       The source state.
+        :type       source:       StateBase
+
+        :returns:   Generator object, each item is a list of consecutive edge
+                    tuples on the same path.
+        :rtype:     generator
+        """
         def get_edge_with_inputs(src, dst):
             data = self._graph.get_edge_data(src, dst)
             yield src, dst, data['minimized']
+            if not minimized_only:
+                for input in data['transition']:
+                    yield src, dst, input
 
         source = source or self._entry_state
         if destination == source:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from . import debug, info, critical
 
-from common import StabilityException, StatePrecisionException
+from common import StabilityException, StatePrecisionException, StateNotReproducibleException
 from typing import Callable
 from statemanager import (StateBase,
                          StateMachine,
@@ -37,9 +37,7 @@ class StateManager:
             if self._sman._last_state.last_input is not None:
                 self._sman._last_state.last_input += self.input_gen()
             else:
-                # we deepcopy the generated input so as not to have any
-                # side-effects
-                self._sman._last_state.last_input = self.input_gen()[:]
+                self._sman._last_state.last_input = self.input_gen()
 
         def __enter__(self):
             return self
@@ -93,18 +91,29 @@ class StateManager:
             # we also set _last_state to the entry state in case the loader
             # needs to execute inputs to reach the target state (e.g. ReplayStateLoader)
             # so that no new edges are added between the last state and the entry state
+            # FIXME should this be done by the loader instead?
             self._last_state = self._tracker.entry_state
 
         if state is None:
-            self._loader.load_state(self._tracker.entry_state, self, update=update)
+            self._loader.load_state(self._tracker.entry_state, self, update=False)
             if update:
                 self._last_state = self._tracker.entry_state
 
-            self._loader.execute_input(self._startup_input, self, update=update)
+            self._loader.execute_input(self._startup_input, self, update=False)
         else:
-            self._loader.load_state(state, self, update=update)
-            if update:
-                self._last_state = state
+            try:
+                self._loader.load_state(state, self, update=False)
+                if update:
+                    self._last_state = state
+            except StateNotReproducibleException as ex:
+                if update:
+                    faulty_state = ex._faulty_state
+                    debug(f"Dissolving irreproducible {faulty_state = }")
+                    self._sm.dissolve_state(faulty_state)
+                    ProfileCount("dissolved_states")(1)
+                    if faulty_state == self.target_state:
+                        self.target_state = self._tracker.entry_state
+                raise
 
     def get_context(self, input: InputBase) -> StateManager.StateManagerContext:
         return self.StateManagerContext(self, input)
@@ -177,7 +186,7 @@ class StateManager:
                     stable = False
 
                     ProfileCount('imprecise')(1)
-                except StabilityException:
+                except (StabilityException, StateNotReproducibleException):
                     # This occurs when the reset_state() encountered an error
                     # trying to reproduce a state, most likely due to an
                     # indeterministic target
@@ -207,6 +216,7 @@ class StateManager:
                                 # Minimization failed, again probably due to an
                                 # indeterministic target
                                 debug(f"Minimization failed, using original input {ex=}")
+                                FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=True)
 
                     self._sm.update_transition(self._last_state, current_state,
                         last_input)

@@ -34,5 +34,15 @@ class ChannelBrokenException(RuntimeError):
 class ChannelTimeoutException(RuntimeError):
     pass
 
-class ProcessCrashedException(RuntimeError):
+class ProcessTerminatedException(RuntimeError):
+    def __init__(self, msg, exitcode, *kwargs):
+        super().__init__(msg, *args)
+        self._exitcode = exitcode
+
+class ProcessCrashedException(ProcessTerminatedException):
     pass
+
+class StateNotReproducibleException(RuntimeError):
+    def __init__(self, msg, faulty_state, *args):
+        super().__init__(msg, *args)
+        self._faulty_state = faulty_state

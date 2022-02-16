@@ -114,7 +114,7 @@ class TCPChannel(PtraceChannel):
     def _poll_sync(self):
         server_waiting = False
         # TODO add support for epoll?
-        ignore_callback = lambda x: x.name not in ('read', 'recv', 'recvfrom', 'recvmsg', 'poll', 'ppoll', 'select', 'close')
+        ignore_callback = lambda x: x.name not in ('read', 'recv', 'recvfrom', 'recvmsg', 'poll', 'ppoll', 'select', 'close', 'shutdown')
         break_callback = lambda: server_waiting
         def syscall_callback_read(process, syscall):
             # poll, ppoll
@@ -144,7 +144,7 @@ class TCPChannel(PtraceChannel):
                     return
             elif syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') and syscall.arguments[0].value != self._sockfd:
                 return
-            elif syscall.name == 'close' and syscall.arguments[0].value == self._sockfd:
+            elif syscall.name in ('close', 'shutdown') and syscall.arguments[0].value == self._sockfd:
                 raise ChannelBrokenException("Channel closed while waiting for server to read")
             # read, recv, recvfrom, recvmsg
             nonlocal server_waiting
@@ -180,7 +180,7 @@ class TCPChannel(PtraceChannel):
         ## Set up a barrier so that client_sent is ready when checking for break condition
         barrier = threading.Barrier(2)
 
-        ignore_callback = lambda x: x.name not in ('read', 'recv', 'recvfrom', 'recvmsg', 'close')
+        ignore_callback = lambda x: x.name not in ('read', 'recv', 'recvfrom', 'recvmsg', 'close', 'shutdown')
         def break_callback():
             if not barrier.broken:
                 barrier.wait()
@@ -213,7 +213,7 @@ class TCPChannel(PtraceChannel):
                 if syscall.result == 0:
                     raise ChannelBrokenException("Server failed to read data off socket")
                 server_received += syscall.result
-            elif syscall.name == 'close' and syscall.arguments[0].value == self._sockfd:
+            elif syscall.name in ('close', 'shutdown') and syscall.arguments[0].value == self._sockfd:
                 raise ChannelBrokenException("Channel closed while waiting for server to read")
 
         monitor_target = partial(send_monitor, data)

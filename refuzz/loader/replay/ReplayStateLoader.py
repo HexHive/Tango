@@ -67,7 +67,7 @@ class ReplayStateLoader(StateLoaderBase):
         else:
             # get a path to the target state (may throw if state not in sm)
             # TODO how to select from multiple paths?
-            path = next(sman.state_machine.get_paths(state))
+            path = next(sman.state_machine.get_min_paths(state))
 
         # relaunch the target and establish channel
         self._launch_target()

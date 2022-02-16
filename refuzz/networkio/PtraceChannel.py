@@ -5,7 +5,8 @@ from networkio import ChannelBase
 from   common      import (ChannelBrokenException,
                           ChannelSetupException,
                           ChannelTimeoutException,
-                          ProcessCrashedException)
+                          ProcessCrashedException,
+                          ProcessTerminatedException)
 from ptrace.debugger import   (PtraceDebugger,
                                PtraceProcess,
                                ProcessEvent,
@@ -84,11 +85,11 @@ class PtraceChannel(ChannelBase):
                 warning(f"Reason: {event}")
                 self._debugger.deleteProcess(event.process)
                 if exitcode == 0:
-                    raise ChannelBrokenException(f"Process with {event.process.pid=} exited normally")
+                    raise ProcessTerminatedException(f"Process with {event.process.pid=} exited normally", exitcode=0)
                 elif exitcode in (1, *range(128, 128 + 65)):
-                    raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with code {exitcode}")
+                    raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with code {exitcode}", exitcode=exitcode)
                 else:
-                    raise ChannelBrokenException(f"Process with {event.process.pid=} exited with code {exitcode}")
+                    raise ProcessTerminatedException(f"Process with {event.process.pid=} exited with code {exitcode}", exitcode=exitcode)
 
             except ProcessSignal as event:
                 if event.signum == signal.SIGUSR2:
@@ -179,7 +180,7 @@ class PtraceChannel(ChannelBase):
 
             while True:
                 if not self._debugger:
-                    raise ChannelBrokenException("Process was terminated while waiting for syscalls")
+                    raise ProcessTerminatedException("Process was terminated while waiting for syscalls", exitcode=None)
 
                 try:
                     debug("Waiting for syscall...")

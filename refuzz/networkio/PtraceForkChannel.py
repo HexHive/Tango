@@ -6,7 +6,8 @@ from networkio import ChannelBase
 from   common      import (ChannelBrokenException,
                           ChannelSetupException,
                           ChannelTimeoutException,
-                          ProcessCrashedException)
+                          ProcessCrashedException,
+                          ProcessTerminatedException)
 from ptrace import PtraceError
 from ptrace.debugger import   (PtraceDebugger,
                                PtraceProcess,
@@ -125,11 +126,11 @@ class PtraceForkChannel(ChannelBase):
                 if event.process == self.current_target:
                     self._wakeup_forkserver()
                 if exitcode == 0:
-                    raise ChannelBrokenException(f"Process with {event.process.pid=} exited normally")
+                    raise ProcessTerminatedException(f"Process with {event.process.pid=} exited normally", exitcode=0)
                 elif self.current_target and event.process == self.current_target and exitcode in (1, *range(128, 128 + 65)):
-                    raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with code {exitcode}")
+                    raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with code {exitcode}", exitcode=exitcode)
                 else:
-                    raise ChannelBrokenException(f"Process with {event.process.pid=} exited with code {exitcode}")
+                    raise ProcessTerminatedException(f"Process with {event.process.pid=} exited with code {exitcode}", exitcode=exitcode)
             except ProcessSignal as event:
                 if event.signum == signal.SIGUSR2:
                     raise ChannelTimeoutException("Channel timeout when waiting for syscall")
@@ -245,7 +246,7 @@ class PtraceForkChannel(ChannelBase):
 
             while True:
                 if not self._debugger:
-                    raise ChannelBrokenException("Process was terminated while waiting for syscalls")
+                    raise ProcessTerminatedException("Process was terminated while waiting for syscalls", exitcode=None)
 
                 last_process = None
                 try:

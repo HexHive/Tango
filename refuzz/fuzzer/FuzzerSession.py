@@ -10,7 +10,9 @@ from common        import (StabilityException,
                           ChannelTimeoutException,
                           ChannelBrokenException,
                           ChannelSetupException,
-                          ProcessCrashedException)
+                          ProcessCrashedException,
+                          ProcessTerminatedException,
+                          StateNotReproducibleException)
 import os
 
 from profiler import (ProfileLambda,
@@ -83,13 +85,15 @@ class FuzzerSession:
                             critical(f"Process crashed: {pc = }")
                             ProfileCount('crash')(1)
                             FileCachingDecorator(self._workdir, "crash", self._protocol)(ex.payload, self._sman, copy=True)
+                        except ProcessTerminatedException as pt:
+                            critical(f"Process terminated unexpectedtly? ({pt = })")
                         except ChannelTimeoutException:
                             # TODO save timeout input
                             critical("Received channel timeout exception")
                             ProfileCount('timeout')(1)
-                        except ChannelBrokenException:
+                        except ChannelBrokenException as ex:
                             # TODO save crashing/breaking input
-                            critical("Received channel broken exception")
+                            critical(f"Received channel broken exception ({ex = })")
                         except ChannelSetupException:
                             # TODO save broken setup input
                             critical("Received channel setup exception")
@@ -100,13 +104,17 @@ class FuzzerSession:
                     except Exception as ex:
                         critical(f"Encountered weird exception {ex = }")
                         self._sman.reset_state(self._sman.target_state)
+            except StateNotReproducibleException as ex:
+                critical(f"Target state {self._sman.target_state} not reachable!")
             except Exception as ex:
                 critical(f"Encountered exception while resetting state! {ex = }")
             except KeyboardInterrupt:
                 from code import InteractiveConsole
                 repl = InteractiveConsole(locals=locals())
+                ProfiledObjects['elapsed'].toggle()
                 repl.interact(banner="Fuzzing paused (type exit() to quit)",
                     exitmsg="Fuzzing resumed")
+                ProfiledObjects['elapsed'].toggle()
 
     def start(self):
         # reset state after the seed initialization stage
