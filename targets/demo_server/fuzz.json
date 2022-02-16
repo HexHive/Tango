@@ -2,21 +2,19 @@
 	"exec": {
 		"path": "./targets/demo_server/demo_server",
 		"args": ["./targets/demo_server/demo_server"],
-        "stdout": "./stdout",
-        "stderr": "./stderr"
+		"stdout": "./stdout",
+		"stderr": "./stderr"
 	},
 	"channel": {
 		"type": "tcp",
 		"tcp": {
 			"endpoint": "127.0.0.1",
-			"port": 5001,
-			"connect_timeout": 1,
-            "data_timeout": 1
+			"port": 5001
 		}
 	},
 	"loader": {
 		"type": "replay",
-		"forkserver": true,
+		"forkserver": false,
 		"disable_aslr": true
 	},
 	"input": {
@@ -27,6 +25,7 @@
 	},
 	"fuzzer": {
 		"type": "coverage",
-		"lib": "./lib"
+		"lib": "./lib",
+		"workdir": "./workdir"
 	}
 }
