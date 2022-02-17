@@ -35,7 +35,7 @@ class ChannelTimeoutException(RuntimeError):
     pass
 
 class ProcessTerminatedException(RuntimeError):
-    def __init__(self, msg, exitcode, *kwargs):
+    def __init__(self, msg, exitcode, *args):
         super().__init__(msg, *args)
         self._exitcode = exitcode
 

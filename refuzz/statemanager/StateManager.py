@@ -288,9 +288,7 @@ class StateManager:
 
         if reduced:
             result = FileCachingDecorator(self._workdir, "queue", self._protocol)(lin_input, self, copy=False)
-            # result = MemoryCachingDecorator()(lin_input, copy=False)
         else:
             result = FileCachingDecorator(self._workdir, "queue", self._protocol)(input, self, copy=True)
-            # result = MemoryCachingDecorator()(input, copy=True)
 
         return result
