@@ -10,11 +10,12 @@ import websockets
 WWW_PATH = os.path.join(os.path.dirname(__file__), 'www')
 
 class WebRenderer:
-    def __init__(self, http_port=8080, ws_port=8081):
+    def __init__(self, session, http_port=8080, ws_port=8081):
         address = ('', http_port)
         handler = partial(SimpleHTTPRequestHandler, directory=WWW_PATH)
         self._httpd = HTTPServer(address, handler)
         self._ws_port = ws_port
+        self._session = session
 
     def start(self):
         self._start_httpd()
@@ -45,5 +46,5 @@ class WebRenderer:
         th.start()
 
     async def _websocket_handler(self, websocket, path):
-        WebDataLoader(websocket)
+        WebDataLoader(websocket, self._session)
         await asyncio.Future()

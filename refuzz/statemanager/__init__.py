@@ -5,6 +5,8 @@ for func in ('debug', 'info', 'warning', 'error', 'critical'):
 
 from .StateBase                     import StateBase
 from .StateMachine                  import StateMachine
+from .strategy.StrategyBase         import StrategyBase
+from .strategy.RandomStrategy       import RandomStrategy
 
 from .StateTrackerBase              import StateTrackerBase
 from .coverage.CoverageState        import CoverageState

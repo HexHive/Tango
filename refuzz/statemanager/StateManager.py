@@ -5,7 +5,8 @@ from common import StabilityException, StatePrecisionException, StateNotReproduc
 from typing import Callable
 from statemanager import (StateBase,
                          StateMachine,
-                         StateTrackerBase)
+                         StateTrackerBase,
+                         StrategyBase)
 from input        import InputBase, MemoryCachingDecorator, FileCachingDecorator
 from loader       import StateLoaderBase
 from profiler     import ProfileValue, ProfileFrequency, ProfileCount
@@ -46,8 +47,8 @@ class StateManager:
             pass
 
     def __init__(self, startup_input: InputBase, loader: StateLoaderBase,
-            tracker: StateTrackerBase, scheduler: str, cache_inputs: bool,
-            workdir: str, protocol: str):
+            tracker: StateTrackerBase, strategy_ctor: Callable[[StateMachine, StateBase], StrategyBase],
+            cache_inputs: bool, workdir: str, protocol: str):
         self._loader = loader
         self._tracker = tracker
         self._cache_inputs = cache_inputs
@@ -58,7 +59,11 @@ class StateManager:
         self._startup_input = startup_input
         self._sm = StateMachine(self._last_state)
 
-        self.target_state = self._tracker.entry_state
+        # this ensures self._startup_state is updated to match state after
+        # startup_input is applied
+        self._startup_state = None
+        self.reset_state()
+        self._strategy = strategy_ctor(self._sm, self._startup_state)
 
     @property
     def state_machine(self) -> StateMachine:
@@ -68,17 +73,8 @@ class StateManager:
     def state_tracker(self) -> StateTrackerBase:
         return self._tracker
 
-    #FIXME this should later be moved into a strategy class
-    @property
-    def target_state(self):
-        return self._sm._target_state
-
-    @target_state.setter
-    def target_state(self, value):
-        self._sm._target_state = value
-
     @ProfileFrequency('resets')
-    def reset_state(self, state=None, update=True):
+    def reset_state(self, state_or_path=None, update=True):
         if update:
             ProfileValue('status')('reset_state')
         if self._last_state and update:
@@ -94,41 +90,66 @@ class StateManager:
             # FIXME should this be done by the loader instead?
             self._last_state = self._tracker.entry_state
 
-        if state is None:
-            self._loader.load_state(self._tracker.entry_state, self, update=False)
+        try:
+            if state_or_path is None:
+                if self._startup_state is None:
+                    self._loader.load_state(self._tracker.entry_state, self, update=False)
+                    self._loader.execute_input(self._startup_input, self, update=False)
+                    self._startup_state = self._tracker.current_state
+                else:
+                    self._loader.load_state(self._startup_state, self, update=False)
+                assert self._tracker.current_state == self._startup_state
+            else:
+                self._loader.load_state(state_or_path, self, update=False)
             if update:
-                self._last_state = self._tracker.entry_state
+                self._last_state = self._tracker.current_state
+        except StateNotReproducibleException as ex:
+            if update:
+                faulty_state = ex._faulty_state
+                debug(f"Dissolving irreproducible {faulty_state = }")
+                self._sm.dissolve_state(faulty_state)
+                self._strategy.update_state(faulty_state, invalidate=True)
+                ProfileCount("dissolved_states")(1)
+            raise
 
-            self._loader.execute_input(self._startup_input, self, update=False)
-        else:
-            try:
-                self._loader.load_state(state, self, update=False)
-                if update:
-                    self._last_state = state
-            except StateNotReproducibleException as ex:
-                if update:
-                    faulty_state = ex._faulty_state
-                    debug(f"Dissolving irreproducible {faulty_state = }")
-                    self._sm.dissolve_state(faulty_state)
-                    ProfileCount("dissolved_states")(1)
-                    if faulty_state == self.target_state:
-                        self.target_state = self._tracker.entry_state
-                raise
+    def reload_target(self):
+        self.reset_state(self._strategy.target)
 
     def get_context(self, input: InputBase) -> StateManager.StateManagerContext:
         return self.StateManagerContext(self, input)
 
-    def step(self, input: InputBase) -> bool:
+    def step(self, input: InputBase):
         """
         Executes the input and updates the state queues according to the
         scheduler. May need to receive information about the current state to
         update it.
-
-        :returns:   Whether or not the step resulted in a state change
-        :rtype:     bool
         """
+        while True:
+            try:
+                should_reset = self._strategy.step()
+                if should_reset:
+                    self.reset_state(self._strategy.target)
+                    target_state = self._tracker.current_state
+                    debug(f'Stepped to new {target_state = }')
+                break
+            except StateNotReproducibleException as ex:
+                if isinstance(target, StateBase):
+                    # in case the selected state is unreachable, reset_state()
+                    # would have already asked the strategy to invalidate the
+                    # faulty state along its path
+                    pass
+                elif hasattr(target, '__iter__'):
+                    # find and invalidate the transition along the path that
+                    # leads to the faulty state
+                    transition = next(x for x in target if x[1] == ex._faulty_state)
+                    self._strategy.update_transition(transition[0], transition[1], invalidate=True)
+            except Exception:
+                # In this case, we need to force the strategy to yield a new
+                # target, because we're not entirely sure what went wrong. We
+                # invalidate the target state and hope for the best.
+                self._strategy.update_state(self._strategy.target_state, invalidate=True)
+
         self._loader.execute_input(input, self, update=True)
-        # TODO invoke scheduler
 
     def update(self, input_gen: Callable[..., InputBase]) -> bool:
         """
@@ -156,6 +177,7 @@ class StateManager:
         # finished the training phase (preprocessing seeds)
         if current_state is not None:
             new = self._sm.update_state(current_state)
+            self._strategy.update_state(current_state, is_new=new)
             debug(f"Updated {'new ' if new else ''}{current_state = }")
             if current_state != self._last_state:
                 debug(f"Possible transition from {self._last_state} to {current_state}")
@@ -183,6 +205,7 @@ class StateManager:
                     if new:
                         debug(f"Dissolving {current_state = }")
                         self._sm.dissolve_state(current_state)
+                        self._strategy.update_state(current_state, invalidate=True)
                     stable = False
 
                     ProfileCount('imprecise')(1)
@@ -193,6 +216,7 @@ class StateManager:
                     if new:
                         debug(f"Dissolving {current_state = }")
                         self._sm.dissolve_state(current_state)
+                        self._strategy.update_state(current_state, invalidate=True)
                     stable = False
                     ProfileCount('unstable')(1)
                 except Exception as ex:
@@ -200,6 +224,7 @@ class StateManager:
                     if new:
                         debug(f"Dissolving {current_state = }")
                         self._sm.dissolve_state(current_state)
+                        self._strategy.update_state(current_state, invalidate=True)
                     stable = False
                     raise
 
@@ -220,6 +245,7 @@ class StateManager:
 
                     self._sm.update_transition(self._last_state, current_state,
                         last_input)
+                    self._strategy.update_transition(self._last_state, current_state)
                     self._last_state = current_state
                     info(f'Transitioned to {current_state=}')
                     updated = True

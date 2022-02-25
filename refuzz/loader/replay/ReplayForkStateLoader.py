@@ -1,5 +1,6 @@
 from .. import warning
 
+from typing       import Union
 from common       import StabilityException, StateNotReproducibleException
 from loader       import Environment
 from networkio    import (ChannelFactoryBase,
@@ -49,21 +50,24 @@ class ReplayForkStateLoader(StateLoaderBase):
     def channel(self):
         return self._channel
 
-    def load_state(self, state: StateBase, sman: StateManager, update: bool = True):
-        if state is None or sman is None:
+    def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, update: bool = True):
+        if state_or_path is None or sman is None:
             # special case where the state tracker wants an initial state
             path_gen = ((),)
         else:
             # get a path to the target state (may throw if state not in sm)
-            # TODO how to select from multiple paths?
-            path_gen = sman.state_machine.get_min_paths(state)
+            if isinstance((state := state_or_path), StateBase):
+                path_gen = sman.state_machine.get_min_paths(state)
+            else:
+                path_gen = (state_or_path,)
+                state = None
 
         # try out all paths until one succeeds
         paths_tried = 1
         exhaustive = False
         faulty_state = None
         while True:
-            if exhaustive:
+            if exhaustive and state is not None:
                 path_gen = sman.state_machine.get_paths(state)
             for path in path_gen:
                 # relaunch the target and establish channel
@@ -106,7 +110,7 @@ class ReplayForkStateLoader(StateLoaderBase):
                             faulty_state
                         )
             else:
-                if exhaustive:
+                if exhaustive or state is None:
                     raise StateNotReproducibleException(
                         "destination state not reproducible",
                         faulty_state

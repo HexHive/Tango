@@ -1,3 +1,4 @@
+from typing       import Union
 from common       import StabilityException
 from loader       import Environment
 from networkio    import (ChannelFactoryBase,
@@ -60,14 +61,17 @@ class ReplayStateLoader(StateLoaderBase):
     def channel(self):
         return self._channel
 
-    def load_state(self, state: StateBase, sman: StateManager, update: bool = True):
-        if state is None or sman is None:
+    def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, update: bool = True):
+        if state_or_path is None or sman is None:
             # special case where the state tracker wants an initial state
             path = ()
         else:
             # get a path to the target state (may throw if state not in sm)
             # TODO how to select from multiple paths?
-            path = next(sman.state_machine.get_min_paths(state))
+            if isinstance((state := state_or_path), StateBase):
+                path = next(sman.state_machine.get_min_paths(state))
+            else:
+                path = state_or_path
 
         # relaunch the target and establish channel
         self._launch_target()

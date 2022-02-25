@@ -1,5 +1,6 @@
 from . import critical
 from abc          import ABC, abstractmethod
+from typing       import Union
 from common       import LoadedException, ChannelBrokenException
 from loader       import Environment
 from networkio    import (ChannelFactoryBase,
@@ -32,7 +33,7 @@ class StateLoaderBase(ABC):
             personality(ADDR_NO_RANDOMIZE)
 
     @abstractmethod
-    def load_state(self, state: StateBase, sman: StateManager, update: bool):
+    def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, update: bool):
         pass
 
     @property

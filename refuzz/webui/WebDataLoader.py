@@ -25,8 +25,9 @@ class WebDataLoader:
     DEFAULT_EDGE_COLOR = (0, 0, 0)
     LAST_UPDATE_EDGE_COLOR = (202, 225, 255)
 
-    def __init__(self, websocket, last_update_fade_out=1.0):
+    def __init__(self, websocket, session, last_update_fade_out=1.0):
         self._ws = websocket
+        self._session = session
         self._fade = last_update_fade_out
 
         ProfiledObjects['update_state'].listener(period=0.1)(self.update_graph)
@@ -90,7 +91,7 @@ class WebDataLoader:
             data.clear()
             data['fillcolor'] = fillcolor
             data['penwidth'] = penwidth
-            if node == sm._target_state:
+            if node == self._session._sman._strategy.target_state:
                 data['color'] = self.format_color(*self.TARGET_LINE_COLOR)
                 data['penwidth'] = self.NEW_NODE_PEN_WIDTH
             else:

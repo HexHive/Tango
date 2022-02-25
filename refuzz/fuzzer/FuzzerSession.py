@@ -66,7 +66,7 @@ class FuzzerSession:
             try:
                 # reset to StateManager's current target state
                 # FIXME this should probably be done by the exploration strategy
-                self._sman.reset_state(self._sman.target_state)
+                self._sman.reload_target()
                 while True:
                     try:
                         cur_state = self._sman.state_tracker.current_state
@@ -100,12 +100,12 @@ class FuzzerSession:
                         except Exception as ex:
                             critical(f"Encountered unhandled loaded exception {ex = }")
                         # FIXME reset to StateManager's current target state
-                        self._sman.reset_state(self._sman.target_state)
+                        self._sman.reload_target()
                     except Exception as ex:
                         critical(f"Encountered weird exception {ex = }")
-                        self._sman.reset_state(self._sman.target_state)
+                        self._sman.reload_target()
             except StateNotReproducibleException as ex:
-                critical(f"Target state {self._sman.target_state} not reachable!")
+                critical(f"Target state {ex._faulty_state} not reachable anymore!")
             except Exception as ex:
                 critical(f"Encountered exception while resetting state! {ex = }")
             except KeyboardInterrupt:
@@ -122,7 +122,7 @@ class FuzzerSession:
 
         ProfileTimeElapsed('elapsed')
 
-        WebRenderer().start()
+        WebRenderer(self).start()
 
         # launch fuzzing loop
         self._loop()

@@ -5,7 +5,8 @@ from networkio    import (TCPChannelFactory,
                          UDPChannelFactory)
 from loader       import ReplayStateLoader, ReplayForkStateLoader
 from statemanager import (CoverageStateTracker,
-                         StateManager)
+                         StateManager,
+                         RandomStrategy)
 from generator    import RandomInputGenerator
 from random       import Random
 import json
@@ -61,7 +62,7 @@ class FuzzerConfig:
         },
         "statemanager": {
             "type": "<coverage | grammar | hybrid | ...>",
-            "strategy": "<depth-first | breadth-first | ...>",
+            "strategy": "<random | ...>",
             "cache_inputs": <true | false>,
             ...
         },
@@ -160,7 +161,12 @@ class FuzzerConfig:
 
     @cached_property
     def scheduler_strategy(self):
-        return self._config["statemanager"].get("strategy")
+        _config = self._config["statemanager"]
+        strategy_name = _config.get("strategy", "random")
+        if strategy_name == "random":
+            return lambda sm, startup: RandomStrategy(sm, startup, entropy=self.entropy)
+        else:
+            raise NotImplemented()
 
     @cached_property
     def state_manager(self):
