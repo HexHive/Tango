@@ -85,15 +85,12 @@ class PtraceChannel(ChannelBase):
         if event.signum == signal.SIGUSR2:
             raise ChannelTimeoutException("Channel timeout when waiting for syscall")
         elif event.signum in (signal.SIGINT, signal.SIGWINCH):
+            debug(f"Process with {event.process.pid=} received SIGINT or SIGWINCH {event.signum=}")
             # Ctrl-C or resizing the window should not be passed to child
             event.process.syscall()
             return
         elif event.signum == signal.SIGSTOP:
             critical(f"{event.process.pid=} received rogue SIGSTOP, resuming for now")
-            event.process.syscall()
-            return
-        elif event.signum in (signal.SIGINT, signal.SIGWINCH):
-            # Ctrl-C or resizing the window should not be passed to child
             event.process.syscall()
             return
         debug(f"Target process with {event.process.pid=} received signal with {event.signum=}")
