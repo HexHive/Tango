@@ -30,7 +30,7 @@ class TCPForkChannelFactory(TransportChannelFactory):
                           data_timeout=self.data_timeout)
 
 
-class TCPForkChannel(PtraceForkChannel, TCPChannel):
+class TCPForkChannel(TCPChannel, PtraceForkChannel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
