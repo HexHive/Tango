@@ -105,7 +105,7 @@ class PtraceChannel(ChannelBase):
         if event.process.is_attached:
             # sometimes, child process might have been killed at creation,
             # so the debugger detaches it; we check for that here
-            self._prepare_process(event.process, ignore_callback, syscall=True)
+            self.prepare_process(event.process, ignore_callback, syscall=True)
         event.process.parent.syscall()
 
     def process_exec(self, event):
