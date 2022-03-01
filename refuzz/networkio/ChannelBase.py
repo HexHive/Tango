@@ -9,7 +9,7 @@ from   dataclasses import dataclass
 from   subprocess  import Popen
 
 class ChannelBase(ABC):
-    def __init__(self, pobj: Popen, timescale: float):
+    def __init__(self, pobj: Popen, timescale: float, **kwargs):
         self._pobj = pobj
         self._timescale = timescale
         self._sockfd = -1
