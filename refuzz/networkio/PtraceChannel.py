@@ -231,9 +231,20 @@ class PtraceChannel(ChannelBase):
                 result = future.result()
             return (last_process, result)
 
-    def close(self):
-        pass
+    def close(self, terminate, **kwargs):
+        if terminate:
+            for proc in self._debugger:
+                try:
+                    proc.detach()
+                except PtraceError:
+                    try:
+                        proc.kill(signal.SIGSTOP)
+                        proc.waitSyscall()
+                        proc.detach()
+                    except Exception:
+                        pass
+                    pass
 
     def __del__(self):
-        self.close()
+        self.close(terminate=True)
         self._debugger.quit()

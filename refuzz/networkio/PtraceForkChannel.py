@@ -59,6 +59,8 @@ class PtraceForkChannel(PtraceChannel):
         try:
             super().process_exit(event)
         except ProcessCrashedException:
+            # FIXME what if the forked_child itself has forked and the process
+            # we're actually fuzzing is the grandchild?
             if self.forked_child and event.process == self.forked_child:
                 raise
         finally:
@@ -183,14 +185,19 @@ class PtraceForkChannel(PtraceChannel):
                 del process.syscall_state._ignore_callback
             self._proc_trapped = False
 
-    def close(self, terminate=False):
+    def close(self, terminate, **kwargs):
+        def terminator(process):
+            try:
+                process.terminate()
+            except PtraceError:
+                warning("Attempted to terminate non-existent process")
+                self._debugger.deleteProcess(self.forked_child)
+            for p in process.children:
+                terminator(p)
+
         if self.forked_child:
             if terminate:
-                try:
-                   self.forked_child.terminate()
-                except PtraceError:
-                    warning("Attempted to terminate non-existent process")
-                    self._debugger.deleteProcess(self.forked_child)
+                terminator(self.forked_child)
             # when we kill the forked_child, we wake up the forkserver from the trap
             self._wakeup_forkserver()
 
@@ -198,7 +205,3 @@ class PtraceForkChannel(PtraceChannel):
     @abstractmethod
     def forked_child(self):
         pass
-
-    def __del__(self):
-        self.close()
-        self._debugger.quit()

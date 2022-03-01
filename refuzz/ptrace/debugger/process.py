@@ -164,6 +164,7 @@ class PtraceProcess(object):
         self.running = True
         self.exited = False
         self.parent = parent
+        self.children = []
         self.was_attached = is_attached
         self.is_attached = False
         self.is_stopped = True
@@ -307,6 +308,10 @@ class PtraceProcess(object):
         self.running = False
         self.detach()
 
+        # remove self from parent
+        if self.parent is not None and self in self.parent.children:
+            self.parent.children.remove(self)
+
     def kill(self, signum):
         kill(self.pid, signum)
 
@@ -407,6 +412,7 @@ class PtraceProcess(object):
             is_thread = (event == PTRACE_EVENT_CLONE)
             new_process = self.debugger.addProcess(
                 new_pid, is_attached=True, parent=self, is_thread=is_thread)
+            self.children.append(new_process)
             return NewProcessEvent(new_process)
         elif event == PTRACE_EVENT_EXEC:
             return ProcessExecution(self)

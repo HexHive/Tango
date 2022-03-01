@@ -243,7 +243,3 @@ class TCPChannel(PtraceChannel):
             self._socket.close()
             self._socket = None
         super().close(**kwargs)
-
-    def __del__(self):
-        self.close(terminate=True)
-        super().__del__()
