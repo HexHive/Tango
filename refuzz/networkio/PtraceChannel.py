@@ -12,6 +12,7 @@ from ptrace.debugger import   (PtraceDebugger,
                                ProcessSignal,
                                NewProcessEvent,
                                ProcessExecution)
+from ptrace import PtraceError
 from ptrace.func_call import FunctionCallOptions
 from ptrace.syscall   import PtraceSyscall, SOCKET_SYSCALL_NAMES
 from ptrace.tools import signal_to_exitcode
