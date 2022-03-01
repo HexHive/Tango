@@ -100,7 +100,7 @@ class PtraceChannel(ChannelBase):
         event.process.syscall(signum)
         exitcode = signal_to_exitcode(event.signum)
 
-    def process_new(self, event):
+    def process_new(self, event, ignore_callback):
         # monitor child for syscalls as well. may be needed for multi-thread or multi-process targets
         debug(f"Target process with {event.process.parent.pid=} forked, adding child process with {event.process.pid=} to debugger")
         if event.process.is_attached:
@@ -113,7 +113,7 @@ class PtraceChannel(ChannelBase):
         debug(f"Target process with {event.process.pid=} called exec; removing from debugger")
         self._debugger.deleteProcess(event.process)
 
-    def process_auxiliary_event(self, event):
+    def process_auxiliary_event(self, event, ignore_callback):
         try:
             raise event
         except ProcessExit as event:
@@ -121,20 +121,20 @@ class PtraceChannel(ChannelBase):
         except ProcessSignal as event:
             self.process_signal(event)
         except NewProcessEvent as event:
-            self.process_new(event)
+            self.process_new(event, ignore_callback)
         except ProcessExecution as event:
             self.process_exec()
 
     def is_event_syscall(self, event):
         return isinstance(event, ProcessSignal) and event.signum == self._syscall_signum
 
-    def process_event(self, event, syscall_callback, break_on_entry, **kwargs):
+    def process_event(self, event, ignore_callback, syscall_callback, break_on_entry, **kwargs):
         if event is None:
             return
 
         is_syscall = self.is_event_syscall(event)
         if not is_syscall:
-            self.process_auxiliary_event(event)
+            self.process_auxiliary_event(event, ignore_callback)
         else:
             # Process syscall enter or exit
             # debug(f"Target process with {event.process.pid=} requested a syscall")
@@ -169,6 +169,8 @@ class PtraceChannel(ChannelBase):
         return self._debugger.waitSyscall()
 
     def _monitor_syscalls_internal_loop(self,
+                       stop_event: Event,
+                       ignore_callback: Callable[[PtraceSyscall], bool],
                        break_callback: Callable[..., bool],
                        syscall_callback: Callable[[PtraceProcess, PtraceSyscall], None],
                        break_on_entry: bool = False,
@@ -185,12 +187,14 @@ class PtraceChannel(ChannelBase):
                 event = self._wait_for_syscall()
                 if event is None:
                     continue
-                syscall = self.process_event(event, syscall_callback, break_on_entry, **kwargs)
-                if syscall is None:
+                sc = self.process_event(event, ignore_callback, syscall_callback,
+                    break_on_entry, **kwargs)
+                if sc is None:
                     continue
                 last_process = event.process
             except ProcessEvent as e:
-                self.process_event(e, syscall_callback, break_on_entry, **kwargs)
+                self.process_event(e, ignore_callback, syscall_callback,
+                    break_on_entry, **kwargs)
                 continue
 
             if break_callback():
@@ -223,8 +227,9 @@ class PtraceChannel(ChannelBase):
                 timeout_timer.daemon = True
                 timeout_timer.start()
 
-            last_process = self._monitor_syscalls_internal_loop(
-                    break_callback, syscall_callback, break_on_entry, **kwargs)
+            last_process = self._monitor_syscalls_internal_loop(stop_event,
+                    ignore_callback, break_callback, syscall_callback,
+                    break_on_entry, **kwargs)
 
             ## Return the target's result
             result = None

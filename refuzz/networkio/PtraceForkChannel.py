@@ -92,12 +92,12 @@ class PtraceForkChannel(PtraceChannel):
         else:
             super().process_signal(event)
 
-    def process_auxiliary_event(self, event):
+    def process_auxiliary_event(self, event, ignore_callback):
         try:
             raise event
         except NewProcessEvent as event:
-            self.process_new(event)
-            if event.process.is_attached:
+            self.process_new(event, ignore_callback)
+            if event.process.parent == self._proc and event.process.is_attached:
                 # pause children and queue up syscalls until forkserver traps
                 self._wait_for_proc = True
         except ForkChildKilledEvent as event:
@@ -109,7 +109,7 @@ class PtraceForkChannel(PtraceChannel):
             self._proc.syscall()
             self._proc_untrap = True
         except Exception as event:
-            super().process_auxiliary_event(event)
+            super().process_auxiliary_event(event, ignore_callback)
 
     def _wait_for_syscall(self):
         # this next block ensures that a forked child does not exit before
@@ -122,6 +122,7 @@ class PtraceForkChannel(PtraceChannel):
             event = self._debugger.waitSyscall()
             if self._wait_for_proc and event.process != self._proc:
                 self._event_queue.append(event)
+                debug("Received event while waiting for forkserver; enqueued!")
                 event = None
         return event
 
