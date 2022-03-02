@@ -1,0 +1,33 @@
+{
+	"exec": {
+		"path": "./targets/tls/openssl",
+		"args": ["./targets/tls/openssl", "s_server", "-key", "key.pem", "-cert", "cert.pem", "-4", "-naccept", "1", "-no_anti_replay"],
+		"cwd": "./targets/tls",
+		"stdout": "./stdout",
+		"stderr": "./stderr"
+	},
+	"channel": {
+		"type": "tcp",
+		"tcp": {
+			"endpoint": "127.0.0.1",
+			"port": 4433
+		}
+	},
+	"loader": {
+		"type": "replay",
+		"forkserver": true,
+		"disable_aslr": true
+	},
+	"input": {
+		"type": "mutation"
+	},
+	"statemanager": {
+		"type": "coverage"
+	},
+	"fuzzer": {
+		"type": "coverage",
+		"lib": "./lib",
+		"workdir": "./workdir",
+		"resume": true
+	}
+}
