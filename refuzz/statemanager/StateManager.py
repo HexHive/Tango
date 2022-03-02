@@ -256,7 +256,7 @@ class StateManager:
         reduced = False
 
         # Phase 1: perform exponential back-off to find effective tail of input
-        ProfileValue('status')('minimize_p1')
+        ProfileValue('status')('minimize_exp_backoff')
         end = len(input)
         begin = end - 1
         # we do not perform exponential backoff past the midpoint, because that
@@ -277,7 +277,7 @@ class StateManager:
             begin = 0 if (diff := end - (end - begin) * 2) < 0 else diff
 
         # Phase 2: prune out dead interactions
-        ProfileValue('status')('minimize_p2')
+        ProfileValue('status')('minimize_bin_search')
         if reduced:
             lin_input = input[begin:]
         else:
