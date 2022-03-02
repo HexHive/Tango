@@ -1,7 +1,7 @@
 {
 	"exec": {
-		"path": "./targets/demo_server/demo_server",
-		"args": ["./targets/demo_server/demo_server"],
+		"path": "./targets/forkexec_server/forkexec_server",
+		"args": ["./targets/forkexec_server/forkexec_server"],
 		"stdout": "./stdout",
 		"stderr": "./stderr"
 	},

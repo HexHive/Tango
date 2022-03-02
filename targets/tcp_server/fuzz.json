@@ -1,0 +1,31 @@
+{
+	"exec": {
+		"path": "./targets/tcp_server/tcp_server",
+		"args": ["./targets/tcp_server/tcp_server"],
+		"stdout": "./stdout",
+		"stderr": "./stderr"
+	},
+	"channel": {
+		"type": "tcp",
+		"tcp": {
+			"endpoint": "127.0.0.1",
+			"port": 5001
+		}
+	},
+	"loader": {
+		"type": "replay",
+		"forkserver": false,
+		"disable_aslr": true
+	},
+	"input": {
+		"type": "mutation"
+	},
+	"statemanager": {
+		"type": "coverage"
+	},
+	"fuzzer": {
+		"type": "coverage",
+		"lib": "./lib",
+		"workdir": "./workdir"
+	}
+}

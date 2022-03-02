@@ -88,7 +88,7 @@ class FuzzerConfig:
             self._config = json.load(f)
 
         if self.lib_dir:
-            so_path = os.path.join(self.lib_dir, "rebind.so")
+            so_path = os.path.join(self.lib_dir, "pytangofuzz.so")
             self._bind_lib = ctypes.CDLL(so_path)
         else:
             self._bind_lib = None

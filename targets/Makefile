@@ -7,7 +7,7 @@ export CXXFLAGS=$(CFLAGS)
 LIBDIR=$(realpath ../lib)
 
 export LDFLAGS=-Wl,-wrap,bind -Wl,-wrap,fork -fPIE -pie -L$(LIBDIR)
-export LDLIBS=-l:bind_wrapper.o -l:refuzz.o -lrt
+export LDLIBS=-l:libtangofuzz.o -lrt
 
 TARGETS=$(sort $(dir $(wildcard ./*/Makefile)))
 
