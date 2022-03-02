@@ -169,12 +169,21 @@ class TCPChannel(PtraceChannel):
             # read, recv, recvfrom, recvmsg
             elif syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') and syscall.arguments[0].value == self._sockfd:
                 pass
-            elif syscall.name == 'shutdown' and syscall.arguments[0].value == self._sockfd:
-                raise ChannelBrokenException("Channel closed while waiting for server to read")
-            elif syscall.name == 'close' and syscall.arguments[0].value == self._sockfd:
-                self._refcounter -= 1
-                if self._refcounter == 0:
+            # For the next two cases, since break_on_entry is True, the effect
+            # only takes place on the second occurrence, when the syscall exits;
+            # so we check if the result is None (entry) or not (exit)
+            elif syscall.name in ('shutdown', 'close') and syscall.arguments[0].value == self._sockfd:
+                if syscall.result is None:
+                    return
+                elif syscall.name == 'shutdown':
                     raise ChannelBrokenException("Channel closed while waiting for server to read")
+                elif syscall.name == 'close':
+                    self._refcounter -= 1
+                    if self._refcounter == 0:
+                        raise ChannelBrokenException("Channel closed while waiting for server to read")
+                    return
+            else:
+                return
             nonlocal server_waiting
             server_waiting = True
 
