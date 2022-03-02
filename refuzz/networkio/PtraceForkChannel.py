@@ -187,18 +187,9 @@ class PtraceForkChannel(PtraceChannel):
             self._proc_trapped = False
 
     def close(self, terminate, **kwargs):
-        def terminator(process):
-            try:
-                process.terminate()
-            except PtraceError:
-                warning("Attempted to terminate non-existent process")
-                self._debugger.deleteProcess(self.forked_child)
-            for p in process.children:
-                terminator(p)
-
         if self.forked_child:
             if terminate:
-                terminator(self.forked_child)
+                self.terminator(self.forked_child)
             # when we kill the forked_child, we wake up the forkserver from the trap
             self._wakeup_forkserver()
 

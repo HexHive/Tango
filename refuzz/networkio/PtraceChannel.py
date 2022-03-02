@@ -237,19 +237,20 @@ class PtraceChannel(ChannelBase):
                 result = future.result()
             return (last_process, result)
 
+    def terminator(self, process):
+        try:
+            process.terminate()
+        except PtraceError:
+            warning("Attempted to terminate non-existent process")
+        finally:
+            if process in self._debugger:
+                self._debugger.deleteProcess(process)
+        for p in process.children:
+            self.terminator(p)
+
     def close(self, terminate, **kwargs):
         if terminate:
-            for proc in self._debugger:
-                try:
-                    proc.detach()
-                except PtraceError:
-                    try:
-                        proc.kill(signal.SIGSTOP)
-                        proc.waitSyscall()
-                        proc.detach()
-                    except Exception:
-                        pass
-                    pass
+            self.terminator(self._proc)
 
     def __del__(self):
         self.close(terminate=True)
