@@ -69,18 +69,19 @@ class PtraceChannel(ChannelBase):
             debug(f"syscall processed: [{process.pid}] {syscall.format()}")
 
     def process_exit(self, event):
-        exitcode = -256
-        if event.exitcode is not None:
-            exitcode = event.exitcode
         warning(f"Process with {event.process.pid=} exited, deleting from debugger")
         warning(f"Reason: {event}")
         self._debugger.deleteProcess(event.process)
-        if exitcode == 0:
+        if event.exitcode == 0:
             raise ProcessTerminatedException(f"Process with {event.process.pid=} exited normally", exitcode=0)
-        elif exitcode in (1, *range(128, 128 + 65)):
-            raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with code {exitcode}", exitcode=exitcode)
+        elif event.signum is not None:
+            raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with {event.signum=}", signum=event.signum)
+        elif event.exitcode == 1:
+            # exitcode == 1 is usually ASan's return code when a violation is reported
+            # FIXME can we read ASan's exit code from env options?
+            raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with {event.exitcode=}", exitcode=1)
         else:
-            raise ProcessTerminatedException(f"Process with {event.process.pid=} exited with code {exitcode}", exitcode=exitcode)
+            raise ProcessCrashedException(f"Process with {event.process.pid=} terminated abnormally with {event.exitcode=}", exitcode=event.exitcode)
 
     def process_signal(self, event):
         if event.signum == signal.SIGUSR2:

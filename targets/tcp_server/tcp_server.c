@@ -77,18 +77,21 @@ int main( int argc, char *argv[] ) {
             printf("Closing session with `%d`. Bye!\n", client_fd);
             break;
         }
+        else if (buffer[0] == '\xAA' && buffer[1] == '\xBB') {
+            // CRASH!
+            printf("CRASHING NOW!\n");
+            fflush(stdout);
+            *(volatile int *)(0) = 0x41414141;
+        }
 
         if (strlen(buffer) == 0) {
             break;
         }
-
-        printf("Received data...\n");
 
         free(response);
         response = process_operation(buffer);
         bzero(buffer, buffer_len * sizeof(char));
 
         send(client_fd, response, strlen(response), 0);
-        printf("Echoed data back...\n");
     }
 }
