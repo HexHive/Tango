@@ -6,12 +6,12 @@ from input import InputBase, PCAPInput, PreparedInput
 import os
 
 class InputGeneratorBase(ABC):
-    def __init__(self, startup: str, seed_dir: str, ch_env: ChannelFactoryBase):
+    def __init__(self, startup: str, seed_dir: str, protocol: str):
         self._seed_dir = seed_dir
-        self._ch_env = ch_env
+        self._protocol = protocol
 
         if startup and os.path.isfile(startup):
-            self._startup = PCAPInput(startup, self._ch_env)
+            self._startup = PCAPInput(startup, protocol=self._protocol)
         else:
             # FIXME maybe add an EmptyInput class
             self._startup = PreparedInput()
@@ -26,7 +26,7 @@ class InputGeneratorBase(ABC):
 
         for seed in seeds:
             # parse seed to PreparedInput
-            input = PCAPInput(seed, self._ch_env)
+            input = PCAPInput(seed, protocol=self._protocol)
             self._pcaps.append(input)
 
     @abstractmethod

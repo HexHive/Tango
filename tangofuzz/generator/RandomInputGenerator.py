@@ -6,8 +6,8 @@ from random import Random
 from mutator import HavocMutator
 
 class RandomInputGenerator(InputGeneratorBase):
-    def __init__(self, initial: str, seed_dir: str, ch_env: ChannelFactoryBase):
-        super().__init__(initial, seed_dir, ch_env)
+    def __init__(self, startup: str, seed_dir: str, protocol: str):
+        super().__init__(startup, seed_dir, protocol)
 
     def generate(self, state: StateBase, entropy: Random) -> InputBase:
         # TODO move escapers from state to state tracker/generator?

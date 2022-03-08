@@ -111,6 +111,10 @@ class FuzzerConfig:
         return Environment(**_config)
 
     @cached_property
+    def protocol(self):
+        return self._config["channel"]["type"]
+
+    @cached_property
     def ch_env(self):
         _config = self._config["channel"]
         if not self.use_forkserver:
@@ -150,7 +154,7 @@ class FuzzerConfig:
         _config = self._config["input"]
         input_type = _config.get("type", "mutation")
         if input_type == "mutation":
-            return RandomInputGenerator(self.startup_pcap, self.seed_dir, self.ch_env)
+            return RandomInputGenerator(self.startup_pcap, self.seed_dir, self.protocol)
         else:
             raise NotImplemented()
 
