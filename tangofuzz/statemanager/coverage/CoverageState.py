@@ -22,6 +22,7 @@ class CoverageState(StateBase):
             new = super(CoverageState, cls).__new__(cls)
             new._cov = cov
             new._map = address
+            new._hash = _hash
             cls._cache[_hash] = new
             super(CoverageState, new).__init__()
             return new
@@ -33,6 +34,7 @@ class CoverageState(StateBase):
             new._cov = coverage_map
             new._map = address
             new._hash_cov = lambda cov, map: _hash
+            new._hash = _hash
             cls._cache[_hash] = new
             super(CoverageState, new).__init__()
             return new
@@ -81,7 +83,7 @@ class CoverageState(StateBase):
         return reduce(lambda x,y: x ^ hash(y), cov.items(), 0)
 
     def __hash__(self):
-        return self._hash_cov(self._cov, self._map)
+        return self._hash
 
     def __eq__(self, other):
         return hash(self) == hash(other)

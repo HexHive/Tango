@@ -121,6 +121,41 @@ class StateMachine:
             )
         self._graph.remove_node(state)
 
+    def get_any_path(self, destination: StateBase, source: StateBase=None) \
+        -> List[Tuple[StateBase, StateBase, InputBase]]:
+        """
+        Returns an arbitrary path to the destination by reconstructing it from
+        each state's cached predecessor transition (i.e. the transition that
+        first led to that state from some predecessor). If source is not on the
+        reconstructed path, we search for it as usual with get_min_paths.
+
+        :param      destination:  The destination state
+        :type       destination:  StateBase
+        :param      source:       The source state
+        :type       source:       StateBase
+
+        :returns:   a list of consecutive edge tuples on the same path.
+        :rtype:     list[src, dst, input]
+        """
+        path = []
+        current_state = destination
+        while current_state.predecessor_transition is not None \
+                and current_state != source:
+            pred, inp = current_state.predecessor_transition
+            path.append((pred, current_state, inp))
+            current_state = pred
+
+        if source not in (None, self._entry_state) and current_state is None:
+            # the source state was not on the reconstructed path, so we try to
+            # find it through a graph search
+            return next(self.get_min_paths(destination, source))
+
+        if not path:
+            return [(destination, destination, PreparedInput())]
+        else:
+            path.reverse()
+            return path
+
     def get_min_paths(self, destination: StateBase, source: StateBase=None) \
         -> Generator[List[Tuple[StateBase, StateBase, InputBase]], None, None]:
         """
@@ -134,7 +169,7 @@ class StateMachine:
 
         :returns:   Generator object, each item is a list of consecutive edge
                     tuples on the same path.
-        :rtype:     generator
+        :rtype:     generator[list[src, dst, input]]
         """
         return self.get_paths(destination, source, minimized_only=True)
 
@@ -152,24 +187,25 @@ class StateMachine:
 
         :returns:   Generator object, each item is a list of consecutive edge
                     tuples on the same path.
-        :rtype:     generator
+        :rtype:     generator[list[src, dst, input]]
         """
-        def get_edge_with_inputs(src, dst):
-            data = self._graph.get_edge_data(src, dst)
-            yield src, dst, data['minimized']
-            if not minimized_only:
-                for input in data['transition']:
-                    yield src, dst, input
-
         source = source or self._entry_state
         if destination == source:
             yield [(source, destination, PreparedInput())]
         else:
             paths = nx.all_simple_edge_paths(self._graph, source, destination)
             for path in paths:
-                xpaths = xproduct(*(get_edge_with_inputs(*edge) for edge in path))
+                xpaths = xproduct(*(self.get_edge_with_inputs(*edge, minimized_only)
+                                        for edge in path))
                 for xpath in xpaths:
                     tuples = []
                     for _source, _destination, _input in xpath:
                         tuples.append((_source, _destination, _input))
                     yield tuples
+
+    def get_edge_with_inputs(self, src, dst, minimized_only):
+        data = self._graph.get_edge_data(src, dst)
+        yield src, dst, data['minimized']
+        if not minimized_only:
+            for input in data['transition']:
+                yield src, dst, input

@@ -5,14 +5,7 @@ class StateBase(ABC):
     def __init__(self):
         self._last_input = None
         self._out_edges = None
-
-    @abstractmethod
-    def __hash__(self):
-        pass
-
-    @abstractmethod
-    def __eq__(self, other):
-        pass
+        self._pred = None
 
     @property
     def last_input(self):
@@ -23,7 +16,7 @@ class StateBase(ABC):
         self._last_input = value
 
     @abstractmethod
-    def get_escaper(self) -> InputBase:
+    def __hash__(self):
         pass
 
     @property
@@ -34,3 +27,19 @@ class StateBase(ABC):
     @out_edges.setter
     def out_edges(self, fn_edges):
         self._out_edges = fn_edges
+
+    @property
+    def predecessor_transition(self):
+        return self._pred
+
+    @predecessor_transition.setter
+    def predecessor_transition(self, state):
+        self._pred = state
+
+    @abstractmethod
+    def __eq__(self, other):
+        pass
+
+    @abstractmethod
+    def get_escaper(self) -> InputBase:
+        pass
