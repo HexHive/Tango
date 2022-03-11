@@ -54,6 +54,8 @@ class PtraceChannel(NetworkChannel):
         default_ignore = lambda syscall: syscall.name not in self._syscall_whitelist
         self.prepare_process(self._proc, default_ignore, syscall=True)
 
+        self._monitor_executor = ThreadPoolExecutor()
+
     def prepare_process(self, process, ignore_callback, syscall=True):
         if not process in self._debugger:
             self._debugger.addProcess(process, is_attached=True)
@@ -213,31 +215,30 @@ class PtraceChannel(NetworkChannel):
                        break_on_entry: bool = False,
                        timeout: float = None,
                        **kwargs):
-        with ThreadPoolExecutor() as executor:
-            for process in self._debugger:
-                # update the ignore_callback of processes in the debugger
-                self.prepare_process(process, ignore_callback, syscall=False)
+        for process in self._debugger:
+            # update the ignore_callback of processes in the debugger
+            self.prepare_process(process, ignore_callback, syscall=False)
 
-            ## Execute monitor target
-            if monitor_target:
-                future = executor.submit(monitor_target)
+        ## Execute monitor target
+        if monitor_target:
+            future = self._monitor_executor.submit(monitor_target)
 
-            ## Listen for and process syscalls
-            stop_event = Event()
-            if timeout is not None:
-                timeout_timer = Thread(target=self.timeout_handler, args=(stop_event,))
-                timeout_timer.daemon = True
-                timeout_timer.start()
+        ## Listen for and process syscalls
+        stop_event = Event()
+        if timeout is not None:
+            timeout_timer = Thread(target=self.timeout_handler, args=(stop_event,))
+            timeout_timer.daemon = True
+            timeout_timer.start()
 
-            last_process = self._monitor_syscalls_internal_loop(stop_event,
-                    ignore_callback, break_callback, syscall_callback,
-                    break_on_entry, **kwargs)
+        last_process = self._monitor_syscalls_internal_loop(stop_event,
+                ignore_callback, break_callback, syscall_callback,
+                break_on_entry, **kwargs)
 
-            ## Return the target's result
-            result = None
-            if monitor_target:
-                result = future.result()
-            return (last_process, result)
+        ## Return the target's result
+        result = None
+        if monitor_target:
+            result = future.result()
+        return (last_process, result)
 
     def terminator(self, process):
         try:
@@ -255,5 +256,6 @@ class PtraceChannel(NetworkChannel):
             self.terminator(self._proc)
 
     def __del__(self):
+        self._monitor_executor.shutdown(wait=True)
         self.close(terminate=True)
         self._debugger.quit()
