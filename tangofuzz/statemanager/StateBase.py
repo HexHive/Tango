@@ -33,8 +33,8 @@ class StateBase(ABC):
         return self._pred
 
     @predecessor_transition.setter
-    def predecessor_transition(self, state):
-        self._pred = state
+    def predecessor_transition(self, transition):
+        self._pred = transition
 
     @abstractmethod
     def __eq__(self, other):

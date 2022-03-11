@@ -12,42 +12,8 @@ from loader       import StateLoaderBase
 from profiler     import ProfileValue, ProfileFrequency, ProfileCount
 
 class StateManager:
-    class StateManagerContext:
     def __init__(self, loader: StateLoaderBase, tracker: StateTrackerBase,
-        def __init__(self, sman: StateManager, input: InputBase):
             strategy_ctor: Callable[[StateMachine, StateBase], StrategyBase],
-            self._sman = sman
-            self._input = input
-            self._start = self._stop = None
-
-        def input_gen(self):
-            # we delay the call to the slicing decorator until needed
-            return self._input[self._start:self._stop]
-
-        def __iter__(self):
-            self._start = self._stop = 0
-            for idx, interaction in enumerate(self._input):
-                ProfileValue('status')('fuzz')
-                self._stop = idx + 1
-                yield interaction
-                # the generator execution is suspended until next() is called so
-                # the StateManager update is only called after the interaction
-                # is executed by the loader
-                if self._sman.update(self.input_gen):
-                    self._start = idx + 1
-
-            # commit the rest of the input
-            if self._sman._last_state.last_input is not None:
-                self._sman._last_state.last_input += self.input_gen()
-            else:
-                self._sman._last_state.last_input = self.input_gen()
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc_value, exc_traceback):
-            pass
-
             cache_inputs: bool, workdir: str, protocol: str):
         self._loader = loader
         self._tracker = tracker
@@ -103,8 +69,8 @@ class StateManager:
     def reload_target(self):
         self.reset_state(self._strategy.target)
 
-    def get_context(self, input: InputBase) -> StateManager.StateManagerContext:
-        return self.StateManagerContext(self, input)
+    def get_context(self, input: InputBase) -> StateManagerContext:
+        return StateManagerContext(self, input)
 
     def step(self, input: InputBase):
         """
@@ -306,3 +272,45 @@ class StateManager:
             result = FileCachingDecorator(self._workdir, "queue", self._protocol)(input, self, copy=True)
 
         return result
+
+class StateManagerContext:
+    """
+    This context object provides a wrapper around the input to be sent to the
+    target. By wrapping the iterator method, the state manager is updated after
+    every interaction in the input. If a state change happens within an input
+    sequence, the input is split, where the first part is used as the transition
+    and the second part continues to build up state for any following
+    transition.
+    """
+    def __init__(self, sman: StateManager, input: InputBase):
+        self._sman = sman
+        self._input = input
+        self._start = self._stop = None
+
+    def input_gen(self):
+        # we delay the call to the slicing decorator until needed
+        return self._input[self._start:self._stop]
+
+    def __iter__(self):
+        self._start = self._stop = 0
+        for idx, interaction in enumerate(self._input):
+            ProfileValue('status')('fuzz')
+            self._stop = idx + 1
+            yield interaction
+            # the generator execution is suspended until next() is called so
+            # the StateManager update is only called after the interaction
+            # is executed by the loader
+            if self._sman.update(self.input_gen):
+                self._start = idx + 1
+
+        # commit the rest of the input
+        if self._sman._last_state.last_input is not None:
+            self._sman._last_state.last_input += self.input_gen()
+        else:
+            self._sman._last_state.last_input = self.input_gen()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        pass

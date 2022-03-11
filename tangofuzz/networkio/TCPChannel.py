@@ -34,31 +34,6 @@ class TCPChannelFactory(TransportChannelFactory):
 class TCPChannel(PtraceChannel):
     RECV_CHUNK_SIZE = 4096
 
-    class ListenerSocketState:
-        SOCKET_UNBOUND = 1
-        SOCKET_BOUND = 2
-        SOCKET_LISTENING = 3
-
-        def __init__(self):
-            self._state = self.SOCKET_UNBOUND
-
-        def event(self, process, syscall):
-            assert (syscall.result != -1), f"Syscall failed, {errno.error_code(-syscall.result)}"
-            if self._state == self.SOCKET_UNBOUND and syscall.name == 'bind':
-                sockaddr = syscall.arguments[1].value
-                # FIXME apparently, family is 2 bytes, not 4?
-                # maybe use the parser that comes with python-ptrace
-                self._sa_family,  = struct.unpack('@H', process.readBytes(sockaddr, 2))
-                assert (self._sa_family  == socket.AF_INET), "Only IPv4 is supported."
-                self._sin_port, = struct.unpack('!H', process.readBytes(sockaddr + 2, 2))
-                self._sin_addr = socket.inet_ntop(self._sa_family, process.readBytes(sockaddr + 4, 4))
-                self._state = self.SOCKET_BOUND
-                debug(f"Socket bound to port {self._sin_port}")
-            elif self._state == self.SOCKET_BOUND and syscall.name == 'listen':
-                self._state = self.SOCKET_LISTENING
-                debug(f"Server listening on port {self._sin_port}")
-                return (self._sa_family, self._sin_addr, self._sin_port)
-
     def __init__(self, endpoint: str, port: int,
                     connect_timeout: float, data_timeout: float, **kwargs):
         super().__init__(**kwargs)
@@ -90,7 +65,7 @@ class TCPChannel(PtraceChannel):
                 if domain != socket.AF_INET or (typ & socket.SOCK_STREAM) == 0:
                     return
                 fd = syscall.result
-                fds[fd] = self.ListenerSocketState()
+                fds[fd] = ListenerSocketState()
             elif syscall.name in ('bind', 'listen'):
                 fd = syscall.arguments[0].value
                 if fd not in fds:
@@ -275,3 +250,28 @@ class TCPChannel(PtraceChannel):
             self._socket.close()
             self._socket = None
         super().close(**kwargs)
+
+class ListenerSocketState:
+    SOCKET_UNBOUND = 1
+    SOCKET_BOUND = 2
+    SOCKET_LISTENING = 3
+
+    def __init__(self):
+        self._state = self.SOCKET_UNBOUND
+
+    def event(self, process, syscall):
+        assert (syscall.result != -1), f"Syscall failed, {errno.error_code(-syscall.result)}"
+        if self._state == self.SOCKET_UNBOUND and syscall.name == 'bind':
+            sockaddr = syscall.arguments[1].value
+            # FIXME apparently, family is 2 bytes, not 4?
+            # maybe use the parser that comes with python-ptrace
+            self._sa_family,  = struct.unpack('@H', process.readBytes(sockaddr, 2))
+            assert (self._sa_family  == socket.AF_INET), "Only IPv4 is supported."
+            self._sin_port, = struct.unpack('!H', process.readBytes(sockaddr + 2, 2))
+            self._sin_addr = socket.inet_ntop(self._sa_family, process.readBytes(sockaddr + 4, 4))
+            self._state = self.SOCKET_BOUND
+            debug(f"Socket bound to port {self._sin_port}")
+        elif self._state == self.SOCKET_BOUND and syscall.name == 'listen':
+            self._state = self.SOCKET_LISTENING
+            debug(f"Server listening on port {self._sin_port}")
+            return (self._sa_family, self._sin_addr, self._sin_port)
