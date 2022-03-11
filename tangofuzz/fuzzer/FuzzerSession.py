@@ -110,6 +110,9 @@ class FuzzerSession:
                 critical(f"Encountered exception while resetting state! {ex = }")
             except KeyboardInterrupt:
                 from code import InteractiveConsole
+                # it seems this library fixes the handling of arrows and other
+                # special console signals
+                import readline
                 repl = InteractiveConsole(locals=locals())
                 ProfiledObjects['elapsed'].toggle()
                 repl.interact(banner="Fuzzing paused (type exit() to quit)",
