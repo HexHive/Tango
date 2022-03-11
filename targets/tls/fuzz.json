@@ -2,9 +2,7 @@
 	"exec": {
 		"path": "./targets/tls/openssl",
 		"args": ["./targets/tls/openssl", "s_server", "-key", "key.pem", "-cert", "cert.pem", "-4", "-naccept", "1", "-no_anti_replay"],
-		"cwd": "./targets/tls",
-		"stdout": "./stdout",
-		"stderr": "./stderr"
+		"cwd": "./targets/tls"
 	},
 	"channel": {
 		"type": "tcp",

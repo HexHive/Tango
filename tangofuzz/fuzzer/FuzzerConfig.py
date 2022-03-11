@@ -14,6 +14,7 @@ import os
 import logging
 import ctypes
 from pathlib import Path
+from subprocess import DEVNULL
 
 class FuzzerConfig:
     """
@@ -99,6 +100,8 @@ class FuzzerConfig:
         for stdf in ["stdin", "stdout", "stderr"]:
             if stdf in _config:
                 _config[stdf] = open(_config[stdf], "wt")
+            elif stdf != "stdin":
+                _config[stdf] = DEVNULL
         if not _config.get("env"):
             _config["env"] = dict(os.environ)
         _config["args"][0] = os.path.realpath(_config["args"][0])
