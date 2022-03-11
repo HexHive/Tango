@@ -1,5 +1,4 @@
 from loader       import ReplayStateLoader
-from ptrace.binding import ptrace_traceme
 import subprocess
 
 class ReplayForkStateLoader(ReplayStateLoader):
@@ -14,7 +13,7 @@ class ReplayForkStateLoader(ReplayStateLoader):
                 cwd = self._exec_env.cwd,
                 restore_signals = True, # TODO check if this should be false
                 env = self._exec_env.env,
-                preexec_fn = ptrace_traceme
+                preexec_fn = self._prepare_process
             )
         elif self._channel:
             ## Kill current process, if any
@@ -24,4 +23,4 @@ class ReplayForkStateLoader(ReplayStateLoader):
                 pass
 
         ## Establish a connection
-        self._channel = self._ch_env.create(self._pobj)
+        self._channel = self._ch_env.create(self._pobj, self._netns_name)

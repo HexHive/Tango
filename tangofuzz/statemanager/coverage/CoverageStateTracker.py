@@ -14,12 +14,15 @@ class CoverageStateTracker(StateTrackerBase):
 
         self._bind_lib = bind_lib
 
+        # session-unique shm file
+        shm_name = f'/refuzz_cov_{id(self):016X}'
+
         # set environment variables and load program with loader
         loader._exec_env.env.update({
-                'REFUZZ_COVERAGE': '/refuzz_cov'
+                'REFUZZ_COVERAGE': shm_name
             })
         loader.load_state(None, None)
-        self._reader = CoverageReader('/refuzz_cov')
+        self._reader = CoverageReader(shm_name)
         self._entry_state = CoverageState(self._reader.array,
             self._reader.address_of_buffer(self._reader._map),
             bind_lib=self._bind_lib)

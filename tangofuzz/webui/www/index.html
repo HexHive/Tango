@@ -178,7 +178,7 @@
 
 	<script>
 		'use strict';
-		const socket = new WebSocket("ws://" + location.hostname + ":8081");
+		const socket = new WebSocket("ws://" + location.hostname + ":" + (parseInt(location.port) + 1));
 		const svg = $('#dgsvg')[0]
 		let viz = new Viz();
 		let parser = new DOMParser();

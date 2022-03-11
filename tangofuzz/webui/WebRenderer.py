@@ -1,3 +1,5 @@
+from . import info
+
 from webui import WebDataLoader
 from profiler import ProfilingStoppedEvent as stopped
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -11,11 +13,20 @@ WWW_PATH = os.path.join(os.path.dirname(__file__), 'www')
 
 class WebRenderer:
     def __init__(self, session, http_port=8080, ws_port=8081):
-        address = ('', http_port)
         handler = partial(SimpleHTTPRequestHandler, directory=WWW_PATH)
-        self._httpd = HTTPServer(address, handler)
+        while True:
+            address = ('', http_port)
+            try:
+                self._httpd = HTTPServer(address, handler)
+                break
+            except OSError:
+                http_port += 2
+                ws_port += 2
+
         self._ws_port = ws_port
         self._session = session
+
+        info(f"WebUI listening on http://localhost:{http_port}")
 
     def start(self):
         self._start_httpd()

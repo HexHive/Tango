@@ -21,8 +21,9 @@ class TCPChannelFactory(TransportChannelFactory):
 
     protocol: str = "tcp"
 
-    def create(self, pobj: Popen) -> ChannelBase:
+    def create(self, pobj: Popen, netns: str) -> ChannelBase:
         ch = TCPChannel(pobj=pobj,
+                          netns=netns,
                           endpoint=self.endpoint, port=self.port,
                           timescale=self.timescale,
                           connect_timeout=self.connect_timeout,
@@ -113,7 +114,7 @@ class TCPChannel(PtraceChannel):
         self.monitor_syscalls(None, ignore_callback, break_callback, syscall_callback_listen, fds={}, listeners=listeners, timeout=self._connect_timeout)
 
     def connect(self, address: tuple):
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._socket = self.nssocket(socket.AF_INET, socket.SOCK_STREAM)
         ## Now that we've verified the server is listening, we can connect
         ## Listen for a call to accept() to get the connected socket fd
         sockfd = -1

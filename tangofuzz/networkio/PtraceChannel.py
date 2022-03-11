@@ -1,7 +1,7 @@
 from . import debug, warning, info
 
 from typing import Callable
-from networkio import ChannelBase
+from networkio import NetworkChannel
 from   common      import (ChannelTimeoutException,
                           ProcessCrashedException,
                           ProcessTerminatedException)
@@ -24,9 +24,10 @@ import traceback
 
 SOCKET_SYSCALL_NAMES = SOCKET_SYSCALL_NAMES.union(('read', 'write'))
 
-class PtraceChannel(ChannelBase):
-    def __init__(self, **kwargs):
+class PtraceChannel(NetworkChannel):
+    def __init__(self, pobj: Popen, **kwargs):
         super().__init__(**kwargs)
+        self._pobj = pobj
 
         debug("Setting up new ptrace-enabled channel")
 

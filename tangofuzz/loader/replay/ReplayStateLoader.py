@@ -14,6 +14,8 @@ from ptrace.binding import ptrace_traceme
 import subprocess
 from profiler import ProfileCount
 from itertools import chain
+from pyroute2 import netns, NetNS
+import os
 
 class ReplayStateLoader(StateLoaderBase):
     PROC_TERMINATE_RETRIES = 5
@@ -26,6 +28,17 @@ class ReplayStateLoader(StateLoaderBase):
         self._pobj = None # Popen object of child process
         self._limit = path_retry_limit
         self._startup_input = startup_input
+        self._netns_name = f'ns:{id(self):016X}'
+        self._netns = NetNS(self._netns_name, flags=os.O_CREAT | os.O_EXCL)
+        self._netns.link('set', index=1, state='up')
+
+    def __del__(self):
+        if hasattr(self, '_netns'):
+            self._netns.remove()
+
+    def _prepare_process(self):
+        netns.setns(self._netns_name)
+        ptrace_traceme()
 
     def _launch_target(self):
         # TODO later replace this by a forkserver to reduce reset costs
@@ -58,11 +71,11 @@ class ReplayStateLoader(StateLoaderBase):
             cwd = self._exec_env.cwd,
             restore_signals = True, # TODO check if this should be false
             env = self._exec_env.env,
-            preexec_fn = ptrace_traceme
+            preexec_fn = self._prepare_process
         )
 
         ## Establish a connection
-        self._channel = self._ch_env.create(self._pobj)
+        self._channel = self._ch_env.create(self._pobj, self._netns_name)
 
     @property
     def channel(self):

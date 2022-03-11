@@ -27,6 +27,7 @@ class CoverageReader:
         # get the size of the coverage array
         _type = self.typecode_to_type['I']
         _size = ctypes.sizeof(_type)
+        # FIXME this is prone to race conditions when launching multiple fuzzers
         _mem, _map = self.init_array("/refuzz_size", _type, _size, False, False)
         _size = _type.from_address(self.address_of_buffer(_map)).value
         _map.close()

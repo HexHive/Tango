@@ -15,8 +15,9 @@ class TCPForkChannelFactory(TransportChannelFactory):
 
     protocol: str = "tcp"
 
-    def create(self, pobj: Popen) -> ChannelBase:
+    def create(self, pobj: Popen, netns: str) -> ChannelBase:
         self._pobj = pobj
+        self._netns = netns
         ch = self.forkchannel
         ch.connect((self.endpoint, self.port))
         return ch
@@ -24,6 +25,7 @@ class TCPForkChannelFactory(TransportChannelFactory):
     @cached_property
     def forkchannel(self):
         return TCPForkChannel(pobj=self._pobj,
+                          netns=self._netns,
                           endpoint=self.endpoint, port=self.port,
                           timescale=self.timescale,
                           connect_timeout=self.connect_timeout,
