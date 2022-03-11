@@ -26,10 +26,11 @@ struct sockaddr_in* init_sockaddr_in(uint16_t port_number) {
     return socket_address;
 }
 
-char* process_operation(char *input) {
-    size_t n = strlen(input) * sizeof(char);
+char* process_operation(char *input, size_t size) {
+    size_t n = strnlen(input, size) * sizeof(char);
     char *output = malloc(n);
     memcpy(output, input, n);
+    output[n - 1] = '\0';
     return output;
 }
 
@@ -38,29 +39,30 @@ int main( int argc, char *argv[] ) {
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
 
     struct sockaddr_in *server_sockaddr = init_sockaddr_in(port_number);
-    struct sockaddr_in *client_sockaddr = malloc(sizeof(struct sockaddr_in));
     socklen_t server_socklen = sizeof(*server_sockaddr);
-    socklen_t client_socklen = sizeof(*client_sockaddr);
 
 
     if (bind(server_fd, (const struct sockaddr *) server_sockaddr, server_socklen) < 0)
     {
         printf("Error! Bind has failed\n");
+        free(server_sockaddr);
         exit(0);
     }
     if (listen(server_fd, 3) < 0)
     {
         printf("Error! Can't listen\n");
+        free(server_sockaddr);
         exit(0);
     }
 
+    free(server_sockaddr);
 
     const size_t buffer_len = 256;
     char *buffer = malloc(buffer_len * sizeof(char));
     char *response = NULL;
     __pid_t pid = -1;
 
-    int client_fd = accept(server_fd, (struct sockaddr *) &client_sockaddr, &client_socklen);
+    int client_fd = accept(server_fd, NULL, NULL);
 
     if (client_fd == -1) {
         exit(0);
@@ -84,14 +86,16 @@ int main( int argc, char *argv[] ) {
             *(volatile int *)(0) = 0x41414141;
         }
 
-        if (strlen(buffer) == 0) {
+        if (strnlen(buffer, buffer_len) == 0) {
             break;
         }
 
-        free(response);
-        response = process_operation(buffer);
+        response = process_operation(buffer, buffer_len);
         bzero(buffer, buffer_len * sizeof(char));
 
         send(client_fd, response, strlen(response), 0);
+        free(response);
     }
+
+    free(buffer);
 }
