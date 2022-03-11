@@ -85,17 +85,21 @@ class ReplayStateLoader(StateLoaderBase):
         if state_or_path is None or sman is None:
             # special case where the state tracker wants an initial state
             path_gen = ((),)
+        elif isinstance((state := state_or_path), StateBase):
+            # WARN this path seems to lead the fuzzer to always fail to
+            # reproduce some states. Disabled temporarily pending further
+            # troubleshooting.
+            #
+            # Get a path to the target state (may throw if state not in sm)
+            # path_gen = chain((sman.state_machine.get_any_path(state),),
+                             # sman.state_machine.get_min_paths(state))
+            path_gen = sman.state_machine.get_min_paths(state)
         else:
-            if isinstance((state := state_or_path), StateBase):
-                # get a path to the target state (may throw if state not in sm)
-                path_gen = chain((sman.state_machine.get_any_path(state),),
-                                 sman.state_machine.get_min_paths(state))
-            else:
-                path_gen = (state_or_path,)
-                state = None
+            path_gen = (state_or_path,)
+            state = None
 
         # try out all paths until one succeeds
-        paths_tried = 1
+        paths_tried = 0
         exhaustive = False
         faulty_state = None
         while True:
@@ -111,6 +115,8 @@ class ReplayStateLoader(StateLoaderBase):
                 if sman is not None and update:
                     # FIXME should this be done here? (see comment in StateManager.reset_state)
                     sman._last_state = sman._tracker.entry_state
+
+                paths_tried += 1
                 try:
                     # reconstruct target state by replaying inputs
                     for source, destination, input in path:
@@ -118,7 +124,7 @@ class ReplayStateLoader(StateLoaderBase):
                         if source != sman.state_tracker.current_state:
                             faulty_state = source
                             raise StabilityException(
-                                "source state did not match current state"
+                                f"source state ({source}) did not match current state ({sman.state_tracker.current_state})"
                             )
                         # perform the input
                         self.execute_input(input, sman, update=update)
@@ -126,7 +132,7 @@ class ReplayStateLoader(StateLoaderBase):
                         if destination != sman.state_tracker.current_state:
                             faulty_state = destination
                             raise StabilityException(
-                                "destination state did not match current state"
+                                f"destination state ({destination}) did not match current state ({sman.state_tracker.current_state})"
                             )
                     break
                 except StabilityException as ex:
@@ -139,7 +145,6 @@ class ReplayStateLoader(StateLoaderBase):
                     ProfileCount('paths_failed')(1)
                     continue
                 finally:
-                    paths_tried += 1
                     if self._limit and paths_tried >= self._limit:
                         raise StateNotReproducibleException(
                             "destination state not reproducible",
