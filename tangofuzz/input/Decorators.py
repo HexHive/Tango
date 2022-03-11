@@ -16,10 +16,11 @@ class FileCachingDecorator(MemoryCachingDecorator):
     def __call__(self, input, sman, copy=True): # -> InputBase:
         path = reduce(operator.add, (x[2] for x in next(sman.state_machine.get_min_paths(sman._last_state))))
         self._prefix_len = len(tuple(path))
-        joined = path + input
+        # FIXME this assumes ReplayStateLoader is used
+        joined = sman._loader._startup_input + path + input
         inp = super().__call__(input, copy=copy)
 
-        input_typ = self.get_parent_class(inp.___iter___)
+        input_typ = self.get_parent_class(input.___iter___)
         filename = self.slugify(f'0x{inp.id:08X}_{input_typ.__name__}')
         self._path = os.path.join(self._dir, f'{filename}.pcap')
 

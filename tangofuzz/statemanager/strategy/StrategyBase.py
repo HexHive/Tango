@@ -3,9 +3,9 @@ from typing import Union
 from statemanager import StateBase, StateMachine
 
 class StrategyBase(ABC):
-    def __init__(self, sm: StateMachine, startup_state: StateBase):
+    def __init__(self, sm: StateMachine, entry_state: StateBase):
         self._sm = sm
-        self._startup = startup_state
+        self._entry = entry_state
 
     @abstractmethod
     def update_state(self, state: StateBase, invalidate: bool, is_new: bool):

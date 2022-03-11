@@ -133,9 +133,11 @@ class FuzzerConfig:
         _config = self._config["loader"]
         if _config["type"] == "replay":
             if not self.use_forkserver:
-                return ReplayStateLoader(self.exec_env, self.ch_env, self.disable_aslr)
+                return ReplayStateLoader(self.exec_env, self.ch_env,
+                    self.disable_aslr, self.input_generator.startup_input)
             else:
-                return ReplayForkStateLoader(self.exec_env, self.ch_env, self.disable_aslr)
+                return ReplayForkStateLoader(self.exec_env, self.ch_env,
+                    self.disable_aslr, self.input_generator.startup_input)
         else:
             raise NotImplemented()
 
@@ -168,7 +170,7 @@ class FuzzerConfig:
         _config = self._config["statemanager"]
         strategy_name = _config.get("strategy", "random")
         if strategy_name == "random":
-            return lambda sm, startup: RandomStrategy(sm, startup, entropy=self.entropy)
+            return lambda sm, entry: RandomStrategy(sm, entry, entropy=self.entropy)
         else:
             raise NotImplemented()
 
@@ -176,9 +178,9 @@ class FuzzerConfig:
     def state_manager(self):
         _config = self._config["statemanager"]
         cache_inputs = _config.get("cache_inputs", True)
-        return StateManager(self.input_generator.startup_input,
-            self.loader, self.state_tracker, self.scheduler_strategy,
-            cache_inputs, self.work_dir, self.ch_env.protocol)
+        return StateManager(self.loader, self.state_tracker,
+            self.scheduler_strategy, cache_inputs,
+            self.work_dir, self.ch_env.protocol)
 
     @cached_property
     def startup_pcap(self):

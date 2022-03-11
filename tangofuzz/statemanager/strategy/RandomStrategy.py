@@ -9,7 +9,7 @@ class RandomStrategy(StrategyBase):
         self._counter = 0
         self._limit = limit
         self._invalid_states = set()
-        self._target_state = self._startup
+        self._target_state = self._entry
 
     def _recalculate_target(self):
         self._counter = 0

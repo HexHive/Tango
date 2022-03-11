@@ -13,7 +13,9 @@ from profiler     import ProfileValue, ProfileFrequency, ProfileCount
 
 class StateManager:
     class StateManagerContext:
+    def __init__(self, loader: StateLoaderBase, tracker: StateTrackerBase,
         def __init__(self, sman: StateManager, input: InputBase):
+            strategy_ctor: Callable[[StateMachine, StateBase], StrategyBase],
             self._sman = sman
             self._input = input
             self._start = self._stop = None
@@ -46,8 +48,6 @@ class StateManager:
         def __exit__(self, exc_type, exc_value, exc_traceback):
             pass
 
-    def __init__(self, startup_input: InputBase, loader: StateLoaderBase,
-            tracker: StateTrackerBase, strategy_ctor: Callable[[StateMachine, StateBase], StrategyBase],
             cache_inputs: bool, workdir: str, protocol: str):
         self._loader = loader
         self._tracker = tracker
@@ -56,14 +56,8 @@ class StateManager:
         self._protocol = protocol
 
         self._last_state = self._tracker.entry_state
-        self._startup_input = startup_input
         self._sm = StateMachine(self._last_state)
-
-        # this ensures self._startup_state is updated to match state after
-        # startup_input is applied
-        self._startup_state = None
-        self.reset_state()
-        self._strategy = strategy_ctor(self._sm, self._startup_state)
+        self._strategy = strategy_ctor(self._sm, self._last_state)
 
     @property
     def state_machine(self) -> StateMachine:
@@ -92,13 +86,7 @@ class StateManager:
 
         try:
             if state_or_path is None:
-                if self._startup_state is None:
-                    self._loader.load_state(self._tracker.entry_state, self, update=False)
-                    self._loader.execute_input(self._startup_input, self, update=False)
-                    self._startup_state = self._tracker.current_state
-                else:
-                    self._loader.load_state(self._startup_state, self, update=False)
-                assert self._tracker.current_state == self._startup_state
+                self._loader.load_state(self._tracker.entry_state, self, update=False)
             else:
                 self._loader.load_state(state_or_path, self, update=False)
             if update:

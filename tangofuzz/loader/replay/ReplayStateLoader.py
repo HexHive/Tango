@@ -3,6 +3,7 @@ from .. import warning
 from typing       import Union
 from common       import StabilityException, StateNotReproducibleException
 from loader       import Environment
+from input        import InputBase
 from networkio    import (ChannelFactoryBase,
                          ChannelBase)
 from statemanager import (StateBase,
@@ -19,11 +20,12 @@ class ReplayStateLoader(StateLoaderBase):
     PROC_TERMINATE_WAIT = 0.1 # seconds
 
     def __init__(self, exec_env: Environment, ch_env: ChannelFactoryBase,
-            no_aslr: bool, path_retry_limit=50):
+            no_aslr: bool, startup_input: InputBase, path_retry_limit: int=50):
         # initialize the base class
         super().__init__(exec_env, ch_env, no_aslr)
         self._pobj = None # Popen object of child process
         self._limit = path_retry_limit
+        self._startup_input = startup_input
 
     def _launch_target(self):
         # TODO later replace this by a forkserver to reduce reset costs
@@ -89,6 +91,9 @@ class ReplayStateLoader(StateLoaderBase):
             for path in path_gen:
                 # relaunch the target and establish channel
                 self._launch_target()
+
+                ## Send startup input
+                self.execute_input(self._startup_input, None, update=False)
 
                 if sman is not None and update:
                     # FIXME should this be done here? (see comment in StateManager.reset_state)
