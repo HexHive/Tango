@@ -1,7 +1,6 @@
+from . import logger
 from ptrace.error import PTRACE_ERRORS, writeError
-from logging import getLogger
 from ptrace.ctypes_tools import formatAddress
-
 
 class FunctionArgument(object):
     """
@@ -38,7 +37,7 @@ class FunctionArgument(object):
                 else:
                     self.text = repr(self.value)
             except PTRACE_ERRORS as err:
-                writeError(getLogger(), err,
+                writeError(logger, err,
                            "Format argument %s of function %s() value error"
                            % (self.name, self.function.name))
                 self.text = repr(self.value)
@@ -81,7 +80,7 @@ class FunctionArgument(object):
                 else:
                     text = repr(value)
             except PTRACE_ERRORS as err:
-                writeError(getLogger(), err, "Format struct value error")
+                writeError(logger, err, "Format struct value error")
                 text = repr(value)
             arguments.append("%s=%s" % (name, text))
 

@@ -1,9 +1,10 @@
+from .. import logger
 from ptrace.cpu_info import CPU_WORD_SIZE
 from ptrace.ctypes_tools import uint2int, formatWordHex, formatAddress
 from ptrace.signames import signalName
 from ctypes import c_int
 from ptrace.error import PTRACE_ERRORS, writeError
-from logging import getLogger, INFO
+from logging import INFO
 from ptrace.func_arg import FunctionArgument
 from ptrace.syscall.posix_arg import (
     formatMmapProt, formatAccessMode, formatOpenFlags, formatCloneFlags, formatDirFd, formatOpenMode)
@@ -131,7 +132,7 @@ class SyscallArgument(FunctionArgument):
                     return text
             except PTRACE_ERRORS as err:
                 writeError(
-                    getLogger(), err, "Warning: Format %r value error" % self, log_level=INFO)
+                    logger, err, "Warning: Format %r value error" % self, log_level=INFO)
             return formatAddress(self.value)
 
         # Array like "int[2]"

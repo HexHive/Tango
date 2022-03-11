@@ -1,9 +1,9 @@
+from .. import logger, error
 from optparse import OptionGroup
-from logging import (getLogger, StreamHandler,
+from logging import (StreamHandler,
                      DEBUG, INFO, WARNING, ERROR)
 from sys import exit
 from ptrace import PtraceError
-from logging import error
 from ptrace.tools import locateProgram
 from ptrace.debugger import ProcessExit, DebuggerError
 from errno import EPERM
@@ -16,7 +16,6 @@ class Application(object):
         pass
 
     def _setupLog(self, fd):
-        logger = getLogger()
         handler = StreamHandler(fd)
         logger.addHandler(handler)
         if self.options.debug:

@@ -1,4 +1,4 @@
-from . import debug, critical
+from . import debug, warning, critical, error
 
 from input         import (InputBase,
                           PreparedInput,
@@ -82,30 +82,30 @@ class FuzzerSession:
                             ProfileCount('imprecise')(1)
                         except ProcessCrashedException as pc:
                             # TODO save crashing input
-                            critical(f"Process crashed: {pc = }")
+                            error(f"Process crashed: {pc = }")
                             ProfileCount('crash')(1)
                             FileCachingDecorator(self._workdir, "crash", self._protocol)(ex.payload, self._sman, copy=True)
                         except ProcessTerminatedException as pt:
-                            critical(f"Process terminated unexpectedtly? ({pt = })")
+                            warning(f"Process terminated unexpectedtly? ({pt = })")
                         except ChannelTimeoutException:
                             # TODO save timeout input
-                            critical("Received channel timeout exception")
+                            warning("Received channel timeout exception")
                             ProfileCount('timeout')(1)
                         except ChannelBrokenException as ex:
                             # TODO save crashing/breaking input
-                            critical(f"Received channel broken exception ({ex = })")
+                            warning(f"Received channel broken exception ({ex = })")
                         except ChannelSetupException:
                             # TODO save broken setup input
-                            critical("Received channel setup exception")
+                            warning("Received channel setup exception")
                         except Exception as ex:
-                            critical(f"Encountered unhandled loaded exception {ex = }")
+                            warning(f"Encountered unhandled loaded exception {ex = }")
                         # FIXME reset to StateManager's current target state
                         self._sman.reload_target()
                     except Exception as ex:
                         critical(f"Encountered weird exception {ex = }")
                         self._sman.reload_target()
             except StateNotReproducibleException as ex:
-                critical(f"Target state {ex._faulty_state} not reachable anymore!")
+                warning(f"Target state {ex._faulty_state} not reachable anymore!")
             except Exception as ex:
                 critical(f"Encountered exception while resetting state! {ex = }")
             except KeyboardInterrupt:
