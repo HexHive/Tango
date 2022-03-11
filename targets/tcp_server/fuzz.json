@@ -2,6 +2,9 @@
 	"exec": {
 		"path": "./targets/tcp_server/tcp_server",
 		"args": ["./targets/tcp_server/tcp_server"],
+		"env": {
+			"ASAN_OPTIONS": "detect_leaks=0"
+		},
 		"stdout": "./stdout",
 		"stderr": "./stderr"
 	},
@@ -14,7 +17,7 @@
 	},
 	"loader": {
 		"type": "replay",
-		"forkserver": false,
+		"forkserver": true,
 		"disable_aslr": true
 	},
 	"input": {
@@ -26,6 +29,6 @@
 	"fuzzer": {
 		"type": "coverage",
 		"lib": "./lib",
-		"workdir": "./workdir"
+		"workdir": "./workdir",
 	}
 }
