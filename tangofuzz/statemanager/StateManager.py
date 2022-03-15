@@ -14,10 +14,9 @@ from profiler     import ProfileValue, ProfileFrequency, ProfileCount
 class StateManager:
     def __init__(self, loader: StateLoaderBase, tracker: StateTrackerBase,
             strategy_ctor: Callable[[StateMachine, StateBase], StrategyBase],
-            cache_inputs: bool, workdir: str, protocol: str):
+            workdir: str, protocol: str):
         self._loader = loader
         self._tracker = tracker
-        self._cache_inputs = cache_inputs
         self._workdir = workdir
         self._protocol = protocol
 
@@ -183,19 +182,18 @@ class StateManager:
                     raise
 
                 if stable:
-                    if self._cache_inputs:
-                        last_input = MemoryCachingDecorator()(last_input, copy=False)
-                        if new:
-                            # call the transition pruning routine to shorten the last input
-                            debug("Attempting to minimize transition")
-                            try:
-                                last_input = self._minimize_transition(
-                                    self._last_state, current_state, last_input)
-                            except Exception as ex:
-                                # Minimization failed, again probably due to an
-                                # indeterministic target
-                                debug(f"Minimization failed, using original input {ex=}")
-                                FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=True)
+                    last_input = MemoryCachingDecorator()(last_input, copy=False)
+                    if new:
+                        # call the transition pruning routine to shorten the last input
+                        debug("Attempting to minimize transition")
+                        try:
+                            last_input = self._minimize_transition(
+                                self._last_state, current_state, last_input)
+                        except Exception as ex:
+                            # Minimization failed, again probably due to an
+                            # indeterministic target
+                            debug(f"Minimization failed, using original input {ex=}")
+                            FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=True)
 
                     self._sm.update_transition(self._last_state, current_state,
                         last_input)
