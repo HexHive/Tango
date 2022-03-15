@@ -15,12 +15,12 @@ class NetworkChannel(ChannelBase):
         This is a wrapper for socket.socket() that creates the socket inside the
         specified network namespace.
         """
-        with NetNS(nsname=self._netns):
+        with NetNSContext(nsname=self._netns):
             s = socket.socket(*args)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             return s
 
-class NetNS (object):
+class NetNSContext (object):
     """
     This is a context manager that on entry assigns the process to an alternate
     network namespace (specified by name, filesystem path, or pid) and then
