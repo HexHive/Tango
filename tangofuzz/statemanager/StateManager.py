@@ -161,6 +161,8 @@ class StateManager:
                         self._strategy.update_state(current_state, invalidate=True)
                     stable = False
 
+                    debug(f"Reloading last state ({self._last_state})")
+                    self.reset_state(self._last_state, update=False)
                     ProfileCount('imprecise')(1)
                 except (StabilityException, StateNotReproducibleException):
                     # This occurs when the reset_state() encountered an error
@@ -300,6 +302,17 @@ class StateManagerContext:
             # is executed by the loader
             if self._sman.update(self.input_gen):
                 self._start = idx + 1
+            # FIXME The state manager interrupts the target to verify individual
+            # transitions. To verify a transition, the last state is loaded, and
+            # the last input which observed a new state is replayed. However,
+            # due to imprecision of states, the chosen path to the last state
+            # may result in a different substate, and the replayed input thus no
+            # longer reaches the new state. When such an imprecision is met, the
+            # target is kept running, but the path has been "corrupted".
+            #
+            # It may be better to let the input update the state manager freely
+            # all throughout the sequence, and perform the validation step at
+            # the end to make sure no interesting states are lost.
 
         # commit the rest of the input
         if self._sman._last_state.last_input is not None:
