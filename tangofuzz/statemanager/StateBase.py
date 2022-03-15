@@ -29,6 +29,15 @@ class StateBase(ABC):
         self._out_edges = fn_edges
 
     @property
+    def in_edges(self):
+        if self._in_edges:
+            yield from self._in_edges(data=True)
+
+    @in_edges.setter
+    def in_edges(self, fn_edges):
+        self._in_edges = fn_edges
+
+    @property
     def predecessor_transition(self):
         return self._pred
 

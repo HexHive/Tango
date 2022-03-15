@@ -37,6 +37,7 @@ class StateMachine:
         if state not in self._graph.nodes:
             self._graph.add_node(state, added=time)
             state.out_edges = lambda **kwargs: partial(self._graph.out_edges, state)(**kwargs) if state in self._graph.nodes else ()
+            state.in_edges = lambda **kwargs: partial(self._graph.in_edges, state)(**kwargs) if state in self._graph.nodes else ()
             new = True
         self._graph.add_node(state, last_visit=time)
 
