@@ -195,7 +195,7 @@ class StateManager:
                         except Exception as ex:
                             # Minimization failed, again probably due to an
                             # indeterministic target
-                            debug(f"Minimization failed, using original input {ex=}")
+                            warning(f"Minimization failed, using original input {ex=}")
                             FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=True)
 
                     self._sm.update_transition(self._last_state, current_state,
