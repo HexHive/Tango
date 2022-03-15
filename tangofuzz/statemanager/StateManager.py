@@ -191,6 +191,7 @@ class StateManager:
                         try:
                             last_input = self._minimize_transition(
                                 self._last_state, current_state, last_input)
+                            last_input = FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=False)
                         except Exception as ex:
                             # Minimization failed, again probably due to an
                             # indeterministic target
@@ -267,11 +268,9 @@ class StateManager:
             raise StabilityException("destination state did not match current state")
 
         if reduced:
-            result = FileCachingDecorator(self._workdir, "queue", self._protocol)(lin_input, self, copy=False)
+            return lin_input
         else:
-            result = FileCachingDecorator(self._workdir, "queue", self._protocol)(input, self, copy=True)
-
-        return result
+            return input
 
 class StateManagerContext:
     """
