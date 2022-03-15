@@ -70,7 +70,8 @@ class WebDataLoader:
 
         to_delete = []
         for node, data in G.nodes(data=True):
-            if len(G.in_edges(node)) == 0 and len(G.out_edges(node)) == 0:
+            if len(G.in_edges(node)) == 0 and len(G.out_edges(node)) == 0 \
+                    and len(G.nodes) > 1:
                 to_delete.append(node)
                 continue
             age = (now() - data.get('last_visit', self.NA_DATE)).total_seconds()
