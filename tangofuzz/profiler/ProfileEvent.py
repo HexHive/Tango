@@ -39,12 +39,12 @@ class ProfileEvent(ProfilerBase):
     def __enter__(self):
         while self._args is None:
             self._cv.wait()
-        self._cv.clear()
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self._args = None
         self._ret = None
+        self._cv.clear()
 
     def _listener_internal(self, cb, period):
         def worker():
