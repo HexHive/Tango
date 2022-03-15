@@ -8,5 +8,5 @@ websockets==10.0
 pygraphviz==1.7
 #libgraphviz-dev (from apt)
 readline==6.2.4.1
-pyroute2==0.6.7
+#pyroute2 @ git+https://github.com/hazimeh/pyroute2.git
 #setcap cap_net_admin,cap_sys_admin,cap_dac_override+eip python3.9
