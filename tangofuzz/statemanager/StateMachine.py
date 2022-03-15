@@ -35,14 +35,17 @@ class StateMachine:
         time = now()
         new = False
         if state not in self._graph.nodes:
-            self._graph.add_node(state, added=time)
+            self._graph.add_node(state, added=time, node_obj=state)
             state.out_edges = lambda **kwargs: partial(self._graph.out_edges, state)(**kwargs) if state in self._graph.nodes else ()
             state.in_edges = lambda **kwargs: partial(self._graph.in_edges, state)(**kwargs) if state in self._graph.nodes else ()
             new = True
+        else:
+            # we retrieve the original state object
+            state = self._graph.nodes[state]['node_obj']
         self._graph.add_node(state, last_visit=time)
 
         ProfileValue("coverage")(len(self._graph.nodes))
-        return new
+        return new, state
 
     @ProfileEvent('update_transition')
     def update_transition(self, source: StateBase, destination: StateBase,

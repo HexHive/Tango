@@ -129,7 +129,7 @@ class StateManager:
         # the tracker may return None as current_state, in case it has not yet
         # finished the training phase (preprocessing seeds)
         if current_state is not None:
-            new = self._sm.update_state(current_state)
+            new, current_state = self._sm.update_state(current_state)
             self._strategy.update_state(current_state, is_new=new)
             debug(f"Updated {'new ' if new else ''}{current_state = }")
             if current_state != self._last_state:
