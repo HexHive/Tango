@@ -50,8 +50,8 @@ class PtraceForkChannel(PtraceChannel):
                 vmmaps = self._proc.readMappings()
                 assert vmmaps[0].pathname == self._pobj.args[0], \
                     ("Path to first module in the vmmap did not match the path"
-                     " to the executable. Maybe you are not using a symbolic"
-                     " link as the path to the target?")
+                     " to the executable. Maybe you are using a symbolic link"
+                     " as the path to the target?")
                 run_base = vmmaps[0].start
                 self._forkserver = base_addr + run_base
             debug(f"Forkserver found at 0x{self._forkserver:016X}")

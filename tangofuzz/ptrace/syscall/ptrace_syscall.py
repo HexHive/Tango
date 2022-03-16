@@ -148,3 +148,9 @@ class PtraceSyscall(FunctionCall):
 
     def __str__(self):
         return "<Syscall name=%r>" % self.name
+
+    def format(self):
+        s = super().format()
+        if self.result is not None:
+            s = f'{s} = {self.result}'
+        return s
