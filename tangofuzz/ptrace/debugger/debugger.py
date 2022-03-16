@@ -1,7 +1,7 @@
 from .. import info, warning, error
 from ptrace import PtraceError
 from os import waitpid, WNOHANG, WUNTRACED
-from signal import SIGTRAP, SIGSTOP, SIGCHLD
+from signal import SIGTRAP, SIGSTOP, SIGCHLD, SIGKILL
 from errno import ECHILD
 from ptrace.debugger import (PtraceProcess, ProcessSignal, ProcessExit,
                             ForkChildKilledEvent)
@@ -13,7 +13,7 @@ if HAS_PTRACE_EVENTS:
         PTRACE_O_TRACEFORK, PTRACE_O_TRACEVFORK,
         PTRACE_O_TRACEEXEC, PTRACE_O_TRACESYSGOOD,
         PTRACE_O_TRACECLONE, THREAD_TRACE_FLAGS)
-
+from ptrace.binding import ptrace_detach
 
 class DebuggerError(PtraceError):
     pass
@@ -100,7 +100,13 @@ class PtraceDebugger(object):
             # the process was killed on creation (OOM?)
             # we just detach it and proceed as usual
             error(f"Process PID {process.pid} died on creation! Reason: {event}")
-            process.detach()
+            try:
+                ptrace_detach(process.pid)
+            except Exception:
+                pass
+            finally:
+                process.kill(SIGKILL)
+                self.deleteProcess(process=process)
             raise ForkChildKilledEvent(event.process)
         except Exception:   # noqa: E722
             process.is_attached = False
