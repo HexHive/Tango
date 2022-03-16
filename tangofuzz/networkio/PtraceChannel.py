@@ -245,6 +245,11 @@ class PtraceChannel(NetworkChannel):
             process.terminate()
         except PtraceError:
             debug("Attempted to terminate non-existent process")
+            self._debugger.list.append(process)
+            try:
+                process.terminate()
+            except Exception:
+                pass
         finally:
             if process in self._debugger:
                 self._debugger.deleteProcess(process)
