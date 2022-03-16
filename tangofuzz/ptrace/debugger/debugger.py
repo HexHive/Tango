@@ -100,13 +100,9 @@ class PtraceDebugger(object):
             # the process was killed on creation (OOM?)
             # we just detach it and proceed as usual
             error(f"Process PID {process.pid} died on creation! Reason: {event}")
-            try:
-                ptrace_detach(process.pid)
-            except Exception:
-                pass
-            finally:
-                process.kill(SIGKILL)
-                self.deleteProcess(process=process)
+            # This is probably not needed anymore after the fix to waitExit,
+            # which was likely leaving SIGKILL signals in the process struct for
+            # the same PID.
             raise ForkChildKilledEvent(event.process)
         except Exception:   # noqa: E722
             process.is_attached = False
