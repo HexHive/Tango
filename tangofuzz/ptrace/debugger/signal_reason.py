@@ -1,5 +1,5 @@
 from ptrace.ctypes_tools import formatAddress, formatWordHex
-from ptrace.error import PtraceError
+from ptrace.errors import PtraceError
 from ptrace.cpu_info import CPU_I386, CPU_X86_64
 from ptrace.process_tools import formatProcessStatus
 import re

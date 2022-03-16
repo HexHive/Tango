@@ -12,7 +12,7 @@ import select
 import threading
 from dataclasses import dataclass
 from functools import partial
-from ptrace.error import PtraceError
+from ptrace import PtraceError
 
 @dataclass
 class TCPChannelFactory(TransportChannelFactory):

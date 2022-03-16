@@ -3,7 +3,7 @@ from ptrace.cpu_info import CPU_WORD_SIZE
 from ptrace.ctypes_tools import uint2int, formatWordHex, formatAddress
 from ptrace.signames import signalName
 from ctypes import c_int
-from ptrace.error import PTRACE_ERRORS, writeError
+from ptrace.errors import PTRACE_ERRORS, writeError
 from logging import INFO
 from ptrace.func_arg import FunctionArgument
 from ptrace.syscall.posix_arg import (

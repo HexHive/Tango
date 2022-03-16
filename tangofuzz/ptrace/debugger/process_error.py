@@ -1,4 +1,4 @@
-from ptrace.error import PtraceError
+from ptrace.errors import PtraceError
 
 
 class ProcessError(PtraceError):

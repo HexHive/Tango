@@ -12,7 +12,7 @@ except ImportError:
 from ptrace.os_tools import RUNNING_LINUX
 from ptrace.cpu_info import CPU_64BITS
 from ptrace.debugger import ProcessEvent
-from ptrace.error import PtraceError
+from ptrace.errors import PtraceError
 from ptrace import signalName
 from ptrace.debugger.signal_reason import (
     DivisionByZero, Abort, StackOverflow,

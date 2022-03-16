@@ -1,5 +1,5 @@
 from . import logger
-from ptrace.error import PTRACE_ERRORS, writeError
+from ptrace.errors import PTRACE_ERRORS, writeError
 from ptrace.ctypes_tools import formatAddress
 
 class FunctionArgument(object):
