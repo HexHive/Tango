@@ -353,10 +353,14 @@ class PtraceProcess(object):
 
             # Send the signal to the process
             signum = event.signum
-            if signum not in (SIGTRAP, SIGSTOP):
-                self.cont(signum)
-            else:
-                self.cont()
+            try:
+                if signum not in (SIGTRAP, SIGSTOP):
+                    self.cont(signum)
+                else:
+                    self.cont()
+            except PtraceError:
+                warning(f"{self} received {event} while waiting for exit,"
+                    " but the signal could not be delivered.")
 
     def processStatus(self, status):
         # Process exited?
