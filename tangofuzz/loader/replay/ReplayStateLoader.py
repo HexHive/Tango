@@ -16,6 +16,7 @@ from profiler import ProfileCount
 from itertools import chain
 from pyroute2 import netns, NetNS
 import os
+from uuid import uuid4
 
 class ReplayStateLoader(StateLoaderBase):
     PROC_TERMINATE_RETRIES = 5
@@ -28,7 +29,7 @@ class ReplayStateLoader(StateLoaderBase):
         self._pobj = None # Popen object of child process
         self._limit = path_retry_limit
         self._startup_input = startup_input
-        self._netns_name = f'ns:{id(self):016X}'
+        self._netns_name = f'ns:{uuid4()}'
         self._netns = NetNS(self._netns_name, flags=os.O_CREAT | os.O_EXCL)
         self._netns.link('set', index=1, state='up')
 

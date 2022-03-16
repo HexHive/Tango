@@ -6,6 +6,7 @@ from statemanager import (StateBase,
                          CoverageReader)
 from input        import InputBase
 from generator    import InputGeneratorBase
+from uuid         import uuid4
 
 class CoverageStateTracker(StateTrackerBase):
     def __init__(self, generator: InputGeneratorBase, loader: StateLoaderBase,
@@ -15,7 +16,7 @@ class CoverageStateTracker(StateTrackerBase):
         self._bind_lib = bind_lib
 
         # session-unique shm file
-        shm_name = f'/refuzz_cov_{id(self):016X}'
+        shm_name = f'/refuzz_cov_{uuid4()}'
 
         # set environment variables and load program with loader
         loader._exec_env.env.update({
