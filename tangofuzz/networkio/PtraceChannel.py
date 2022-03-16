@@ -217,7 +217,7 @@ class PtraceChannel(NetworkChannel):
                        **kwargs):
         for process in self._debugger:
             # update the ignore_callback of processes in the debugger
-            self.prepare_process(process, ignore_callback, syscall=False)
+            process.syscall_state.ignore_callback = ignore_callback
 
         ## Execute monitor target
         if monitor_target:
