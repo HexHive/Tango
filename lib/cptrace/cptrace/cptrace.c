@@ -41,6 +41,7 @@ static bool cpython_cptrace(
             PyErr_SetObject(PyExc_PtraceError, p_exc);
             Py_DECREF(message);
             Py_DECREF(argList);
+            Py_DECREF(p_exc);
             return false;
         }
     }
