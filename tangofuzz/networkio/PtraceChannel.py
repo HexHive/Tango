@@ -1,4 +1,4 @@
-from . import debug, warning, info
+from . import debug, warning, info, critical
 
 from typing import Callable
 from networkio import NetworkChannel
