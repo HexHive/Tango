@@ -91,7 +91,6 @@ class DecoratorBase(ABC):
             newfunc = partial(func, oldfunc)
             setattr(self._input, name, newfunc)
 
-        setattr(self._input, '___decorator___', self)
         self._input._decoration_depth = input._decoration_depth + 1
         ProfileValueMean("decorator_depth", samples=100)(self._input._decoration_depth)
 
@@ -102,7 +101,7 @@ class DecoratorBase(ABC):
 
     def _handle_copy(self, input, copy):
         self._input_id = input.id
-        self._input = DecoratedInput()
+        self._input = DecoratedInput(self)
 
     def ___repr___(self, orig):
         return f"{self.__class__.__name__}({orig()})"
@@ -215,11 +214,12 @@ class MemoryCachingDecorator(DecoratorBase):
         self._input.___len___ = self.___cached_len___
         self._input._decoration_depth = 1
 
-        # we delete self._input because it is no longer needed, and a dangling
-        # reference to it will result in redundant deepcopy-ing later
-        inp = self._input
-        del self._input
-        return inp
+        return self._input
+
+    def undecorate(self):
+        assert getattr(self, '_input', None) is not None, \
+                "Decorator has not been called before!"
+        del self._input.___decorator___
 
     def ___cached_iter___(self):
         return iter(self._cached_iter)
@@ -231,5 +231,12 @@ class MemoryCachingDecorator(DecoratorBase):
         return self._cached_len
 
 class DecoratedInput(InputBase):
+    def __init__(self, decorator: DecoratorBase):
+        super().__init__()
+        self.___decorator___ = decorator
+
     def ___iter___(self):
         raise NotImplemented()
+
+    def __del__(self):
+        self.___decorator___.undecorate()
