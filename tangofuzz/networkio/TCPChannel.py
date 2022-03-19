@@ -42,6 +42,7 @@ class TCPChannel(PtraceChannel):
         self._socket = None
         self._accept_process = None
         self._refcounter = 0
+        self._sockfd = -1
         self.setup((endpoint, port))
 
     def cb_socket_listening(self, process):
@@ -58,112 +59,43 @@ class TCPChannel(PtraceChannel):
             self._refcounter += 1
 
     def setup(self, address: tuple):
-        def syscall_callback_listen(process, syscall, fds, listeners):
-            if syscall.name == 'socket':
-                domain = syscall.arguments[0].value
-                typ = syscall.arguments[1].value
-                if domain != socket.AF_INET or (typ & socket.SOCK_STREAM) == 0:
-                    return
-                fd = syscall.result
-                fds[fd] = ListenerSocketState()
-            elif syscall.name in ('bind', 'listen'):
-                fd = syscall.arguments[0].value
-                if fd not in fds:
-                    return
-                result = fds[fd].event(process, syscall)
-                if result is not None:
-                    listeners[fd] = result
-                    candidates = [x[0] for x in listeners.items() if x[1][2] == address[1]]
-                    if candidates:
-                        self._listenfd = candidates[0]
-                        # At this point, the target is paused just after the listen syscall that
-                        # matches our condition.
-                        self.cb_socket_listening(process)
-
         ## Wait for a socket that is listening on the same port
         # FIXME check for matching address too
-        listeners = {}
-        ignore_callback = lambda x: x.name not in ('socket', 'bind', 'listen')
-        break_callback = lambda: any(x[2] == address[1] for x in listeners.values())
+        self._setup_listeners = {}
+        self._setup_address = address
 
-        self.monitor_syscalls(None, ignore_callback, break_callback, syscall_callback_listen, fds={}, listeners=listeners, timeout=self._connect_timeout)
+        self.monitor_syscalls(None, self._setup_ignore_callback, \
+            self._setup_break_callback, self._setup_syscall_callback, \
+            fds={}, listeners=self._setup_listeners, address=address, \
+            timeout=self._connect_timeout)
+
+        del self._setup_listeners
+        del self._setup_address
 
     def connect(self, address: tuple):
         self._socket = self.nssocket(socket.AF_INET, socket.SOCK_STREAM)
         ## Now that we've verified the server is listening, we can connect
         ## Listen for a call to accept() to get the connected socket fd
-        sockfd = -1
-        ignore_callback = lambda x: x.name not in ('accept', 'accept4')
-        break_callback = lambda: sockfd > 0
-
-        def syscall_callback_accept(process, syscall, listenfd):
-            nonlocal sockfd
-            if syscall.name in ('accept', 'accept4') and syscall.arguments[0].value == listenfd:
-                sockfd = syscall.result
-
-        monitor_target = lambda: self._socket.connect(address)
-        self._accept_process, _ = self.monitor_syscalls(monitor_target, ignore_callback, break_callback, syscall_callback_accept, listenfd=self._listenfd, timeout=self._connect_timeout)
+        self._connect_address = address
+        self._sockfd = -1
+        self._accept_process, _ = self.monitor_syscalls( \
+            self._connect_monitor_target, self._connect_ignore_callback, \
+            self._connect_break_callback, self._connect_syscall_callback, \
+            listenfd=self._listenfd, timeout=self._connect_timeout)
+        del self._connect_address
         self.cb_socket_accepted(self._accept_process)
-        debug(f"Socket is now connected ({sockfd = })!")
-        self._sockfd = sockfd
+        debug(f"Socket is now connected ({self._sockfd = })!")
 
         # wait for the next read, recv, select, or poll
         # or wait for the parent to fork, and trace child for these calls
         self._poll_sync()
 
     def _poll_sync(self):
-        server_waiting = False
-        # TODO add support for epoll?
-        ignore_callback = lambda x: x.name not in ('read', 'recv', 'recvfrom', 'recvmsg', 'poll', 'ppoll', 'select', 'close', 'shutdown')
-        break_callback = lambda: server_waiting
-        def syscall_callback_read(process, syscall):
-            # poll, ppoll
-            if syscall.name in ('poll', 'ppoll'):
-                nfds = syscall.arguments[1].value
-                pollfds = syscall.arguments[0].value
-                fmt = '@ihh'
-                size = struct.calcsize(fmt)
-                for i in range(nfds):
-                    fd, events, revents = struct.unpack(fmt, process.readBytes(pollfds + i * size, size))
-                    if fd == self._sockfd and (events & select.POLLIN) != 0:
-                        break
-                else:
-                    return
-            # select
-            elif syscall.name == 'select':
-                nfds = syscall.arguments[0].value
-                if nfds <= self._sockfd:
-                    return
-                readfds = syscall.arguments[1].value
-                fmt = '@l'
-                size = struct.calcsize(fmt)
-                l_idx = self._sockfd // (size * 8)
-                b_idx = self._sockfd % (size * 8)
-                fd_set, = struct.unpack(fmt, process.readBytes(readfds + l_idx * size, size))
-                if fd_set & (1 << b_idx) == 0:
-                    return
-            # read, recv, recvfrom, recvmsg
-            elif syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') and syscall.arguments[0].value == self._sockfd:
-                pass
-            # For the next two cases, since break_on_entry is True, the effect
-            # only takes place on the second occurrence, when the syscall exits;
-            # so we check if the result is None (entry) or not (exit)
-            elif syscall.name in ('shutdown', 'close') and syscall.arguments[0].value == self._sockfd:
-                if syscall.result is None:
-                    return
-                elif syscall.name == 'shutdown':
-                    raise ChannelBrokenException("Channel closed while waiting for server to read")
-                elif syscall.name == 'close':
-                    self._refcounter -= 1
-                    if self._refcounter == 0:
-                        raise ChannelBrokenException("Channel closed while waiting for server to read")
-                    return
-            else:
-                return
-            nonlocal server_waiting
-            server_waiting = True
-
-        self.monitor_syscalls(None, ignore_callback, break_callback, syscall_callback_read, break_on_entry=True, timeout=self._data_timeout)
+        self._poll_server_waiting = False
+        self.monitor_syscalls(None, self._poll_ignore_callback, \
+            self._poll_break_callback, self._poll_syscall_callback, \
+            break_on_entry=True, timeout=self._data_timeout)
+        del self._poll_server_waiting
 
     def send(self, data: ByteString) -> int:
         sent = 0
@@ -175,51 +107,20 @@ class TCPChannel(PtraceChannel):
         return sent
 
     def _send_sync(self, data: ByteString) -> int:
-        server_received = 0
-        client_sent = 0
+        self._send_server_received = 0
+        self._send_client_sent = 0
         ## Set up a barrier so that client_sent is ready when checking for break condition
-        barrier = threading.Barrier(2)
+        self._send_barrier = threading.Barrier(2)
 
-        ignore_callback = lambda x: x.name not in ('read', 'recv', 'recvfrom', 'recvmsg', 'close', 'shutdown')
-        def break_callback():
-            if not barrier.broken:
-                barrier.wait()
-                barrier.abort()
-            debug(f"{client_sent=}; {server_received=}")
-            # FIXME is there a case where client_sent == 0?
-            assert (client_sent > 0 and server_received <= client_sent), \
-                "Client sent no bytes, or server received too many bytes!"
-            return server_received == client_sent
+        self._send_data = data
+        _, ret = self.monitor_syscalls(self._send_send_monitor, \
+            self._send_ignore_callback, self._send_break_callback, \
+            self._send_syscall_callback, timeout=self._data_timeout)
 
-        def send_monitor(data):
-            nonlocal client_sent
-            ret = self._socket.send(data)
-            if ret == 0:
-                raise ChannelBrokenException("Failed to send any data")
-            client_sent = ret
-            try:
-                barrier.wait()
-            except threading.BrokenBarrierError:
-                # occurs sometimes when the barrier is broken while wait() has yet to finish
-                # but it's benign
-                pass
-            return ret
-
-        def syscall_callback_read(process, syscall):
-            if syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') and syscall.arguments[0].value == self._sockfd:
-                nonlocal server_received
-                if syscall.result == 0:
-                    raise ChannelBrokenException("Server failed to read data off socket")
-                server_received += syscall.result
-            elif syscall.name == 'shutdown' and syscall.arguments[0].value == self._sockfd:
-                raise ChannelBrokenException("Channel closed while waiting for server to read")
-            elif syscall.name == 'close' and syscall.arguments[0].value == self._sockfd:
-                self._refcounter -= 1
-                if self._refcounter == 0:
-                    raise ChannelBrokenException("Channel closed while waiting for server to read")
-
-        monitor_target = lambda: send_monitor(data)
-        _, ret = self.monitor_syscalls(monitor_target, ignore_callback, break_callback, syscall_callback_read, timeout=self._data_timeout)
+        del self._send_server_received
+        del self._send_client_sent
+        del self._send_barrier
+        del self._send_data
 
         return ret
 
@@ -250,6 +151,144 @@ class TCPChannel(PtraceChannel):
             self._socket.close()
             self._socket = None
         super().close(**kwargs)
+
+    ### Callbacks ###
+    def _setup_syscall_callback(self, process, syscall, fds, listeners, address):
+        if syscall.name == 'socket':
+            domain = syscall.arguments[0].value
+            typ = syscall.arguments[1].value
+            if domain != socket.AF_INET or (typ & socket.SOCK_STREAM) == 0:
+                return
+            fd = syscall.result
+            fds[fd] = ListenerSocketState()
+        elif syscall.name in ('bind', 'listen'):
+            fd = syscall.arguments[0].value
+            if fd not in fds:
+                return
+            result = fds[fd].event(process, syscall)
+            if result is not None:
+                listeners[fd] = result
+                candidates = [x[0] for x in listeners.items() if x[1][2] == address[1]]
+                if candidates:
+                    self._listenfd = candidates[0]
+                    # At this point, the target is paused just after the listen syscall that
+                    # matches our condition.
+                    self.cb_socket_listening(process)
+
+    def _setup_ignore_callback(self, syscall):
+        return syscall.name not in ('socket', 'bind', 'listen')
+
+    def _setup_break_callback(self):
+        return any(x[2] == self._setup_address[1] for x in self._setup_listeners.values())
+
+    def _connect_syscall_callback(self, process, syscall, listenfd):
+        if syscall.name in ('accept', 'accept4') \
+                and syscall.arguments[0].value == listenfd:
+            self._sockfd = syscall.result
+
+    def _connect_ignore_callback(self, syscall):
+        return syscall.name not in ('accept', 'accept4')
+
+    def _connect_break_callback(self):
+        return self._sockfd > 0
+
+    def _connect_monitor_target(self):
+        return self._socket.connect(self._connect_address)
+
+    def _poll_syscall_callback(self, process, syscall):
+         # poll, ppoll
+        if syscall.name in ('poll', 'ppoll'):
+            nfds = syscall.arguments[1].value
+            pollfds = syscall.arguments[0].value
+            fmt = '@ihh'
+            size = struct.calcsize(fmt)
+            for i in range(nfds):
+                fd, events, revents = struct.unpack(fmt, process.readBytes(pollfds + i * size, size))
+                if fd == self._sockfd and (events & select.POLLIN) != 0:
+                    break
+            else:
+                return
+        # select
+        elif syscall.name == 'select':
+            nfds = syscall.arguments[0].value
+            if nfds <= self._sockfd:
+                return
+            readfds = syscall.arguments[1].value
+            fmt = '@l'
+            size = struct.calcsize(fmt)
+            l_idx = self._sockfd // (size * 8)
+            b_idx = self._sockfd % (size * 8)
+            fd_set, = struct.unpack(fmt, process.readBytes(readfds + l_idx * size, size))
+            if fd_set & (1 << b_idx) == 0:
+                return
+        # read, recv, recvfrom, recvmsg
+        elif syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') and syscall.arguments[0].value == self._sockfd:
+            pass
+        # For the next two cases, since break_on_entry is True, the effect
+        # only takes place on the second occurrence, when the syscall exits;
+        # so we check if the result is None (entry) or not (exit)
+        elif syscall.name in ('shutdown', 'close') and syscall.arguments[0].value == self._sockfd:
+            if syscall.result is None:
+                return
+            elif syscall.name == 'shutdown':
+                raise ChannelBrokenException("Channel closed while waiting for server to read")
+            elif syscall.name == 'close':
+                self._refcounter -= 1
+                if self._refcounter == 0:
+                    raise ChannelBrokenException("Channel closed while waiting for server to read")
+                return
+        else:
+            return
+        self._poll_server_waiting = True
+
+    def _poll_ignore_callback(self, syscall):
+        # TODO add support for epoll?
+        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg', \
+                                'poll', 'ppoll', 'select', 'close', 'shutdown')
+
+    def _poll_break_callback(self):
+        return self._poll_server_waiting
+
+    def _send_syscall_callback(self, process, syscall):
+        if syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') \
+                and syscall.arguments[0].value == self._sockfd:
+            if syscall.result == 0:
+                raise ChannelBrokenException("Server failed to read data off socket")
+            self._send_server_received += syscall.result
+        elif syscall.name == 'shutdown' and syscall.arguments[0].value == self._sockfd:
+            raise ChannelBrokenException("Channel closed while waiting for server to read")
+        elif syscall.name == 'close' and syscall.arguments[0].value == self._sockfd:
+            self._refcounter -= 1
+            if self._refcounter == 0:
+                raise ChannelBrokenException("Channel closed while waiting for server to read")
+
+    def _send_ignore_callback(self, syscall):
+        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg', \
+                                    'close', 'shutdown')
+
+    def _send_break_callback(self):
+        if not self._send_barrier.broken:
+            self._send_barrier.wait()
+            self._send_barrier.abort()
+        debug(f"{self._send_client_sent=}; {self._send_server_received=}")
+        # FIXME is there a case where client_sent == 0?
+        assert (self._send_client_sent > 0 \
+                    and self._send_server_received <= self._send_client_sent), \
+            "Client sent no bytes, or server received too many bytes!"
+        return self._send_server_received == self._send_client_sent
+
+    def _send_send_monitor(self):
+        ret = self._socket.send(self._send_data)
+        if ret == 0:
+            raise ChannelBrokenException("Failed to send any data")
+        self._send_client_sent = ret
+        try:
+            self._send_barrier.wait()
+        except threading.BrokenBarrierError:
+            # occurs sometimes when the barrier is broken while wait() has yet to finish
+            # but it's benign
+            pass
+        return ret
 
 class ListenerSocketState:
     SOCKET_UNBOUND = 1

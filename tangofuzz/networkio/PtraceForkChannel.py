@@ -171,17 +171,15 @@ class PtraceForkChannel(PtraceChannel):
             self._proc.syscall()
 
             # must actually wait for syscall, not any event
-            syscall_found = False
-            ignore_callback = lambda x: False
-            def syscall_callback(process, syscall):
-                nonlocal syscall_found
-                syscall_found = True
-            break_callback = lambda: syscall_found
+            self._wakeup_forkserver_syscall_found = False
 
             # backup the old ignore_callbacks
             for process in self._debugger:
                 process.syscall_state._ignore_callback = process.syscall_state.ignore_callback
-            self.monitor_syscalls(None, ignore_callback, break_callback, syscall_callback, break_on_entry=True)
+            self.monitor_syscalls(None, \
+                self._wakeup_forkserver_ignore_callback, \
+                self._wakeup_forkserver_break_callback, \
+                self._wakeup_forkserver_syscall_callback, break_on_entry=True)
             # restore the old ignore_callbacks
             for process in self._debugger:
                 process.syscall_state.ignore_callback = process.syscall_state._ignore_callback
@@ -199,3 +197,13 @@ class PtraceForkChannel(PtraceChannel):
     @abstractmethod
     def forked_child(self):
         pass
+
+    ### Callbacks ###
+    def _wakeup_forkserver_ignore_callback(self, syscall):
+        return False
+
+    def _wakeup_forkserver_break_callback(self):
+        return self._wakeup_forkserver_syscall_found
+
+    def _wakeup_forkserver_syscall_callback(self, process, syscall):
+        self._wakeup_forkserver_syscall_found = True
