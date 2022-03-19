@@ -48,14 +48,18 @@ class WebRenderer:
 
     def _start_websockets(self):
         async def websockets_worker():
-            async with websockets.serve(self._websocket_handler, '', self._ws_port):
-                await asyncio.Future()
+            loop = asyncio.get_running_loop()
+            loop.events = {}
+            server = await websockets.serve(self._websocket_handler, '', self._ws_port)
+            await server.wait_closed()
+
         def websockets_thread():
             asyncio.run(websockets_worker())
+
         th = Thread(target=websockets_thread)
         th.daemon = True
         th.start()
 
     async def _websocket_handler(self, websocket, path):
-        WebDataLoader(websocket, self._session)
+        loader = WebDataLoader(websocket, self._session)
         await asyncio.Future()

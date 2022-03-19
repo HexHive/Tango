@@ -30,8 +30,12 @@ class WebDataLoader:
         self._session = session
         self._fade = last_update_fade_out
 
-        ProfiledObjects['update_state'].listener(period=0.1)(self.update_graph)
-        ProfiledObjects['perform_interaction'].listener(period=1)(self.update_stats)
+        asyncio.create_task(
+            ProfiledObjects['update_state'].listener(period=0.1)(self.update_graph)
+        )
+        asyncio.create_task(
+            ProfiledObjects['perform_interaction'].listener(period=1)(self.update_stats)
+        )
 
         # handler = WebLogHandler(websocket)
         # logging.addHandler(handler)
@@ -55,7 +59,7 @@ class WebDataLoader:
     def fade_coeff(cls, fade, value):
         return max(0, (fade - value) / fade)
 
-    def update_graph(self, sm, state, ret=None):
+    async def update_graph(self, sm, state, ret=None):
         # update graph representation to be sent over WS
         # * color graph nodes and edges based on last_visit and added
         # * dump a DOT representation of the graph
@@ -63,7 +67,8 @@ class WebDataLoader:
 
         # first we get a copy so that we can re-assign node and edge attributes
         try:
-            # FIXME not the best way to fix this
+            # FIXME this is a hack: copying the graph might fail due to
+            # concurrent access.
             G = sm._graph.copy()
         except Exception:
             return
@@ -134,9 +139,9 @@ class WebDataLoader:
             }
         })
 
-        asyncio.run(self._ws.send(msg))
+        await self._ws.send(msg)
 
-    def update_stats(self, interaction, channel, ret=None):
+    async def update_stats(self, interaction, channel, ret=None):
         # FIXME this is not thread-safe, and the websocket experience a data race
         stats = {'items': {}}
         for name, obj in ProfiledObjects.items():
@@ -145,4 +150,4 @@ class WebDataLoader:
             except Exception:
                 pass
         msg = json.dumps(stats | {'cmd': 'update_stats'})
-        asyncio.run(self._ws.send(msg))
+        await self._ws.send(msg)
