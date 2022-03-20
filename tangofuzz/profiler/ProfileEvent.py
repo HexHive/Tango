@@ -86,7 +86,7 @@ class ProfileEvent(ProfilerBase):
 
                 # ensure that we don't sleep needlessly between periods
                 time_elapsed = now() - current_task().last_visit
-                if time_elapsed < period:
+                if period is not None and time_elapsed < period:
                     await asyncio.sleep(period - time_elapsed)
         except Exception as ex:
             import traceback
