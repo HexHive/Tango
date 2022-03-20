@@ -1,4 +1,4 @@
-from . import info
+from . import info, debug
 
 from webui import WebDataLoader
 from profiler import ProfilingStoppedEvent as stopped
@@ -61,5 +61,9 @@ class WebRenderer:
         th.start()
 
     async def _websocket_handler(self, websocket, path):
+        debug("Web client initiated")
         loader = WebDataLoader(websocket, self._session)
-        await asyncio.Future()
+        try:
+            await asyncio.gather(*loader.tasks)
+        except websockets.exceptions.ConnectionClosedOK:
+            debug("Web client terminated")
