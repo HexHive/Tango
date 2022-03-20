@@ -142,7 +142,6 @@ class ReplayStateLoader(StateLoaderBase):
                     continue
                 except Exception as ex:
                     warning(f"Exception encountered following path ({ex = })! Retrying... ({paths_tried = })")
-                    import ipdb; ipdb.set_trace()
                     ProfileCount('paths_failed')(1)
                     continue
                 finally:

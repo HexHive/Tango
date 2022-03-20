@@ -88,9 +88,6 @@ class ProfileEvent(ProfilerBase):
                 time_elapsed = now() - current_task().last_visit
                 if period is not None and time_elapsed < period:
                     await asyncio.sleep(period - time_elapsed)
-        except Exception as ex:
-            import traceback
-            error(f'{traceback.format_exc()}')
         finally:
             del get_running_loop().events[id(self)]
             self._listeners.remove(get_running_loop())
