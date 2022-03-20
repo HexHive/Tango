@@ -5,6 +5,7 @@ class StateBase(ABC):
     def __init__(self):
         self._last_input = None
         self._out_edges = None
+        self._in_edges = None
         self._pred = None
 
     @property
