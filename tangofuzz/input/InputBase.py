@@ -113,9 +113,12 @@ class DecoratorBase(ABC):
             if name not in self.DECORATED_METHODS:
                 continue
             newfunc = getattr(self._input, name, None)
+            # extract `orig` from the partial function
             oldfunc = newfunc.args[0]
+            delattr(self._input, name)
             setattr(self._input, name, oldfunc)
         del self._input.___decorator___
+        del self._input
 
     @classmethod
     def get_parent_class(cls, method):
@@ -220,6 +223,7 @@ class MemoryCachingDecorator(DecoratorBase):
         assert getattr(self, '_input', None) is not None, \
                 "Decorator has not been called before!"
         del self._input.___decorator___
+        del self._input
 
     def ___cached_iter___(self):
         return iter(self._cached_iter)
