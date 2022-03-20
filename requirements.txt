@@ -5,7 +5,7 @@ scapy==2.4.5
 posix-ipc==1.0.5
 pyelftools @ git+https://github.com/eliben/pyelftools.git
 websockets==10.0
-pygraphviz==1.7
+pydot==1.4.2
 #libgraphviz-dev (from apt)
 readline==6.2.4.1
 #pyroute2 @ git+https://github.com/hazimeh/pyroute2.git

@@ -78,8 +78,8 @@ class WebDataLoader:
 
         to_delete = []
         for node, data in G.nodes(data=True):
-            if len(G.in_edges(node)) == 0 and len(G.out_edges(node)) == 0 \
-                    and len(G.nodes) > 1:
+            if len(G.nodes) > 1 and len(G.in_edges(node)) == 0 \
+                    and len(G.out_edges(node)) == 0:
                 to_delete.append(node)
                 continue
             age = (now() - data.get('last_visit', self.NA_DATE)).total_seconds()
@@ -131,10 +131,11 @@ class WebDataLoader:
             data['penwidth'] = penwidth
             data['label'] = label
 
-        A = nx.nx_agraph.to_agraph(G)
-        A.graph_attr['rankdir'] = 'LR'
-        A.node_attr['style'] = 'filled'
-        dot = A.string()
+        G.graph["graph"] = {'rankdir': 'LR'}
+        G.graph["node"] = {'style': 'filled'}
+        P = nx.nx_pydot.to_pydot(G)
+
+        dot = str(P)
         msg = json.dumps({
             'cmd': 'update_graph',
             'items': {
