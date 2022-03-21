@@ -45,10 +45,13 @@ class TCPChannel(PtraceChannel):
         self._sockfd = -1
         self.setup((endpoint, port))
 
-    def cb_socket_listening(self, process):
+    def cb_socket_listening(self, process, syscall):
         pass
 
-    def cb_socket_accepted(self, process):
+    def cb_socket_accepting(self, process, syscall):
+        pass
+
+    def cb_socket_accepted(self, process, syscall):
         self._refcounter = 1
 
     def process_new(self, *args, **kwargs):
@@ -63,14 +66,20 @@ class TCPChannel(PtraceChannel):
         # FIXME check for matching address too
         self._setup_listeners = {}
         self._setup_address = address
+        self._setup_accepting = False
 
         self.monitor_syscalls(None, self._setup_ignore_callback, \
             self._setup_break_callback, self._setup_syscall_callback, \
             fds={}, listeners=self._setup_listeners, address=address, \
             timeout=self._connect_timeout)
 
+        self.monitor_syscalls(None, self._setup_ignore_callback_accept, \
+            self._setup_break_callback_accept, self._setup_syscall_callback_accept, \
+            timeout=self._connect_timeout, break_on_entry=True)
+
         del self._setup_listeners
         del self._setup_address
+        del self._setup_accepting
 
     def connect(self, address: tuple):
         self._socket = self.nssocket(socket.AF_INET, socket.SOCK_STREAM)
@@ -172,7 +181,7 @@ class TCPChannel(PtraceChannel):
                     self._listenfd = candidates[0]
                     # At this point, the target is paused just after the listen syscall that
                     # matches our condition.
-                    self.cb_socket_listening(process)
+                    self.cb_socket_listening(process, syscall)
 
     def _setup_ignore_callback(self, syscall):
         return syscall.name not in ('socket', 'bind', 'listen')
@@ -180,9 +189,22 @@ class TCPChannel(PtraceChannel):
     def _setup_break_callback(self):
         return any(x[2] == self._setup_address[1] for x in self._setup_listeners.values())
 
+    def _setup_syscall_callback_accept(self, process, syscall):
+        if syscall.name in ('accept', 'accept4'):
+            self._setup_accepting = True
+            self.cb_socket_accepting(process, syscall)
+        process.syscall()
+
+    def _setup_ignore_callback_accept(self, syscall):
+        return syscall.name not in ('accept', 'accept4')
+
+    def _setup_break_callback_accept(self):
+        return self._setup_accepting
+
     def _connect_syscall_callback(self, process, syscall, listenfd):
         if syscall.name in ('accept', 'accept4') \
-                and syscall.arguments[0].value == listenfd:
+                and syscall.arguments[0].value == listenfd \
+                and syscall.result >= 0:
             self._sockfd = syscall.result
             self.cb_socket_accepted(process, syscall)
 
@@ -196,49 +218,52 @@ class TCPChannel(PtraceChannel):
         return self._socket.connect(self._connect_address)
 
     def _poll_syscall_callback(self, process, syscall):
-         # poll, ppoll
-        if syscall.name in ('poll', 'ppoll'):
-            nfds = syscall.arguments[1].value
-            pollfds = syscall.arguments[0].value
-            fmt = '@ihh'
-            size = struct.calcsize(fmt)
-            for i in range(nfds):
-                fd, events, revents = struct.unpack(fmt, process.readBytes(pollfds + i * size, size))
-                if fd == self._sockfd and (events & select.POLLIN) != 0:
-                    break
+        try:
+            # poll, ppoll
+            if syscall.name in ('poll', 'ppoll'):
+                nfds = syscall.arguments[1].value
+                pollfds = syscall.arguments[0].value
+                fmt = '@ihh'
+                size = struct.calcsize(fmt)
+                for i in range(nfds):
+                    fd, events, revents = struct.unpack(fmt, process.readBytes(pollfds + i * size, size))
+                    if fd == self._sockfd and (events & select.POLLIN) != 0:
+                        break
+                else:
+                    return
+            # select
+            elif syscall.name == 'select':
+                nfds = syscall.arguments[0].value
+                if nfds <= self._sockfd:
+                    return
+                readfds = syscall.arguments[1].value
+                fmt = '@l'
+                size = struct.calcsize(fmt)
+                l_idx = self._sockfd // (size * 8)
+                b_idx = self._sockfd % (size * 8)
+                fd_set, = struct.unpack(fmt, process.readBytes(readfds + l_idx * size, size))
+                if fd_set & (1 << b_idx) == 0:
+                    return
+            # read, recv, recvfrom, recvmsg
+            elif syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') and syscall.arguments[0].value == self._sockfd:
+                pass
+            # For the next two cases, since break_on_entry is True, the effect
+            # only takes place on the second occurrence, when the syscall exits;
+            # so we check if the result is None (entry) or not (exit)
+            elif syscall.name in ('shutdown', 'close') and syscall.arguments[0].value == self._sockfd:
+                if syscall.result is None:
+                    return
+                elif syscall.name == 'shutdown':
+                    raise ChannelBrokenException("Channel closed while waiting for server to read")
+                elif syscall.name == 'close':
+                    self._refcounter -= 1
+                    if self._refcounter == 0:
+                        raise ChannelBrokenException("Channel closed while waiting for server to read")
+                    return
             else:
                 return
-        # select
-        elif syscall.name == 'select':
-            nfds = syscall.arguments[0].value
-            if nfds <= self._sockfd:
-                return
-            readfds = syscall.arguments[1].value
-            fmt = '@l'
-            size = struct.calcsize(fmt)
-            l_idx = self._sockfd // (size * 8)
-            b_idx = self._sockfd % (size * 8)
-            fd_set, = struct.unpack(fmt, process.readBytes(readfds + l_idx * size, size))
-            if fd_set & (1 << b_idx) == 0:
-                return
-        # read, recv, recvfrom, recvmsg
-        elif syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') and syscall.arguments[0].value == self._sockfd:
-            pass
-        # For the next two cases, since break_on_entry is True, the effect
-        # only takes place on the second occurrence, when the syscall exits;
-        # so we check if the result is None (entry) or not (exit)
-        elif syscall.name in ('shutdown', 'close') and syscall.arguments[0].value == self._sockfd:
-            if syscall.result is None:
-                return
-            elif syscall.name == 'shutdown':
-                raise ChannelBrokenException("Channel closed while waiting for server to read")
-            elif syscall.name == 'close':
-                self._refcounter -= 1
-                if self._refcounter == 0:
-                    raise ChannelBrokenException("Channel closed while waiting for server to read")
-                return
-        else:
-            return
+        finally:
+            process.syscall()
         self._poll_server_waiting = True
 
     def _poll_ignore_callback(self, syscall):

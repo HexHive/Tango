@@ -64,12 +64,15 @@ class PtraceChannel(NetworkChannel):
         if syscall:
             process.syscall()
 
-    def process_syscall(self, process, syscall, syscall_callback, break_on_entry, **kwargs):
+    def process_syscall(self, process, syscall, syscall_callback, break_on_entry, **kwargs) -> bool:
         # ensure that the syscall has finished successfully before callback
         if syscall and syscall.result != -1 and \
                 (break_on_entry or syscall.result is not None):
             syscall_callback(process, syscall, **kwargs)
             debug(f"syscall processed: [{process.pid}] {syscall.format()}")
+            return True
+        else:
+            return False
 
     def process_exit(self, event):
         warning(f"Process with {event.process.pid=} exited, deleting from debugger")
@@ -150,10 +153,14 @@ class PtraceChannel(NetworkChannel):
             #############
 
             syscall = state.event(self._syscall_options)
-            self.process_syscall(event.process, syscall, syscall_callback, break_on_entry, **kwargs)
+            processed = self.process_syscall(event.process, syscall, syscall_callback, break_on_entry, **kwargs)
 
-            # resume the suspended process until it encounters the next syscall
-            event.process.syscall()
+            if not processed or not break_on_entry:
+                # resume the suspended process until it encounters the next syscall
+                event.process.syscall()
+            else:
+                # the caller is responsible for resuming the target process
+                pass
             return syscall
 
     def timeout_handler(self, stop_event):

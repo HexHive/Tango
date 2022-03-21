@@ -77,6 +77,7 @@ class PtraceForkChannel(PtraceChannel):
             if event.process != self._proc:
                 # restore correct trap byte and registers
                 self._cleanup_forkserver(event.process)
+                # resume execution of the child process
                 event.process.syscall()
             else:
                 debug("Forkserver trapped, waiting for wake-up call")
@@ -134,28 +135,32 @@ class PtraceForkChannel(PtraceChannel):
         process.setreg(CPU_STACK_POINTER, rsp)
 
     def _stack_pop(self, process):
-        value = process.readBytes(rsp, 8)
-        rsp = process.getStackPointer() + 8
-        process.setreg(CPU_STACK_POINTER, rsp)
+        rsp = process.getStackPointer()
+        value = int.from_bytes(process.readBytes(rsp, 8), byteorder=sys.byteorder)
+        process.setreg(CPU_STACK_POINTER, rsp + 8)
         return value
 
-    def _invoke_forkserver(self, process: PtraceProcess):
-        self._trap_rip = process.getInstrPointer()
+    def _inject_forkserver(self, process: PtraceProcess, address: int):
+        debug("Injecting forkserver!")
         self._trap_rsp = process.getStackPointer()
 
         # read the original byte to be replaced by a trap
-        self._trap_asm = process.readBytes(self._trap_rip, 1)
+        self._trap_asm = process.readBytes(address, 1)
 
         # place a trap
-        process.writeBytes(self._trap_rip, b'\xCC')
+        process.writeBytes(address, b'\xCC')
         process.setreg(CPU_STACK_POINTER, self._trap_rsp & ~0x0F)
 
         # set up the stack, so that it returns to the trap
         self._stack_push(process, 0) # some x86-64 alignment stuff
-        self._stack_push(process, self._trap_rip)
+        self._stack_push(process, address)
 
         # redirect control flow to the forkserver
         process.setreg(CPU_INSTR_POINTER, self._forkserver)
+
+    def _invoke_forkserver(self, process: PtraceProcess):
+        self._trap_rip = process.getInstrPointer()
+        self._inject_forkserver(process, self._trap_rip)
 
     def _cleanup_forkserver(self, process: PtraceProcess):
         # restore the original byte that was replaced by the trap
@@ -207,3 +212,4 @@ class PtraceForkChannel(PtraceChannel):
 
     def _wakeup_forkserver_syscall_callback(self, process, syscall):
         self._wakeup_forkserver_syscall_found = True
+        process.syscall()
