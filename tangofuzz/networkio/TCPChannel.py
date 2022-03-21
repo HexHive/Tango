@@ -83,7 +83,6 @@ class TCPChannel(PtraceChannel):
             self._connect_break_callback, self._connect_syscall_callback, \
             listenfd=self._listenfd, timeout=self._connect_timeout)
         del self._connect_address
-        self.cb_socket_accepted(self._accept_process)
         debug(f"Socket is now connected ({self._sockfd = })!")
 
         # wait for the next read, recv, select, or poll
@@ -185,6 +184,7 @@ class TCPChannel(PtraceChannel):
         if syscall.name in ('accept', 'accept4') \
                 and syscall.arguments[0].value == listenfd:
             self._sockfd = syscall.result
+            self.cb_socket_accepted(process, syscall)
 
     def _connect_ignore_callback(self, syscall):
         return syscall.name not in ('accept', 'accept4')
