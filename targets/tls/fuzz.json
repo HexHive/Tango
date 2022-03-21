@@ -21,7 +21,8 @@
 		"type": "mutation"
 	},
 	"statemanager": {
-		"type": "coverage"
+		"type": "coverage",
+		"strategy": "uniform"
 	},
 	"fuzzer": {
 		"type": "coverage",
