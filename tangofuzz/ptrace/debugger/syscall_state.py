@@ -38,7 +38,11 @@ class SyscallState(object):
             # Ignore the SIGTRAP after exec() syscall exit
             self.process.syscall()
             self.process.waitSignals(SIGTRAP, SIGTRAP | 0x80)
-        syscall = self.syscall
+        if self.syscall and ((not self.ignore_callback) \
+                or (not self.ignore_callback(self.syscall))):
+            syscall = self.syscall
+        else:
+            syscall = None
         self.clear()
         return syscall
 
