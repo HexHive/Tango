@@ -123,14 +123,13 @@ class StateManager:
         # persist.
         current_state = self._tracker.current_state
 
-        # update the current state (e.g., if it needs to track interesting cov)
-        self._tracker.update(self._last_state, current_state, input_gen)
-
         # the tracker may return None as current_state, in case it has not yet
         # finished the training phase (preprocessing seeds)
         if current_state is not None:
             new, current_state = self._sm.update_state(current_state)
             self._strategy.update_state(current_state, is_new=new)
+            # update the current state (e.g., if it needs to track interesting cov)
+            self._tracker.update(self._last_state, current_state, input_gen)
             debug(f"Updated {'new ' if new else ''}{current_state = }")
             if current_state != self._last_state:
                 debug(f"Possible transition from {self._last_state} to {current_state}")
