@@ -69,7 +69,9 @@ class PtraceChannel(NetworkChannel):
         if syscall and syscall.result != -1 and \
                 (break_on_entry or syscall.result is not None):
             syscall_callback(process, syscall, **kwargs)
-            debug(f"syscall processed: [{process.pid}] {syscall.format()}")
+            # calling syscall.format() takes a lot of time and should be
+            # avoided in production, even if logging is disabled
+            debug(f"syscall processed: [{process.pid}] {syscall.name}")
             return True
         else:
             return False
@@ -149,7 +151,7 @@ class PtraceChannel(NetworkChannel):
 
             ### DEBUG ###
             # sc = PtraceSyscall(event.process, self._syscall_options, event.process.getregs())
-            # debug(f"Traced {sc.name=} with {state.name=} and {state.next_event=}")
+            # debug(f"syscall traced: [{event.process.pid}] {sc.name=} with {state.name=} and {state.next_event=}")
             #############
 
             syscall = state.event(self._syscall_options)
