@@ -7,6 +7,7 @@ from .StateBase                     import StateBase
 from .StateMachine                  import StateMachine
 from .strategy.StrategyBase         import StrategyBase
 from .strategy.RandomStrategy       import RandomStrategy
+from .strategy.UniformStrategy      import UniformStrategy
 
 from .StateTrackerBase              import StateTrackerBase
 from .coverage.CoverageState        import CoverageState

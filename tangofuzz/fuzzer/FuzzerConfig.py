@@ -6,7 +6,7 @@ from networkio    import (TCPChannelFactory,
 from loader       import ReplayStateLoader, ReplayForkStateLoader
 from statemanager import (CoverageStateTracker,
                          StateManager,
-                         RandomStrategy)
+                         RandomStrategy, UniformStrategy)
 from generator    import RandomInputGenerator
 from random       import Random
 import json
@@ -63,7 +63,7 @@ class FuzzerConfig:
         },
         "statemanager": {
             "type": "<coverage | grammar | hybrid | ...>",
-            "strategy": "<random | ...>",
+            "strategy": "<random | uniform | ...>",
             ...
         },
         "fuzzer": {
@@ -172,7 +172,9 @@ class FuzzerConfig:
         _config = self._config["statemanager"]
         strategy_name = _config.get("strategy", "random")
         if strategy_name == "random":
-            return lambda sm, entry: RandomStrategy(sm, entry, entropy=self.entropy)
+            return lambda a, b: RandomStrategy(sm=a, entry_state=b, entropy=self.entropy)
+        elif strategy_name == "uniform":
+            return lambda a, b: UniformStrategy(sm=a, entry_state=b, entropy=self.entropy)
         else:
             raise NotImplemented()
 
