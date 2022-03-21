@@ -3,8 +3,8 @@ from random import Random
 from profiler import ProfileValue
 
 class RandomStrategy(StrategyBase):
-    def __init__(self, sm, startup_state, entropy: Random, limit: int = 100):
-        super().__init__(sm, startup_state)
+    def __init__(self, entropy: Random, limit: int = 100, **kwargs):
+        super().__init__(**kwargs)
         self._entropy = entropy
         self._counter = 0
         self._limit = limit
@@ -15,7 +15,7 @@ class RandomStrategy(StrategyBase):
         self._counter = 0
         ProfileValue('strat_counter')(self._counter)
         filtered = [x for x in self._sm._graph.nodes if x not in self._invalid_states]
-        self._target_state = self._entropy.sample(filtered, k=1)[0]
+        self._target_state = self._entropy.choice(filtered)
 
     def step(self) -> bool:
         should_reset = False
