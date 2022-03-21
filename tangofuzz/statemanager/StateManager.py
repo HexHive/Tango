@@ -1,7 +1,7 @@
 from __future__ import annotations
 from . import debug, info, warning, critical
 
-from common import StabilityException, StatePrecisionException, StateNotReproducibleException
+from common import StabilityException, StateNotReproducibleException
 from typing import Callable
 from statemanager import (StateBase,
                          StateMachine,
@@ -23,6 +23,8 @@ class StateManager:
         self._last_state = self._tracker.entry_state
         self._sm = StateMachine(self._last_state)
         self._strategy = strategy_ctor(self._sm, self._last_state)
+        self._current_path = []
+        self._reset_current_path()
 
     @property
     def state_machine(self) -> StateMachine:
@@ -32,10 +34,14 @@ class StateManager:
     def state_tracker(self) -> StateTrackerBase:
         return self._tracker
 
+    def _reset_current_path(self):
+        self._current_path.clear()
+
     @ProfileFrequency('resets')
     def reset_state(self, state_or_path=None, update=True):
         if update:
             ProfileValue('status')('reset_state')
+            self._reset_current_path()
         if self._last_state and update:
             # must clear last state's input whenever a new state is loaded
             # WARN if using SnapshotStateLoader, the snapshot must be taken when
@@ -131,6 +137,7 @@ class StateManager:
             # update the current state (e.g., if it needs to track interesting cov)
             self._tracker.update(self._last_state, current_state, input_gen)
             debug(f"Updated {'new ' if new else ''}{current_state = }")
+
             if current_state != self._last_state:
                 debug(f"Possible transition from {self._last_state} to {current_state}")
                 if self._last_state.last_input is not None:
@@ -142,6 +149,10 @@ class StateManager:
 
                 try:
                     debug("Attempting to reproduce transition")
+                    # we make a copy of _current_path because the loader may
+                    # modify it, but at this stage, we may want to restore state
+                    # using that path
+                    self._last_path = self._current_path.copy()
                     self.reset_state(self._last_state, update=False)
                     self._loader.execute_input(last_input, self, update=False)
                     assert current_state == self._tracker.current_state
@@ -161,7 +172,9 @@ class StateManager:
                     stable = False
 
                     debug(f"Reloading last state ({self._last_state})")
-                    self.reset_state(self._last_state, update=False)
+                    self._current_path[:] = self._last_path
+                    self.reset_state(self._current_path, update=False)
+                    self._loader.execute_input(self._last_state.last_input, update=False)
                     ProfileCount('imprecise')(1)
                 except (StabilityException, StateNotReproducibleException):
                     # This occurs when the reset_state() encountered an error
@@ -189,7 +202,10 @@ class StateManager:
                         debug("Attempting to minimize transition")
                         try:
                             last_input = self._minimize_transition(
-                                self._last_state, current_state, last_input)
+                                # FIXME self._current_path is not StateBase, as
+                                # is required by _minimize_transition, but it
+                                # should work, for now
+                                self._current_path, current_state, last_input)
                             last_input = FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=False)
                         except Exception as ex:
                             # Minimization failed, again probably due to an
@@ -200,6 +216,7 @@ class StateManager:
                     self._sm.update_transition(self._last_state, current_state,
                         last_input)
                     self._strategy.update_transition(self._last_state, current_state)
+                    self._current_path.append((self._last_state, current_state, last_input))
                     self._last_state = current_state
                     info(f'Transitioned to {current_state=}')
                     updated = True

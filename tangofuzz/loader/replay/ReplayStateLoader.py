@@ -120,7 +120,8 @@ class ReplayStateLoader(StateLoaderBase):
                 paths_tried += 1
                 try:
                     # reconstruct target state by replaying inputs
-                    for source, destination, input in path:
+                    cached_path = list(path)
+                    for source, destination, input in cached_path:
                         # check if source matches the current state
                         if source != sman.state_tracker.current_state:
                             faulty_state = source
@@ -135,6 +136,13 @@ class ReplayStateLoader(StateLoaderBase):
                             raise StabilityException(
                                 f"destination state ({destination}) did not match current state ({sman.state_tracker.current_state})"
                             )
+                    # at this point, we've succeeded in replaying the path
+                    if sman is not None and state is not None:
+                        # we only update sman._current_path if it requested a
+                        # state; otherwise, it is responsible for saving the
+                        # path
+                        # FIXME this should all probably be in the loader
+                        sman._current_path[:] = list(cached_path)
                     break
                 except StabilityException as ex:
                     warning(f"Failed to follow unstable path (reason = {ex.args[0]})! Retrying... ({paths_tried = })")
