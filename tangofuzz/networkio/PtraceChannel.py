@@ -242,10 +242,10 @@ class PtraceChannel(NetworkChannel):
 
     def terminator(self, process):
         try:
-            # we kinda do not need to wait for the child to exit, as long as it
-            # eventually does
-            process.terminate(wait_exit=False)
-            process._notRunning()
+            # WARN it seems necessary to wait for the child to exit, otherwise
+            # the forkserver may misbehave, and the fuzzer will receive a lot of
+            # ForkChildKilledEvents
+            process.terminate()
         except PtraceError as ex:
             critical(f"Attempted to terminate non-existent process ({ex})")
         finally:
