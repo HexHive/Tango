@@ -62,6 +62,7 @@ class StateManager:
                 self._loader.load_state(state_or_path, self, update=False)
             if update:
                 self._last_state = self._tracker.current_state
+                self._strategy.update_state(self._last_state, is_new=False)
         except StateNotReproducibleException as ex:
             if update:
                 faulty_state = ex._faulty_state
