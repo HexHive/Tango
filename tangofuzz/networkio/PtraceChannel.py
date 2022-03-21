@@ -242,7 +242,10 @@ class PtraceChannel(NetworkChannel):
 
     def terminator(self, process):
         try:
-            process.terminate()
+            # we kinda do not need to wait for the child to exit, as long as it
+            # eventually does
+            process.terminate(wait_exit=False)
+            process._notRunning()
         except PtraceError as ex:
             critical(f"Attempted to terminate non-existent process ({ex})")
         finally:
