@@ -1,4 +1,4 @@
-from . import debug, warning, critical, error
+from . import debug, info, warning, critical, error
 
 from input         import (InputBase,
                           PreparedInput,
@@ -56,9 +56,13 @@ class FuzzerSession:
         known states.
         """
         for input in self._input_gen.seeds:
-            self._sman.reset_state()
-            # feed input to target and populate state machine
-            self._loader.execute_input(input, self._sman)
+            try:
+                self._sman.reset_state()
+                # feed input to target and populate state machine
+                self._loader.execute_input(input, self._sman)
+                info(f"Loaded seed file: {input}")
+            except LoadedException as ex:
+                warning(f"Failed to load {input}: {ex.exception}")
 
     def _loop(self):
         # FIXME is there ever a proper terminating condition for fuzzing?

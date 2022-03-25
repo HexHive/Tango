@@ -130,3 +130,6 @@ class PCAPInput(PreparedInput):
                         Raw(load=interaction._data)
             p.time = cur_time
             writer.write(p)
+
+    def __repr__(self):
+        return f"PCAPInput({self._pcap})"
