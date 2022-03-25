@@ -175,7 +175,7 @@ class StateManager:
                     debug(f"Reloading last state ({self._last_state})")
                     self._current_path[:] = self._last_path
                     self.reset_state(self._current_path, update=False)
-                    self._loader.execute_input(self._last_state.last_input, update=False)
+                    self._loader.execute_input(self._last_state.last_input, self, update=False)
                     ProfileCount('imprecise')(1)
                 except (StabilityException, StateNotReproducibleException):
                     # This occurs when the reset_state() encountered an error
