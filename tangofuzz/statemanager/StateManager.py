@@ -73,6 +73,7 @@ class StateManager:
             raise
 
     def reload_target(self):
+        debug(f"Reloading target state {self._strategy.target}")
         self.reset_state(self._strategy.target)
 
     def get_context(self, input: InputBase) -> StateManagerContext:

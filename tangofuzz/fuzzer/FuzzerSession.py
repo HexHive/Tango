@@ -97,7 +97,7 @@ class FuzzerSession:
                             ProfileCount('timeout')(1)
                         except ChannelBrokenException as ex:
                             # TODO save crashing/breaking input
-                            warning(f"Received channel broken exception ({ex = })")
+                            debug(f"Received channel broken exception ({ex = })")
                         except ChannelSetupException:
                             # TODO save broken setup input
                             warning("Received channel setup exception")
