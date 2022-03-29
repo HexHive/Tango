@@ -182,7 +182,8 @@ class PtraceDebugger(object):
             except KeyError:
                 warning("waitpid(): Unknown PID %r, placing event in queue" % pid)
                 self.sig_queue[pid].append(status)
-                
+                continue
+
         return process.processStatus(status)
 
     def waitProcessEvent(self, pid=None, blocking=True):
