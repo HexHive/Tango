@@ -134,11 +134,11 @@ class StateManager:
         # the tracker may return None as current_state, in case it has not yet
         # finished the training phase (preprocessing seeds)
         if current_state is not None:
-            new, current_state = self._sm.update_state(current_state)
-            self._strategy.update_state(current_state, is_new=new)
+            new_state, current_state = self._sm.update_state(current_state)
+            self._strategy.update_state(current_state, is_new=new_state)
             # update the current state (e.g., if it needs to track interesting cov)
             self._tracker.update(self._last_state, current_state, input_gen)
-            debug(f"Updated {'new ' if new else ''}{current_state = }")
+            debug(f"Updated {'new ' if new_state else ''}{current_state = }")
 
             if current_state != self._last_state:
                 debug(f"Possible transition from {self._last_state} to {current_state}")
@@ -166,8 +166,8 @@ class StateManager:
                     # state may have built on top of internal program state that
                     # was not reproduced by reset_state() to arrive at the
                     # successor state.
-                    debug(f"Encountered imprecise state ({new = })")
-                    if new:
+                    debug(f"Encountered imprecise state ({new_state = })")
+                    if new_state:
                         debug(f"Dissolving {current_state = }")
                         self._sm.dissolve_state(current_state)
                         self._strategy.update_state(current_state, invalidate=True)
@@ -183,7 +183,7 @@ class StateManager:
                     # This occurs when the reset_state() encountered an error
                     # trying to reproduce a state, most likely due to an
                     # indeterministic target
-                    if new:
+                    if new_state:
                         debug(f"Dissolving {current_state = }")
                         self._sm.dissolve_state(current_state)
                         self._strategy.update_state(current_state, invalidate=True)
@@ -191,7 +191,7 @@ class StateManager:
                     ProfileCount('unstable')(1)
                 except Exception as ex:
                     debug(f'{ex}')
-                    if new:
+                    if new_state:
                         debug(f"Dissolving {current_state = }")
                         self._sm.dissolve_state(current_state)
                         self._strategy.update_state(current_state, invalidate=True)
@@ -200,7 +200,8 @@ class StateManager:
 
                 if stable:
                     last_input = MemoryCachingDecorator()(last_input, copy=False)
-                    if new:
+                    new_edge = current_state not in self._sm._graph.successors(self._last_state)
+                    if new_state or new_edge:
                         # call the transition pruning routine to shorten the last input
                         debug("Attempting to minimize transition")
                         try:
