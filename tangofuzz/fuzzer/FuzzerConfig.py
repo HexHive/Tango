@@ -4,7 +4,7 @@ from networkio    import (TCPChannelFactory,
                          TCPForkChannelFactory,
                          UDPChannelFactory)
 from loader       import ReplayStateLoader, ReplayForkStateLoader
-from statemanager import (CoverageStateTracker,
+from statemanager import (CoverageStateTracker, StackStateTracker,
                          StateManager,
                          RandomStrategy, UniformStrategy)
 from generator    import RandomInputGenerator
@@ -62,7 +62,7 @@ class FuzzerConfig:
             ...
         },
         "statemanager": {
-            "type": "<coverage | grammar | hybrid | ...>",
+            "type": "<coverage | grammar | hybrid | stack | ...>",
             "strategy": "<random | uniform | ...>",
             ...
         },
@@ -150,6 +150,8 @@ class FuzzerConfig:
         if state_type == "coverage":
             return CoverageStateTracker(self.input_generator, self.loader,
                 bind_lib=self._bind_lib)
+        elif state_type == "stack":
+            return StackStateTracker(self.input_generator, self.loader)
         else:
             raise NotImplemented()
 

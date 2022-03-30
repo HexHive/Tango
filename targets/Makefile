@@ -1,9 +1,10 @@
-export COVERAGE=edge
+export COVERAGE=func
 
 export CC=clang
 export CXX=clang++
 
 CFLAGS := -fsanitize-coverage=$(COVERAGE),trace-pc-guard
+CFLAGS += -fno-omit-frame-pointer
 CFLAGS += -O3 -fPIC -fsanitize=address
 
 export CFLAGS
@@ -12,7 +13,7 @@ export CXXFLAGS=$(CFLAGS)
 LIBDIR=$(realpath ../lib)
 
 export LDFLAGS=-Wl,-wrap,bind -Wl,-wrap,fork -fPIE -pie -L$(LIBDIR) -fsanitize=address
-export LDLIBS=-l:libtangofuzz.o -lrt
+export LDLIBS=-l:libtangofuzz.o -lrt -lunwind
 
 TARGETS=$(sort $(dir $(wildcard ./*/Makefile)))
 

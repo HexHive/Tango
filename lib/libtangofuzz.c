@@ -19,14 +19,22 @@
 #include <sys/socket.h>
 #include <sys/prctl.h>
 
+#define UNW_LOCAL_ONLY
+#include "libunwind.h"
+
 #define COVERAGE_SIZE_TAG "/refuzz_size"
 
 static uint8_t *edge_cnt;
 static size_t edge_sz;
+static intptr_t *stack_hash;
+
+/* STACK_DEPTH is defined in the Makefile */
+static intptr_t stack_arr[STACK_DEPTH] = {0};
+static size_t stack_idx = 0;
 
 void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
-    const char *name = getenv("REFUZZ_COVERAGE");
-    if (!name) {
+    const char *cov_name = getenv("REFUZZ_COVERAGE");
+    if (!cov_name) {
         for (uint32_t *x = start; x < stop; x++)
             *x = 0;  // disable all guards
         return;
@@ -39,7 +47,7 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
 
     // initialize edge counters
     edge_sz = N * sizeof(uint8_t);
-    int fd = shm_open(name, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    int fd = shm_open(cov_name, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd == -1) return;
     if (ftruncate(fd, edge_sz) == -1) return;
     edge_cnt = mmap(NULL, edge_sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -55,13 +63,50 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
     if (!sz) return;
     *sz = edge_sz;
     munmap(sz, sizeof(uint32_t));
+
+    const char *stack_name = getenv("REFUZZ_STACK");
+    if (!stack_name)
+        return;
+    fd = shm_open(stack_name, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    if (fd == -1) return;
+    if (ftruncate(fd, sizeof(intptr_t)) == -1) return;
+    stack_hash = mmap(NULL, sizeof(intptr_t), PROT_WRITE, MAP_SHARED, fd, 0);
+    close(fd);
+    if (!stack_hash) return;
+    *stack_hash = 0;
 }
 
 void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
     if (!*guard) return;
 
+    static int hits = 0;
+    ++hits;
+    printf("Hit count: %i\n", hits);
+
     if (__builtin_add_overflow(edge_cnt[*guard], 1, &edge_cnt[*guard]))
         edge_cnt[*guard] = UINT8_MAX;
+
+    /* This may be excessive, but it seems to be the most straightforward place
+     * for it. Use with -fsanitize-coverage=func
+     */
+    //stack_idx = (stack_idx + 1) % STACK_DEPTH;
+    //stack_arr[stack_idx] = (intptr_t)__builtin_return_address(0);
+    //*stack_hash = 0;
+    //for (int i = 0; i < STACK_DEPTH; ++i) {
+    //    *stack_hash ^= stack_arr[i];
+    //}
+
+    int i = 0;
+    unw_cursor_t cursor; unw_context_t uc;
+    unw_word_t ip;
+
+    unw_getcontext(&uc);
+    unw_init_local(&cursor, &uc);
+    while (i < STACK_DEPTH && unw_step(&cursor) > 0) {
+        unw_get_reg(&cursor, UNW_REG_IP, &ip);
+        *stack_hash ^= (intptr_t)ip;
+        ++i;
+    }
 }
 
 __attribute__((no_sanitize("coverage")))
