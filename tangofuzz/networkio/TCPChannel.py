@@ -228,7 +228,7 @@ class TCPChannel(PtraceChannel):
             process.syscall()
 
     def _setup_ignore_callback_accept(self, syscall):
-        return syscall.name not in ('accept', 'accept4')
+        return syscall.name not in ('accept', 'accept4', 'poll', 'ppoll', 'select')
 
     def _setup_break_callback_accept(self):
         return self._setup_accepting
@@ -241,7 +241,7 @@ class TCPChannel(PtraceChannel):
             self.cb_socket_accepted(process, syscall)
 
     def _connect_ignore_callback(self, syscall):
-        return syscall.name not in ('accept', 'accept4', 'poll', 'ppoll', 'select')
+        return syscall.name not in ('accept', 'accept4')
 
     def _connect_break_callback(self):
         return self._sockfd > 0
