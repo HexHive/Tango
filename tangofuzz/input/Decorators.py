@@ -13,11 +13,18 @@ class FileCachingDecorator(MemoryCachingDecorator):
         self._dir = os.path.join(workdir, subdir)
         self._protocol = protocol
 
-    def __call__(self, input, sman, copy=True): # -> InputBase:
-        path = reduce(operator.add, (x[2] for x in next(sman.state_machine.get_min_paths(sman._last_state))))
-        self._prefix_len = len(tuple(path))
+    def __call__(self, input, sman, copy=True, path=None): # -> InputBase:
+        if path is None:
+            prefix = reduce(operator.add, (x[2] \
+                for x in
+                    next(sman.state_machine.get_min_paths(sman._last_state))
+                ))
+        else:
+            prefix = reduce(operator.add, (x[2] for x in path))
+
+        self._prefix_len = len(tuple(prefix))
         # FIXME this assumes ReplayStateLoader is used
-        joined = sman._loader._startup_input + path + input
+        joined = sman._loader._startup_input + prefix + input
         inp = super().__call__(input, copy=copy)
 
         input_typ = self.get_parent_class(input.___iter___)

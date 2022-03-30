@@ -171,6 +171,9 @@ class StateManager:
                         debug(f"Dissolving {current_state = }")
                         self._sm.dissolve_state(current_state)
                         self._strategy.update_state(current_state, invalidate=True)
+
+                        # we save the input for later coverage measurements
+                        FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=False, path=self._last_path)
                     stable = False
 
                     debug(f"Reloading last state ({self._last_state})")
@@ -179,6 +182,11 @@ class StateManager:
                     if self._last_state.last_input is not None:
                         self._loader.execute_input(self._last_state.last_input, self, update=False)
                     ProfileCount('imprecise')(1)
+                    # WARN we set update to be True, despite no change in state,
+                    # to force the StateManagerContext object to trim the
+                    # input_gen past the troubling interactions, since we won't
+                    # be using those interactions in the following iterations.
+                    updated = True
                 except (StabilityException, StateNotReproducibleException):
                     # This occurs when the reset_state() encountered an error
                     # trying to reproduce a state, most likely due to an
@@ -221,6 +229,8 @@ class StateManager:
                         last_input)
                     self._strategy.update_transition(self._last_state, current_state)
                     self._current_path.append((self._last_state, current_state, last_input))
+                    # reset last state's accumulated input
+                    self._last_state.last_input = None
                     self._last_state = current_state
                     info(f'Transitioned to {current_state=}')
                     updated = True
