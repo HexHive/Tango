@@ -76,8 +76,8 @@ class PtraceChannel(NetworkChannel):
             return False
 
     def process_exit(self, event):
-        warning(f"Process with {event.process.pid=} exited, deleting from debugger")
-        warning(f"Reason: {event}")
+        debug(f"Process with {event.process.pid=} exited, deleting from debugger")
+        debug(f"Reason: {event}")
         self._debugger.deleteProcess(event.process)
         if event.exitcode == 0:
             raise ProcessTerminatedException(f"Process with {event.process.pid=} exited normally", exitcode=0)
