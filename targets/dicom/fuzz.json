@@ -1,0 +1,36 @@
+{
+	"exec": {
+		"path": "./targets/dicom/dcmqrscp",
+		"args": ["./targets/dicom/dcmqrscp", "--single-process"],
+		"cwd": "./targets/dicom",
+		"env": {
+			"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216",
+			"DCMDICTPATH": "./dicom.dic"
+		}
+	},
+	"channel": {
+		"type": "tcp",
+		"tcp": {
+			"endpoint": "127.0.0.1",
+			"port": 5158
+		}
+	},
+	"loader": {
+		"type": "replay",
+		"forkserver": true,
+		"disable_aslr": true
+	},
+	"input": {
+		"type": "mutation"
+	},
+	"statemanager": {
+		"type": "coverage",
+		"strategy": "uniform"
+	},
+	"fuzzer": {
+		"lib": "./lib",
+		"seeds": "./targets/dicom/seeds",
+		"workdir": "./workdir",
+		"resume": true
+	}
+}
