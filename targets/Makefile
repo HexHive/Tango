@@ -1,7 +1,12 @@
 export COVERAGE=edge
+
 export CC=clang
 export CXX=clang++
-export CFLAGS=-fsanitize-coverage=$(COVERAGE),trace-pc-guard -O3 -fPIC -fsanitize=address
+
+CFLAGS := -fsanitize-coverage=$(COVERAGE),trace-pc-guard
+CFLAGS += -O3 -fPIC -fsanitize=address
+
+export CFLAGS
 export CXXFLAGS=$(CFLAGS)
 
 LIBDIR=$(realpath ../lib)
