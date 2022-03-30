@@ -75,7 +75,8 @@ class TCPChannel(PtraceChannel):
 
         self.monitor_syscalls(None, self._setup_ignore_callback_accept, \
             self._setup_break_callback_accept, self._setup_syscall_callback_accept, \
-            timeout=self._connect_timeout, break_on_entry=True)
+            timeout=self._connect_timeout, break_on_entry=True, \
+            listenfd=self._listenfd)
 
         del self._setup_listeners
         del self._setup_address
@@ -189,11 +190,42 @@ class TCPChannel(PtraceChannel):
     def _setup_break_callback(self):
         return any(x[2] == self._setup_address[1] for x in self._setup_listeners.values())
 
-    def _setup_syscall_callback_accept(self, process, syscall):
-        if syscall.name in ('accept', 'accept4'):
+    def _setup_syscall_callback_accept(self, process, syscall, listenfd):
+        try:
+            if syscall.name in ('accept', 'accept4'):
+                if syscall.arguments[0].value != listenfd \
+                        or syscall.result < 0:
+                    return
+            # poll, ppoll
+            elif syscall.name in ('poll', 'ppoll'):
+                nfds = syscall.arguments[1].value
+                pollfds = syscall.arguments[0].value
+                fmt = '@ihh'
+                size = struct.calcsize(fmt)
+                for i in range(nfds):
+                    fd, events, revents = struct.unpack(fmt, process.readBytes(pollfds + i * size, size))
+                    if fd == listenfd and (events & select.POLLIN) != 0:
+                        break
+                else:
+                    return
+            # select
+            elif syscall.name == 'select':
+                nfds = syscall.arguments[0].value
+                if nfds <= listenfd:
+                    return
+                readfds = syscall.arguments[1].value
+                fmt = '@l'
+                size = struct.calcsize(fmt)
+                l_idx = listenfd // (size * 8)
+                b_idx = listenfd % (size * 8)
+                fd_set, = struct.unpack(fmt, process.readBytes(readfds + l_idx * size, size))
+                if fd_set & (1 << b_idx) == 0:
+                    return
+
             self._setup_accepting = True
             self.cb_socket_accepting(process, syscall)
-        process.syscall()
+        finally:
+            process.syscall()
 
     def _setup_ignore_callback_accept(self, syscall):
         return syscall.name not in ('accept', 'accept4')
@@ -209,7 +241,7 @@ class TCPChannel(PtraceChannel):
             self.cb_socket_accepted(process, syscall)
 
     def _connect_ignore_callback(self, syscall):
-        return syscall.name not in ('accept', 'accept4')
+        return syscall.name not in ('accept', 'accept4', 'poll', 'ppoll', 'select')
 
     def _connect_break_callback(self):
         return self._sockfd > 0
