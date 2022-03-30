@@ -40,7 +40,6 @@ class PtraceChannel(NetworkChannel):
             max_array_count=20,
         )
         self._syscall_options.instr_pointer = False
-        self._syscall_whitelist = SOCKET_SYSCALL_NAMES
 
         self._debugger = PtraceDebugger()
         self._debugger.traceFork()
@@ -51,7 +50,7 @@ class PtraceChannel(NetworkChannel):
 
         # FIXME this is never really used; it's just a placeholder that went
         # obsolete
-        default_ignore = lambda syscall: syscall.name not in self._syscall_whitelist
+        default_ignore = lambda syscall: syscall.name not in SOCKET_SYSCALL_NAMES
         self.prepare_process(self._proc, default_ignore, syscall=True)
 
         self._monitor_executor = ThreadPoolExecutor()
