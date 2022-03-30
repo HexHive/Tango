@@ -25,7 +25,6 @@
 		"strategy": "uniform"
 	},
 	"fuzzer": {
-		"type": "coverage",
 		"lib": "./lib",
 		"workdir": "./workdir",
 		"resume": true

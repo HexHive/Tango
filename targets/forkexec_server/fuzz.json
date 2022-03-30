@@ -24,7 +24,6 @@
 		"type": "coverage"
 	},
 	"fuzzer": {
-		"type": "coverage",
 		"lib": "./lib",
 		"workdir": "./workdir"
 	}
