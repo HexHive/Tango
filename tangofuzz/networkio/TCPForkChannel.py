@@ -11,6 +11,8 @@ from ptrace.syscall import SYSCALL_REGISTER
 
 @dataclass
 class TCPForkChannelFactory(TransportChannelFactory):
+    fork_before_accept: bool
+
     connect_timeout: float = None # seconds
     data_timeout: float = None # seconds
 
@@ -25,15 +27,34 @@ class TCPForkChannelFactory(TransportChannelFactory):
 
     @cached_property
     def forkchannel(self):
-        return TCPForkChannel(pobj=self._pobj,
+        if self.fork_before_accept:
+            return TCPForkBeforeAcceptChannel(pobj=self._pobj,
+                          netns=self._netns,
+                          endpoint=self.endpoint, port=self.port,
+                          timescale=self.timescale,
+                          connect_timeout=self.connect_timeout,
+                          data_timeout=self.data_timeout)
+        else:
+            return TCPForkAfterListenChannel(pobj=self._pobj,
                           netns=self._netns,
                           endpoint=self.endpoint, port=self.port,
                           timescale=self.timescale,
                           connect_timeout=self.connect_timeout,
                           data_timeout=self.data_timeout)
 
+class TCPForkAfterListenChannel(TCPChannel, PtraceForkChannel):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
-class TCPForkChannel(TCPChannel, PtraceForkChannel):
+    def cb_socket_listening(self, process, syscall):
+        self._invoke_forkserver(process)
+
+    @property
+    def forked_child(self):
+        return self._accept_process
+
+
+class TCPForkBeforeAcceptChannel(TCPChannel, PtraceForkChannel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 

@@ -9,5 +9,5 @@ from .NetworkChannel          import NetworkChannel, TransportChannelFactory
 from .PtraceChannel           import PtraceChannel
 from .PtraceForkChannel       import PtraceForkChannel
 from .TCPChannel              import TCPChannel, TCPChannelFactory
-from .TCPForkChannel          import TCPForkChannel, TCPForkChannelFactory
+from .TCPForkChannel          import TCPForkChannelFactory
 from .UDPChannel              import UDPChannel, UDPChannelFactory
