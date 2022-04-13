@@ -11,7 +11,10 @@ export CXXFLAGS=$(CFLAGS)
 
 LIBDIR=$(realpath ../lib)
 
-export LDFLAGS=-Wl,-wrap,bind -Wl,-wrap,fork -fPIE -pie -L$(LIBDIR) -fsanitize=address
+LDFLAGS := -fPIE -pie -L$(LIBDIR) -fsanitize=address
+LDFLAGS += -Wl,-wrap,bind -Wl,-wrap,fork -Wl,-wrap,random
+
+export LDFLAGS
 export LDLIBS=-l:libtangofuzz.o -lrt
 
 TARGETS=$(sort $(dir $(wildcard ./*/Makefile)))

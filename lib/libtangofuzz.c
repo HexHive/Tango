@@ -126,6 +126,8 @@ int __real_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 pid_t __wrap_fork();
 pid_t __real_fork();
 
+long int __wrap_random(void);
+
 /* Refer to this SO answer on the nitty-gritty about TIME_WAIT
  * https://stackoverflow.com/a/14388707
  */
@@ -148,4 +150,9 @@ pid_t __wrap_fork() {
             exit(-256);
     }
     return child_pid;
+}
+
+long int __wrap_random(void) {
+    static long int x = 0;
+    return ++x;
 }
