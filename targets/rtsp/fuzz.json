@@ -1,0 +1,36 @@
+{
+	"exec": {
+		"path": "./targets/rtsp/live555",
+		"args": ["./targets/rtsp/live555", "8554"],
+		"cwd": "./targets/rtsp",
+		"env": {
+			"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216"
+		}
+	},
+	"channel": {
+		"type": "tcp",
+		"tcp": {
+			"endpoint": "127.0.0.1",
+			"port": 8554,
+			"fork_location": "listen"
+		}
+	},
+	"loader": {
+		"type": "replay",
+		"forkserver": true,
+		"disable_aslr": true
+	},
+	"input": {
+		"type": "mutation"
+	},
+	"statemanager": {
+		"type": "coverage",
+		"strategy": "uniform"
+	},
+	"fuzzer": {
+		"lib": "./lib",
+		"seeds": "./targets/rtsp/seeds",
+		"workdir": "./workdir",
+		"resume": true
+	}
+}
