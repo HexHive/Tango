@@ -90,7 +90,7 @@ class FuzzerSession:
                             ProfileCount('crash')(1)
                             FileCachingDecorator(self._workdir, "crash", self._protocol)(ex.payload, self._sman, copy=True)
                         except ProcessTerminatedException as pt:
-                            warning(f"Process terminated unexpectedtly? ({pt = })")
+                            debug(f"Process terminated unexpectedtly? ({pt = })")
                         except ChannelTimeoutException:
                             # TODO save timeout input
                             warning("Received channel timeout exception")
@@ -102,7 +102,7 @@ class FuzzerSession:
                             # TODO save broken setup input
                             warning("Received channel setup exception")
                         except Exception as ex:
-                            warning(f"Encountered unhandled loaded exception {ex = }")
+                            critical(f"Encountered unhandled loaded exception {ex = }")
                         # FIXME reset to StateManager's current target state
                         self._sman.reload_target()
                     except Exception as ex:

@@ -71,6 +71,7 @@ class PtraceChannel(NetworkChannel):
             # calling syscall.format() takes a lot of time and should be
             # avoided in production, even if logging is disabled
             debug(f"syscall processed: [{process.pid}] {syscall.name}")
+            # debug(f"syscall processed: [{process.pid}] {syscall.format()}")
             return True
         else:
             return False
