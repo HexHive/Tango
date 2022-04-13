@@ -221,6 +221,8 @@ class TCPChannel(PtraceChannel):
                 fd_set, = struct.unpack(fmt, process.readBytes(readfds + l_idx * size, size))
                 if fd_set & (1 << b_idx) == 0:
                     return
+            else:
+                return
 
             self._setup_accepting = True
             self.cb_socket_accepting(process, syscall)
