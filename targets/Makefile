@@ -1,4 +1,4 @@
-export COVERAGE=edge
+export COVERAGE=edge # or bb or func
 
 export CC=clang
 export CXX=clang++
