@@ -11,3 +11,4 @@ from .PtraceForkChannel       import PtraceForkChannel
 from .TCPChannel              import TCPChannel, TCPChannelFactory
 from .TCPForkChannel          import TCPForkChannelFactory
 from .UDPChannel              import UDPChannel, UDPChannelFactory
+from .UDPForkChannel          import UDPForkChannelFactory
