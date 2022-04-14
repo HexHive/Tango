@@ -11,7 +11,9 @@ class TransmitInteraction(InteractionBase):
     @ProfileEvent("perform_interaction")
     @ProfileFrequency("interactions", period=1)
     def perform(self, channel: ChannelBase):
-        channel.send(self._data)
+        sent = channel.send(self._data)
+        if sent < len(self._data):
+            self._data = self._data[:sent]
         # TODO hook target's recv calls and identify packet boundaries
 
     def __eq__(self, other: TransmitInteraction):

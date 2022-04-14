@@ -2,7 +2,8 @@ from functools    import cached_property
 from loader       import Environment
 from networkio    import (TCPChannelFactory,
                          TCPForkChannelFactory,
-                         UDPChannelFactory)
+                         UDPChannelFactory,
+                         UDPForkChannelFactory)
 from loader       import ReplayStateLoader, ReplayForkStateLoader
 from statemanager import (CoverageStateTracker,
                          StateManager,
@@ -124,7 +125,8 @@ class FuzzerConfig:
             if _config["type"] == "tcp":
                 return TCPChannelFactory(**_config["tcp"], timescale=self.timescale)
             elif _config["type"] == "udp":
-                return UDPChannelFactory(**_config["udp"], timescale=self.timescale)
+                return UDPChannelFactory(**_config["udp"], \
+                    timescale=self.timescale)
             else:
                 raise NotImplemented()
         else:
@@ -138,6 +140,9 @@ class FuzzerConfig:
                 return TCPForkChannelFactory(**args, \
                     timescale=self.timescale, \
                     fork_before_accept=fork_before_accept)
+            elif _config["type"] == "udp":
+                return UDPForkChannelFactory(**_config["udp"], \
+                    timescale=self.timescale)
             else:
                 raise NotImplemented()
 

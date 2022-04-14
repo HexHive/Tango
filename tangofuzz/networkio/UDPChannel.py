@@ -12,91 +12,171 @@ import select
 import threading
 from dataclasses import dataclass
 from functools import partial
-from ptrace.error import PtraceError
+from ptrace import PtraceError
 
 @dataclass
 class UDPChannelFactory(TransportChannelFactory):
-    connect_timeout: float = 5.0 # seconds
-    data_timeout: float = 5.0 # seconds
-    def create(self, pobj: Popen) -> ChannelBase:
-        return UDPChannel(pobj,
-                          self.endpoint, self.port,
+    connect_timeout: float = None # seconds
+    data_timeout: float = None # seconds
+
+    protocol: str = "udp"
+
+    def create(self, pobj: Popen, netns: str) -> ChannelBase:
+        ch = UDPChannel(pobj=pobj,
+                          netns=netns,
+                          endpoint=self.endpoint, port=self.port,
                           timescale=self.timescale,
                           connect_timeout=self.connect_timeout,
                           data_timeout=self.data_timeout)
+        ch.connect((self.endpoint, self.port))
+        return ch
 
 class UDPChannel(PtraceChannel):
     RECV_CHUNK_SIZE = 4096
 
-    class UDPSocketState:
-        SOCKET_UNBOUND = 1
-        SOCKET_BOUND = 2
+    def __init__(self, endpoint: str, port: int,
+                    connect_timeout: float, data_timeout: float, **kwargs):
+        super().__init__(**kwargs)
+        self._connect_timeout = connect_timeout * self._timescale if connect_timeout else None
+        self._data_timeout = data_timeout * self._timescale if data_timeout else None
+        self._socket = None
+        self._bind_process = None
+        self._refcounter = 0
+        self._sockfd = -1
+        self.setup((endpoint, port))
 
-        def __init__(self):
-            self._state = self.SOCKET_UNBOUND
+    def cb_socket_bound(self, process, syscall):
+        pass
 
-        def event(self, process, syscall):
-            assert (syscall.result != -1), f"Syscall failed, {errno.error_code(-syscall.result)}"
-            if self._state == self.SOCKET_UNBOUND and syscall.name == 'bind':
-                sockaddr = syscall.arguments[1].value
-                # FIXME apparently, family is 2 bytes, not 4?
-                # maybe use the parser that comes with python-ptrace
-                self._sa_family,  = struct.unpack('@H', process.readBytes(sockaddr, 2))
-                assert (self._sa_family  == socket.AF_INET), "Only IPv4 is supported."
-                self._sin_port, = struct.unpack('!H', process.readBytes(sockaddr + 2, 2))
-                self._sin_addr = socket.inet_ntop(self._sa_family, process.readBytes(sockaddr + 4, 4))
-                self._state = self.SOCKET_BOUND
-                debug(f"Socket bound to port {self._sin_port}")
-                return (self._sa_family, self._sin_addr, self._sin_port)
+    def process_new(self, *args, **kwargs):
+        super().process_new(*args, **kwargs)
+        # FIXME self._socket could be not None but the socket may not yet be
+        # accepted (see: connect())
+        if self._socket is not None:
+            self._refcounter += 1
 
-    def __init__(self, pobj: Popen, endpoint: str, port: int, timescale: float,
-                    connect_timeout: float, data_timeout: float):
-        super().__init__(pobj, timescale)
-        self._connect_timeout = connect_timeout * timescale if connect_timeout else None
-        self._data_timeout = data_timeout * timescale if data_timeout else None
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.connect((endpoint, port))
-
-    def connect(self, address: tuple):
-        def syscall_callback_bind(process, syscall, fds, bounds):
-            if syscall.name == 'socket':
-                domain = syscall.arguments[0].value
-                typ = syscall.arguments[1].value
-                if domain != socket.AF_INET or (typ & socket.SOCK_DGRAM) == 0:
-                    return
-                fd = syscall.result
-                fds[fd] = self.UDPSocketState()
-            elif syscall.name == 'bind':
-                fd = syscall.arguments[0].value
-                if fd not in fds:
-                    return
-                result = fds[fd].event(process, syscall)
-                if result is not None:
-                    bounds[fd] = result
-
+    def setup(self, address: tuple):
         ## Wait for a socket that is listening on the same port
         # FIXME check for matching address too
-        bounds = {}
-        ignore_callback = lambda x: x.name not in ('socket', 'bind')
-        break_callback = lambda: any(x[2] == address[1] for x in bounds.values())
+        self._setup_binds = {}
+        self._setup_address = address
 
-        self._monitor_syscalls(None, ignore_callback, break_callback, syscall_callback_bind, fds={}, bounds=bounds, timeout=self._connect_timeout)
+        self.monitor_syscalls(None, \
+            self._setup_ignore_callback, \
+            self._setup_break_callback, self._setup_syscall_callback, \
+            timeout=self._connect_timeout, break_on_entry=True, \
+            fds={}, binds=self._setup_binds, address=address)
 
-        boundfd = next(x[0] for x in bounds.items() if x[1][2] == address[1])
+        del self._setup_binds
+        del self._setup_address
 
-        self._sockfd = boundfd
-        self._socket.connect(address)
+    def connect(self, address: tuple):
+        self._socket = self.nssocket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._refcounter = 0
+        self._connect_address = address
+        self._bind_process, _ = self.monitor_syscalls( \
+            self._connect_monitor_target, self._connect_ignore_callback, \
+            self._connect_break_callback, self._connect_syscall_callback, \
+            timeout=self._connect_timeout)
+        del self._connect_address
+
+        debug(f"Socket is now connected ({self._sockfd = })!")
 
         # wait for the next read, recv, select, or poll
         # or wait for the parent to fork, and trace child for these calls
         self._poll_sync()
 
     def _poll_sync(self):
-        server_waiting = False
-        # TODO add support for epoll?
-        ignore_callback = lambda x: x.name not in ('read', 'recv', 'recvfrom', 'recvmsg', 'poll', 'ppoll', 'select', 'close')
-        break_callback = lambda: server_waiting
-        def syscall_callback_read(process, syscall):
+        self._poll_server_waiting = False
+        proc, _ = self.monitor_syscalls(None, self._poll_ignore_callback, \
+            self._poll_break_callback, self._poll_syscall_callback, \
+            break_on_entry=True, timeout=self._data_timeout)
+        del self._poll_server_waiting
+
+    def send(self, data: ByteString) -> int:
+        sent = self._send_sync(data)
+        self._poll_sync()
+        debug(f"Sent data to server: {data[:sent]}")
+        return sent
+
+    def _send_sync(self, data: ByteString) -> int:
+        self._send_server_received = 0
+        self._send_client_sent = 0
+        ## Set up a barrier so that client_sent is ready when checking for break condition
+        self._send_barrier = threading.Barrier(2)
+
+        self._send_data = data
+        _, ret = self.monitor_syscalls(self._send_send_monitor, \
+            self._send_ignore_callback, self._send_break_callback, \
+            self._send_syscall_callback, timeout=self._data_timeout)
+
+        del self._send_server_received
+        del self._send_client_sent
+        del self._send_barrier
+        del self._send_data
+
+        return ret
+
+    def receive(self) -> ByteString:
+        chunks = []
+        while True:
+            try:
+                poll, _, _ = select.select([self._socket], [], [], 0)
+                if self._socket not in poll:
+                    data = b''.join(chunks)
+                    debug(f"Received data from server: {data}")
+                    return data
+            except ValueError:
+                raise ChannelBrokenException("socket fd is negative, socket is closed")
+
+            ret = self._socket.recv(self.RECV_CHUNK_SIZE)
+            if ret == b'' and len(chunks) == 0:
+                raise ChannelBrokenException("recv returned 0, socket shutdown")
+            elif ret == b'':
+                data = b''.join(chunks)
+                debug(f"Received data from server: {data}")
+                return data
+
+            chunks.append(ret)
+
+    def close(self, **kwargs):
+        if self._socket is not None:
+            self._socket.close()
+            self._socket = None
+        super().close(**kwargs)
+
+    ### Callbacks ###
+    def _setup_syscall_callback(self, process, syscall, fds, binds, address):
+        try:
+            if syscall.name == 'socket':
+                domain = syscall.arguments[0].value
+                typ = syscall.arguments[1].value
+                if domain != socket.AF_INET or (typ & socket.SOCK_DGRAM) == 0:
+                    return
+                fd = syscall.result
+                fds[fd] = UDPSocketState()
+            elif syscall.name == 'bind':
+                fd = syscall.arguments[0].value
+                if fd not in fds:
+                    return
+                result = fds[fd].event(process, syscall)
+                if result is not None:
+                    binds[fd] = result
+                    candidates = [x[0] for x in binds.items() if x[1][2] == address[1]]
+                    if candidates:
+                        self._sockfd = candidates[0]
+                        self.cb_socket_binding(process, syscall)
+        finally:
+            process.syscall()
+
+    def _setup_ignore_callback(self, syscall):
+        return syscall.name not in ('socket', 'bind')
+
+    def _setup_break_callback(self):
+        return any(x[2] == self._setup_address[1] for x in self._setup_binds.values())
+
+    def _poll_syscall_callback(self, process, syscall):
+        try:
             # poll, ppoll
             if syscall.name in ('poll', 'ppoll'):
                 nfds = syscall.arguments[1].value
@@ -122,102 +202,110 @@ class UDPChannel(PtraceChannel):
                 fd_set, = struct.unpack(fmt, process.readBytes(readfds + l_idx * size, size))
                 if fd_set & (1 << b_idx) == 0:
                     return
-            elif syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') and syscall.arguments[0].value != self._sockfd:
-                return
-            elif syscall.name == 'close' and syscall.arguments[0].value == self._sockfd:
-                raise ChannelBrokenException("Channel closed while waiting for server to read")
             # read, recv, recvfrom, recvmsg
-            nonlocal server_waiting
-            server_waiting = True
-
-            # remove every other process from the debugger
-            for proc in self._debugger:
-                if proc != process:
-                    try:
-                        proc.detach()
-                    except PtraceError:
-                        try:
-                            proc.kill(signal.SIGSTOP)
-                            proc.waitSyscall()
-                            proc.detach()
-                        except Exception:
-                            pass
-                        pass
-        self._monitor_syscalls(None, ignore_callback, break_callback, syscall_callback_read, break_on_entry=True, timeout=self._data_timeout)
-
-    def send(self, data: ByteString) -> int:
-        sent = 0
-        while sent < len(data):
-            sent += self._send_sync(data[sent:])
-
-        self._poll_sync()
-        debug(f"Sent data to server: {data}")
-        return sent
-
-    def _send_sync(self, data: ByteString) -> int:
-        server_received = 0
-        client_sent = 0
-        ## Set up a barrier so that client_sent is ready when checking for break condition
-        barrier = threading.Barrier(2)
-
-        ignore_callback = lambda x: x.name not in ('read', 'recv', 'recvfrom', 'recvmsg', 'close')
-        def break_callback():
-            if not barrier.broken:
-                barrier.wait()
-                barrier.abort()
-            debug(f"{client_sent=}; {server_received=}")
-            # FIXME is there a case where client_sent == 0?
-            assert (client_sent > 0 and server_received <= client_sent), \
-                "Client sent no bytes, or server received too many bytes!"
-            return server_received == client_sent
-
-        def send_monitor(data):
-            nonlocal client_sent
-            ret = self._socket.send(data)
-            if ret == 0:
-                raise ChannelBrokenException("Failed to send any data")
-            client_sent = ret
-            try:
-                barrier.wait()
-            except threading.BrokenBarrierError:
-                # occurs sometimes when the barrier is broken while wait() has yet to finish
-                # but it's benign
+            elif syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') and syscall.arguments[0].value == self._sockfd:
                 pass
-            return ret
-
-        def syscall_callback_read(process, syscall):
-            if syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') and syscall.arguments[0].value == self._sockfd:
-                if syscall.arguments[0].value != self._sockfd:
+            # For the next two cases, since break_on_entry is True, the effect
+            # only takes place on the second occurrence, when the syscall exits;
+            # so we check if the result is None (entry) or not (exit)
+            elif syscall.name in ('shutdown', 'close') and syscall.arguments[0].value == self._sockfd:
+                if syscall.result is None:
                     return
-                nonlocal server_received
-                if syscall.result == 0:
-                    raise ChannelBrokenException("Server failed to read data off socket")
-                server_received += syscall.result
-            elif syscall.name == 'close' and syscall.arguments[0].value == self._sockfd:
+                elif syscall.name == 'shutdown':
+                    raise ChannelBrokenException("Channel closed while waiting for server to read")
+                elif syscall.name == 'close':
+                    self._refcounter -= 1
+                    if self._refcounter == 0:
+                        raise ChannelBrokenException("Channel closed while waiting for server to read")
+                    return
+            else:
+                return
+        finally:
+            process.syscall()
+        self._poll_server_waiting = True
+
+    def _poll_ignore_callback(self, syscall):
+        # TODO add support for epoll?
+        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg', \
+                                'poll', 'ppoll', 'select', 'close', 'shutdown')
+
+    def _poll_break_callback(self):
+        return self._poll_server_waiting
+
+    def _connect_syscall_callback(self, process, syscall):
+        if syscall.name in ('bind',) \
+                and syscall.arguments[0].value == self._sockfd \
+                and syscall.result == 0:
+            self._refcounter = 1
+            self.cb_socket_bound(process, syscall)
+
+    def _connect_ignore_callback(self, syscall):
+        return syscall.name not in ('bind',)
+
+    def _connect_break_callback(self):
+        return self._refcounter > 0
+
+    def _connect_monitor_target(self):
+        return self._socket.connect(self._connect_address)
+
+    def _send_syscall_callback(self, process, syscall):
+        if syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') \
+                and syscall.arguments[0].value == self._sockfd:
+            if syscall.result == 0:
+                raise ChannelBrokenException("Server failed to read data off socket")
+            self._send_server_received += syscall.result
+        elif syscall.name == 'shutdown' and syscall.arguments[0].value == self._sockfd:
+            raise ChannelBrokenException("Channel closed while waiting for server to read")
+        elif syscall.name == 'close' and syscall.arguments[0].value == self._sockfd:
+            self._refcounter -= 1
+            if self._refcounter == 0:
                 raise ChannelBrokenException("Channel closed while waiting for server to read")
 
-        monitor_target = partial(send_monitor, data)
-        ret = self._monitor_syscalls(monitor_target, ignore_callback, break_callback, syscall_callback_read, timeout=self._data_timeout)
+    def _send_ignore_callback(self, syscall):
+        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg', \
+                                    'close', 'shutdown')
 
+    def _send_break_callback(self):
+        if not self._send_barrier.broken:
+            self._send_barrier.wait()
+            self._send_barrier.abort()
+        debug(f"{self._send_client_sent=}; {self._send_server_received=}")
+        # FIXME is there a case where client_sent == 0?
+        assert (self._send_client_sent > 0 \
+                    and self._send_server_received <= self._send_client_sent), \
+            "Client sent no bytes, or server received too many bytes!"
+        return self._send_server_received == self._send_client_sent
+
+    def _send_send_monitor(self):
+        ret = self._socket.send(self._send_data)
+        if ret == 0:
+            raise ChannelBrokenException("Failed to send any data")
+        self._send_client_sent = ret
+        try:
+            self._send_barrier.wait()
+        except threading.BrokenBarrierError:
+            # occurs sometimes when the barrier is broken while wait() has yet to finish
+            # but it's benign
+            pass
         return ret
 
-    def receive(self) -> ByteString:
-        try:
-            poll, _, _ = select.select([self._socket], [], [], 0)
-            if self._socket not in poll:
-                data = b''
-                debug(f"Received no data from server")
-                return data
-        except ValueError:
-            raise ChannelBrokenException("socket fd is negative, socket is closed")
+class UDPSocketState:
+    SOCKET_UNBOUND = 1
+    SOCKET_BOUND = 2
 
-        data = self._socket.recv(self.RECV_CHUNK_SIZE, flags=socket.MSG_TRUNC)
-        return data
+    def __init__(self):
+        self._state = self.SOCKET_UNBOUND
 
-    def close(self):
-        self._socket.close()
-        super().close()
-
-    def __del__(self):
-        self.close()
-        super().__del__()
+    def event(self, process, syscall):
+        assert (syscall.result != -1), f"Syscall failed, {errno.error_code(-syscall.result)}"
+        if self._state == self.SOCKET_UNBOUND and syscall.name == 'bind':
+            sockaddr = syscall.arguments[1].value
+            # FIXME apparently, family is 2 bytes, not 4?
+            # maybe use the parser that comes with python-ptrace
+            self._sa_family,  = struct.unpack('@H', process.readBytes(sockaddr, 2))
+            assert (self._sa_family  == socket.AF_INET), "Only IPv4 is supported."
+            self._sin_port, = struct.unpack('!H', process.readBytes(sockaddr + 2, 2))
+            self._sin_addr = socket.inet_ntop(self._sa_family, process.readBytes(sockaddr + 4, 4))
+            self._state = self.SOCKET_BOUND
+            debug(f"Socket bound to port {self._sin_port}")
+            return (self._sa_family, self._sin_addr, self._sin_port)

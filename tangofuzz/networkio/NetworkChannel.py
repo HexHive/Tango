@@ -44,8 +44,9 @@ class NetNSContext (object):
         setns(self.myns.fileno(), 0)
 
     def __del__(self):
-        self.myns.close()
-        self.targetns.close()
+        if hasattr(self, 'myns'):
+            self.myns.close()
+            self.targetns.close()
 
     @staticmethod
     def get_ns_path(nspath=None, nsname=None, nspid=None):
