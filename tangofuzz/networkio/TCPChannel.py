@@ -52,7 +52,7 @@ class TCPChannel(PtraceChannel):
         pass
 
     def cb_socket_accepted(self, process, syscall):
-        self._refcounter = 1
+        pass
 
     def process_new(self, *args, **kwargs):
         super().process_new(*args, **kwargs)
@@ -240,6 +240,7 @@ class TCPChannel(PtraceChannel):
                 and syscall.arguments[0].value == listenfd \
                 and syscall.result >= 0:
             self._sockfd = syscall.result
+            self._refcounter = 1
             self.cb_socket_accepted(process, syscall)
 
     def _connect_ignore_callback(self, syscall):
