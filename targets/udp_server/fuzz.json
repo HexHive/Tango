@@ -1,0 +1,34 @@
+{
+	"exec": {
+		"path": "./targets/udp_server/udp_server",
+		"args": ["./targets/udp_server/udp_server"],
+		"env": {
+			"ASAN_OPTIONS": "detect_leaks=0"
+		},
+		"stdout": "./stdout",
+		"stderr": "./stderr"
+	},
+	"channel": {
+		"type": "udp",
+		"udp": {
+			"endpoint": "127.0.0.1",
+			"port": 5001
+		}
+	},
+	"loader": {
+		"type": "replay",
+		"forkserver": true,
+		"disable_aslr": true
+	},
+	"input": {
+		"type": "mutation"
+	},
+	"statemanager": {
+		"type": "coverage"
+	},
+	"fuzzer": {
+		"lib": "./lib",
+		"workdir": "./workdir",
+		"resume": true
+	}
+}
