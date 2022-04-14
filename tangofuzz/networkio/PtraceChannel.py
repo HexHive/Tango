@@ -103,6 +103,8 @@ class PtraceChannel(NetworkChannel):
             critical(f"{event.process.pid=} received rogue SIGSTOP, resuming for now")
             event.process.syscall()
             return
+        elif event.signum == signal.SIGSEGV:
+            raise ProcessCrashedException(f"Process with {event.process.pid=} terminated abnormally with {event.signum=}", exitcode=event.signum)
         debug(f"Target process with {event.process.pid=} received signal with {event.signum=}")
         event.display(log=warning)
         signum = event.signum
