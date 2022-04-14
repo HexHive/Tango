@@ -122,18 +122,15 @@ class FuzzerConfig:
         _config = self._config["channel"]
         if not self.use_forkserver:
             if _config["type"] == "tcp":
-                return TCPChannelFactory(**_config["tcp"], timescale=self.timescale)
+                return TCPChannelFactory(**_config["tcp"], \
+                    timescale=self.timescale)
             else:
                 raise NotImplemented()
         else:
             if _config["type"] == "tcp":
-                fork_location = _config["tcp"].get("fork_location", "accept")
+                fork_location = _config["tcp"].pop("fork_location", "accept")
                 fork_before_accept = fork_location == "accept"
-
-                args = _config["tcp"]
-                if "fork_location" in args:
-                    del args["fork_location"]
-                return TCPForkChannelFactory(**args, \
+                return TCPForkChannelFactory(**_config["tcp"], \
                     timescale=self.timescale, \
                     fork_before_accept=fork_before_accept)
             else:
