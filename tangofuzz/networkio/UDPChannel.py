@@ -45,6 +45,9 @@ class UDPChannel(PtraceChannel):
         self._sockfd = -1
         self.setup((endpoint, port))
 
+    def cb_socket_binding(self, process, syscall):
+        pass
+
     def cb_socket_bound(self, process, syscall):
         pass
 
