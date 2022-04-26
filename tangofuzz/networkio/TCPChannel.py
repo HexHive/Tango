@@ -205,6 +205,10 @@ class TCPChannel(PtraceChannel):
                 for i in range(nfds):
                     fd, events, revents = struct.unpack(fmt, process.readBytes(pollfds + i * size, size))
                     if fd == listenfd and (events & select.POLLIN) != 0:
+                        args = list(syscall.readArgumentValues(process.getregs()))
+                        # convert call to blocking
+                        args[2] = -1
+                        syscall.writeArgumentValues(*args)
                         break
                 else:
                     return
@@ -221,6 +225,10 @@ class TCPChannel(PtraceChannel):
                 fd_set, = struct.unpack(fmt, process.readBytes(readfds + l_idx * size, size))
                 if fd_set & (1 << b_idx) == 0:
                     return
+                args = list(syscall.readArgumentValues(process.getregs()))
+                # convert call to blocking
+                args[4] = 0
+                syscall.writeArgumentValues(*args)
             else:
                 return
 
@@ -263,6 +271,10 @@ class TCPChannel(PtraceChannel):
                 for i in range(nfds):
                     fd, events, revents = struct.unpack(fmt, process.readBytes(pollfds + i * size, size))
                     if fd == self._sockfd and (events & select.POLLIN) != 0:
+                        args = list(syscall.readArgumentValues(process.getregs()))
+                        # convert call to blocking
+                        args[2] = -1
+                        syscall.writeArgumentValues(*args)
                         break
                 else:
                     return
@@ -279,6 +291,10 @@ class TCPChannel(PtraceChannel):
                 fd_set, = struct.unpack(fmt, process.readBytes(readfds + l_idx * size, size))
                 if fd_set & (1 << b_idx) == 0:
                     return
+                args = list(syscall.readArgumentValues(process.getregs()))
+                # convert call to blocking
+                args[4] = 0
+                syscall.writeArgumentValues(*args)
             # read, recv, recvfrom, recvmsg
             elif syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') and syscall.arguments[0].value == self._sockfd:
                 pass

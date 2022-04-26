@@ -102,6 +102,31 @@ class PtraceSyscall(FunctionCall):
             return (regs.gpr3, regs.gpr4, regs.gpr5, regs.gpr6, regs.gpr7, regs.gpr8)
         raise NotImplementedError()
 
+    def writeArgumentValues(self, *args):
+        regs = None
+        if CPU_X86_64:
+            regs = ('rdi', 'rsi', 'rdx', 'r10', 'r8', 'r9')
+        elif CPU_ARM32:
+            regs = ('r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6')
+        elif CPU_AARCH64:
+            regs = ('r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7')
+        elif CPU_I386:
+            regs = ('ebx', 'ecx', 'edx', 'esi', 'edi', 'ebp')
+        elif CPU_POWERPC:
+            regs = ('gpr3', 'gpr4', 'gpr5', 'gpr6', 'gpr7', 'gpr8')
+
+        if regs is not None:
+            for reg, value in zip(regs, args):
+                self.process.setreg(reg, value)
+        elif RUNNING_BSD:
+            # FIXME this is not yet implemented
+            raise NotImplementedError()
+            # sp = self.process.getStackPointer()
+            # return [self.process.readWord(sp + index * CPU_WORD_SIZE)
+            #         for index in range(1, 6 + 1)]
+        else:
+            raise NotImplementedError()
+
     def readArguments(self, argument_values):
         if self.name in SYSCALL_PROTOTYPES:
             self.restype, formats = SYSCALL_PROTOTYPES[self.name]
