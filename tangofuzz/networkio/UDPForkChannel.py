@@ -43,7 +43,7 @@ class UDPForkChannel(UDPChannel, PtraceForkChannel):
     def forked_child(self):
         return self._bind_process
 
-class UDPForkBeforeBindChannel(TCPChannel, PtraceForkChannel):
+class UDPForkBeforeBindChannel(UDPChannel, PtraceForkChannel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
