@@ -14,5 +14,7 @@ from .coverage.CoverageState        import CoverageState
 from .coverage.CoverageReader       import CoverageReader
 from .coverage.CoverageStateTracker import CoverageStateTracker
 from .grammar.GrammarState          import GrammarState
+from .zoom.ZoomState                import ZoomState
+from .zoom.ZoomStateTracker         import ZoomStateTracker
 
 from .StateManager                  import StateManager

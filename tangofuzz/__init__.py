@@ -8,7 +8,7 @@ logging.getLogger().handlers.clear()
 logging.setLoggerClass(ColoredLogger)
 root_logger = ColoredLogger()
 
-import common, fuzzer, generator, input, interaction, loader, models, mutator, \
+import common, fuzzer, generator, input, interaction, loader, mutator, \
        networkio, profiler, ptrace, statemanager, tests
 
 import atexit

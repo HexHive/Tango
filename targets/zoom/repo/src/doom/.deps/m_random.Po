@@ -1,0 +1,3 @@
+m_random.o: m_random.c /usr/include/stdc-predef.h
+
+/usr/include/stdc-predef.h:

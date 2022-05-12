@@ -10,3 +10,4 @@ pydot==1.4.2
 readline==6.2.4.1
 #pyroute2 @ git+https://github.com/hazimeh/pyroute2.git
 #setcap cap_net_admin,cap_sys_admin,cap_dac_override+eip python3.9
+python3-xlib==0.15

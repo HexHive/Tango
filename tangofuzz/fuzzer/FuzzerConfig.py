@@ -3,12 +3,13 @@ from loader       import Environment
 from networkio    import (TCPChannelFactory,
                          TCPForkChannelFactory,
                          UDPChannelFactory,
-                         UDPForkChannelFactory)
-from loader       import ReplayStateLoader, ReplayForkStateLoader
-from statemanager import (CoverageStateTracker,
+                         UDPForkChannelFactory,
+                         X11ChannelFactory)
+from loader       import ReplayStateLoader, ReplayForkStateLoader, ZoomStateLoader
+from statemanager import (CoverageStateTracker, ZoomStateTracker,
                          StateManager,
                          RandomStrategy, UniformStrategy)
-from generator    import RandomInputGenerator
+from generator    import RandomInputGenerator, ZoomInputGenerator
 from random       import Random
 import json
 import os
@@ -37,7 +38,7 @@ class FuzzerConfig:
             ...
         },
         "channel": {
-            "type": "<tcp | udp | raw | ...>",
+            "type": "<tcp | udp | raw | x11 | ...>",
             "tcp": {
                 "endpoint": "address",
                 "port": number,
@@ -52,19 +53,19 @@ class FuzzerConfig:
             ...
         },
         "loader": {
-            "type": "<replay | snapshot | ...>",
+            "type": "<replay | snapshot | zoom | ...>",
             "forkserver": <true | false>,
             "disable_aslr": <true | false>,
             ...
         },
         "input": {
-            "type": "<mutation | generation  | ...>",
+            "type": "<mutation | generation | zoom | ...>",
             "spec": "/path/to/spec",
             "startup": "/path/to/pcap",
             ...
         },
         "statemanager": {
-            "type": "<coverage | grammar | hybrid | ...>",
+            "type": "<coverage | grammar | hybrid | zoom | ...>",
             "strategy": "<random | uniform | ...>",
             ...
         },
@@ -128,6 +129,8 @@ class FuzzerConfig:
             elif _config["type"] == "udp":
                 return UDPChannelFactory(**_config["udp"], \
                     timescale=self.timescale)
+            elif _config["type"] == "x11":
+                return X11ChannelFactory(timescale=self.timescale)
             else:
                 raise NotImplemented()
         else:
@@ -153,6 +156,9 @@ class FuzzerConfig:
             else:
                 return ReplayForkStateLoader(self.exec_env, self.ch_env,
                     self.disable_aslr, self.input_generator.startup_input)
+        elif _config["type"] == "zoom":
+            return ZoomStateLoader(self.exec_env, self.ch_env,
+                    self.disable_aslr, self.input_generator.startup_input)
         else:
             raise NotImplemented()
 
@@ -163,6 +169,8 @@ class FuzzerConfig:
         if state_type == "coverage":
             return CoverageStateTracker(self.input_generator, self.loader,
                 bind_lib=self._bind_lib)
+        elif state_type == "zoom":
+            return ZoomStateTracker(self.input_generator, self.loader)
         else:
             raise NotImplemented()
 
@@ -172,6 +180,8 @@ class FuzzerConfig:
         input_type = _config.get("type", "mutation")
         if input_type == "mutation":
             return RandomInputGenerator(self.startup_pcap, self.seed_dir, self.protocol)
+        elif input_type == "zoom":
+            return ZoomInputGenerator(self.startup_pcap, self.seed_dir, self.protocol)
         else:
             raise NotImplemented()
 

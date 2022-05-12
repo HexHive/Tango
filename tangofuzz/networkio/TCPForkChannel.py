@@ -18,7 +18,7 @@ class TCPForkChannelFactory(TransportChannelFactory):
 
     protocol: str = "tcp"
 
-    def create(self, pobj: Popen, netns: str) -> ChannelBase:
+    def create(self, pobj: Popen, netns: str, *args, **kwargs) -> ChannelBase:
         self._pobj = pobj
         self._netns = netns
         ch = self.forkchannel

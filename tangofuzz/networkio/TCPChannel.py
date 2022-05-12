@@ -21,7 +21,7 @@ class TCPChannelFactory(TransportChannelFactory):
 
     protocol: str = "tcp"
 
-    def create(self, pobj: Popen, netns: str) -> ChannelBase:
+    def create(self, pobj: Popen, netns: str, *args, **kwargs) -> ChannelBase:
         ch = TCPChannel(pobj=pobj,
                           netns=netns,
                           endpoint=self.endpoint, port=self.port,

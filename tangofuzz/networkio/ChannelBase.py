@@ -28,5 +28,5 @@ class ChannelFactoryBase(ABC):
     timescale: float
 
     @abstractmethod
-    def create(self) -> ChannelBase:
+    def create(self, *args, **kwargs) -> ChannelBase:
         pass

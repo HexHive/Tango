@@ -1,0 +1,31 @@
+{
+	"exec": {
+		"path": "./targets/zoom/repo/src/chocolate-doom",
+		"args": ["./targets/zoom/repo/src/chocolate-doom", "-nomouse", "-nograbmouse", "-iwad", "Doom1.WAD", "-warp", "1", "-geometry", "1280x1024"],
+		"cwd": "./targets/zoom/repo/play",
+		"env": {
+		},
+		"stdout": "./stdout",
+		"stderr": "./stderr"
+	},
+	"channel": {
+		"type": "x11"
+	},
+	"loader": {
+		"type": "zoom",
+		"forkserver": false,
+		"disable_aslr": true
+	},
+	"input": {
+		"type": "zoom"
+	},
+	"statemanager": {
+		"type": "zoom",
+		"strategy": "uniform"
+	},
+	"fuzzer": {
+		"lib": "./lib",
+		"workdir": "./workdir",
+		"resume": true
+	}
+}

@@ -11,6 +11,6 @@ logging.getLogger("webui").setLevel(logging.INFO)
 logging.getLogger("ptrace").setLevel(logging.CRITICAL)
 logging.getLogger("input").setLevel(logging.INFO)
 
-config = FuzzerConfig("./targets/forkexec_server/fuzz.json")
+config = FuzzerConfig("./targets/zoom/fuzz.json")
 sess = FuzzerSession(config)
 sess.start()

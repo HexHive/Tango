@@ -5,3 +5,4 @@ for func in ('debug', 'info', 'warning', 'error', 'critical'):
 
 from .InputGeneratorBase import InputGeneratorBase
 from .RandomInputGenerator import RandomInputGenerator
+from .ZoomInputGenerator import ZoomInputGenerator

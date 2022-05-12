@@ -8,7 +8,7 @@ from math        import isclose
 
 class DelayInteraction(InteractionBase):
     def __init__(self, time: float):
-        self._time = time
+        self._time = float(time)
         # a delay longer than 5 seconds is probably useless, but we'll keep this
         # configurable
         self._maxdelay = 5
