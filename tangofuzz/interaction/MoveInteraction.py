@@ -16,7 +16,7 @@ class MoveInteraction(InteractionBase):
 
     def __init__(self, direction: str, stop: bool=False):
         self._dir = direction
-        self._keys = self.DIRECTION_KEY_MAP.get(direction, ())
+        self._keys = self.DIRECTION_KEY_MAP.get(self._dir, ())
         self._release = stop
 
     def perform(self, channel: X11Channel):
@@ -24,7 +24,9 @@ class MoveInteraction(InteractionBase):
             channel.send(key, release=self._release)
 
     def mutate(self, mutator, entropy):
-        pass
+        self._dir = entropy.choice(list(self.DIRECTION_KEY_MAP.keys()))
+        self._keys = self.DIRECTION_KEY_MAP.get(self._dir, ())
+        self._release = entropy.choice((True, False))
 
     def __eq__(self, other: MoveInteraction) -> bool:
         return isinstance(other, MoveInteraction) and other._dir == self._dir
