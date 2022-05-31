@@ -1,5 +1,5 @@
 # one of: edge, bb, func
-export COVERAGE=edge
+export COVERAGE=bb
 
 export CC=clang
 export CXX=clang++

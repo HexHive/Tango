@@ -8,4 +8,5 @@ from .InputBase     import (InputBase, DecoratorBase,
                            MemoryCachingDecorator)
 from .Decorators    import FileCachingDecorator
 from .PreparedInput import PreparedInput
+from .ZoomInput     import ZoomInput
 from .PCAPInput     import PCAPInput

@@ -2,9 +2,9 @@ from __future__ import annotations
 from interaction import InteractionBase
 from networkio   import ChannelBase
 from typing      import Sequence
-from time        import sleep
 from profiler    import ProfileFrequency, ProfileEvent
 from math        import isclose
+from asyncio     import sleep
 
 class DelayInteraction(InteractionBase):
     def __init__(self, time: float):
@@ -15,8 +15,8 @@ class DelayInteraction(InteractionBase):
 
     @ProfileEvent("perform_interaction")
     @ProfileFrequency("interactions", period=1)
-    def perform(self, channel: ChannelBase):
-        sleep(self._time * channel._timescale)
+    async def perform(self, channel: ChannelBase):
+        await sleep(self._time * channel._timescale)
 
     def __eq__(self, other: DelayInteraction):
         return isinstance(other, DelayInteraction) and \
@@ -29,3 +29,6 @@ class DelayInteraction(InteractionBase):
         a = (mutator.mutate_int(a, entropy) % b) * self._maxdelay
 
         self._time = a / b
+
+    def __repr__(self):
+        return f'sleep({self._time})'

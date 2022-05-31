@@ -10,15 +10,20 @@ from statemanager import (StateBase,
 from input        import InputBase, MemoryCachingDecorator, FileCachingDecorator
 from loader       import StateLoaderBase
 from profiler     import ProfileValue, ProfileFrequency, ProfileCount
+import asyncio
 
 class StateManager:
     def __init__(self, loader: StateLoaderBase, tracker: StateTrackerBase,
             strategy_ctor: Callable[[StateMachine, StateBase], StrategyBase],
-            workdir: str, protocol: str):
+            workdir: str, protocol: str,
+            validate_transitions: bool, minimize_transitions: bool):
         self._loader = loader
         self._tracker = tracker
+        self._tracker.state_manager = self
         self._workdir = workdir
         self._protocol = protocol
+        self._validate = validate_transitions
+        self._minimize = minimize_transitions
 
         self._last_state = self._tracker.entry_state
         self._sm = StateMachine(self._last_state)
@@ -38,7 +43,7 @@ class StateManager:
         self._current_path.clear()
 
     @ProfileFrequency('resets')
-    def reset_state(self, state_or_path=None, update=True):
+    async def reset_state(self, state_or_path=None, update=True):
         if update:
             ProfileValue('status')('reset_state')
             self._reset_current_path()
@@ -57,9 +62,9 @@ class StateManager:
 
         try:
             if state_or_path is None:
-                self._loader.load_state(self._tracker.entry_state, self, update=False)
+                await self._loader.load_state(self._tracker.entry_state, self, update=False)
             else:
-                self._loader.load_state(state_or_path, self, update=False)
+                await self._loader.load_state(state_or_path, self, update=False)
             if update:
                 self._last_state = self._tracker.current_state
                 self._strategy.update_state(self._last_state, is_new=False)
@@ -72,14 +77,14 @@ class StateManager:
                 ProfileCount("dissolved_states")(1)
             raise
 
-    def reload_target(self):
+    async def reload_target(self):
         debug(f"Reloading target state {self._strategy.target}")
-        self.reset_state(self._strategy.target)
+        await self.reset_state(self._strategy.target)
 
     def get_context(self, input: InputBase) -> StateManagerContext:
         return StateManagerContext(self, input)
 
-    def step(self, input: InputBase):
+    async def step(self, input: InputBase):
         """
         Executes the input and updates the state queues according to the
         scheduler. May need to receive information about the current state to
@@ -89,7 +94,7 @@ class StateManager:
             try:
                 should_reset = self._strategy.step()
                 if should_reset:
-                    self.reset_state(self._strategy.target)
+                    await self.reset_state(self._strategy.target)
                     target_state = self._tracker.current_state
                     debug(f'Stepped to new {target_state = }')
                 break
@@ -103,16 +108,16 @@ class StateManager:
                     # find and invalidate the transition along the path that
                     # leads to the faulty state
                     transition = next(x for x in target if x[1] == ex._faulty_state)
-                    self._strategy.update_transition(transition[0], transition[1], invalidate=True)
+                    self._strategy.update_transition(transition[0], transition[1], transition[2], invalidate=True)
             except Exception:
                 # In this case, we need to force the strategy to yield a new
                 # target, because we're not entirely sure what went wrong. We
                 # invalidate the target state and hope for the best.
                 self._strategy.update_state(self._strategy.target_state, invalidate=True)
 
-        self._loader.execute_input(input, self, update=True)
+        await self._loader.execute_input(input, self, update=True)
 
-    def update(self, input_gen: Callable[..., InputBase]) -> bool:
+    async def update(self, input_gen: Callable[..., InputBase]) -> bool:
         """
         Updates the state machine in case of a state change.
 
@@ -135,6 +140,9 @@ class StateManager:
         # finished the training phase (preprocessing seeds)
         if current_state is not None:
             new_state, current_state = self._sm.update_state(current_state)
+            if new_state:
+                current_state.state_manager = self
+
             self._strategy.update_state(current_state, is_new=new_state)
             # update the current state (e.g., if it needs to track interesting cov)
             self._tracker.update(self._last_state, current_state, input_gen)
@@ -149,76 +157,81 @@ class StateManager:
 
                 stable = True
 
-                try:
-                    debug("Attempting to reproduce transition")
-                    # we make a copy of _current_path because the loader may
-                    # modify it, but at this stage, we may want to restore state
-                    # using that path
-                    self._last_path = self._current_path.copy()
-                    self.reset_state(self._last_state, update=False)
-                    self._loader.execute_input(last_input, self, update=False)
-                    assert current_state == self._tracker.current_state
-                    debug(f"{current_state} is reproducible")
-                except AssertionError:
-                    # This occurs when the predecessor state was reached through
-                    # a different path than that used by reset_state().
-                    # The incremental input thus applied to the predecessor
-                    # state may have built on top of internal program state that
-                    # was not reproduced by reset_state() to arrive at the
-                    # successor state.
-                    debug(f"Encountered imprecise state ({new_state = })")
-                    if new_state:
-                        debug(f"Dissolving {current_state = }")
-                        self._sm.dissolve_state(current_state)
-                        self._strategy.update_state(current_state, invalidate=True)
+                if self._validate:
+                    try:
+                        debug("Attempting to reproduce transition")
+                        # we make a copy of _current_path because the loader may
+                        # modify it, but at this stage, we may want to restore state
+                        # using that path
+                        self._last_path = self._current_path.copy()
+                        await self.reset_state(self._last_state, update=False)
+                        await self._loader.execute_input(last_input, self, update=False)
+                        assert current_state == self._tracker.current_state
+                        debug(f"{current_state} is reproducible")
+                    except AssertionError:
+                        # This occurs when the predecessor state was reached through
+                        # a different path than that used by reset_state().
+                        # The incremental input thus applied to the predecessor
+                        # state may have built on top of internal program state that
+                        # was not reproduced by reset_state() to arrive at the
+                        # successor state.
+                        debug(f"Encountered imprecise state ({new_state = })")
+                        if new_state:
+                            debug(f"Dissolving {current_state = }")
+                            self._sm.dissolve_state(current_state)
+                            self._strategy.update_state(current_state, invalidate=True)
 
-                        # we save the input for later coverage measurements
-                        FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=False, path=self._last_path)
-                    stable = False
+                            # we save the input for later coverage measurements
+                            FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=False, path=self._last_path)
+                        stable = False
 
-                    debug(f"Reloading last state ({self._last_state})")
-                    self._current_path[:] = self._last_path
-                    self.reset_state(self._current_path, update=False)
-                    if self._last_state.last_input is not None:
-                        self._loader.execute_input(self._last_state.last_input, self, update=False)
-                    ProfileCount('imprecise')(1)
-                    # WARN we set update to be True, despite no change in state,
-                    # to force the StateManagerContext object to trim the
-                    # input_gen past the troubling interactions, since we won't
-                    # be using those interactions in the following iterations.
-                    updated = True
-                except (StabilityException, StateNotReproducibleException):
-                    # This occurs when the reset_state() encountered an error
-                    # trying to reproduce a state, most likely due to an
-                    # indeterministic target
-                    if new_state:
-                        debug(f"Dissolving {current_state = }")
-                        self._sm.dissolve_state(current_state)
-                        self._strategy.update_state(current_state, invalidate=True)
-                    stable = False
-                    ProfileCount('unstable')(1)
-                except Exception as ex:
-                    debug(f'{ex}')
-                    if new_state:
-                        debug(f"Dissolving {current_state = }")
-                        self._sm.dissolve_state(current_state)
-                        self._strategy.update_state(current_state, invalidate=True)
-                    stable = False
-                    raise
+                        debug(f"Reloading last state ({self._last_state})")
+                        self._current_path[:] = self._last_path
+                        await self.reset_state(self._current_path, update=False)
+                        if self._last_state.last_input is not None:
+                            await self._loader.execute_input(self._last_state.last_input, self, update=False)
+                        ProfileCount('imprecise')(1)
+                        # WARN we set update to be True, despite no change in state,
+                        # to force the StateManagerContext object to trim the
+                        # input_gen past the troubling interactions, since we won't
+                        # be using those interactions in the following iterations.
+                        updated = True
+                    except (StabilityException, StateNotReproducibleException):
+                        # This occurs when the reset_state() encountered an error
+                        # trying to reproduce a state, most likely due to an
+                        # indeterministic target
+                        if new_state:
+                            debug(f"Dissolving {current_state = }")
+                            self._sm.dissolve_state(current_state)
+                            self._strategy.update_state(current_state, invalidate=True)
+                        stable = False
+                        ProfileCount('unstable')(1)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as ex:
+                        debug(f'{ex}')
+                        if new_state:
+                            debug(f"Dissolving {current_state = }")
+                            self._sm.dissolve_state(current_state)
+                            self._strategy.update_state(current_state, invalidate=True)
+                        stable = False
+                        raise
 
                 if stable:
                     last_input = MemoryCachingDecorator()(last_input, copy=False)
                     new_edge = current_state not in self._sm._graph.successors(self._last_state)
-                    if new_state or new_edge:
+                    if (new_state or new_edge) and self._minimize:
                         # call the transition pruning routine to shorten the last input
                         debug("Attempting to minimize transition")
                         try:
-                            last_input = self._minimize_transition(
+                            last_input = await self._minimize_transition(
                                 # FIXME self._current_path is not StateBase, as
                                 # is required by _minimize_transition, but it
                                 # should work, for now
                                 self._current_path, current_state, last_input)
                             last_input = FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=False)
+                        except asyncio.CancelledError:
+                            raise
                         except Exception as ex:
                             # Minimization failed, again probably due to an
                             # indeterministic target
@@ -227,7 +240,8 @@ class StateManager:
 
                     self._sm.update_transition(self._last_state, current_state,
                         last_input)
-                    self._strategy.update_transition(self._last_state, current_state)
+                    self._strategy.update_transition(self._last_state, current_state,
+                        last_input)
                     self._current_path.append((self._last_state, current_state, last_input))
                     # reset last state's accumulated input
                     self._last_state.last_input = None
@@ -237,7 +251,7 @@ class StateManager:
 
         return updated
 
-    def _minimize_transition(self, src: StateBase, dst: StateBase, input: InputBase):
+    async def _minimize_transition(self, src: StateBase, dst: StateBase, input: InputBase):
         reduced = False
 
         # Phase 1: perform exponential back-off to find effective tail of input
@@ -248,10 +262,10 @@ class StateManager:
         # is done in phase 2 anyway
         while begin > end // 2:
             success = True
-            self.reset_state(src, update=False)
+            await self.reset_state(src, update=False)
             exp_input = input[begin:]
             try:
-                self._loader.execute_input(exp_input, self, update=False)
+                await self._loader.execute_input(exp_input, self, update=False)
             except Exception:
                 success = False
 
@@ -273,10 +287,10 @@ class StateManager:
             cur = 0
             while cur + step < end:
                 success = True
-                self.reset_state(src, update=False)
+                await self.reset_state(src, update=False)
                 tmp_lin_input = lin_input[:cur] + lin_input[cur + step:]
                 try:
-                    self._loader.execute_input(tmp_lin_input, self, update=False)
+                    await self._loader.execute_input(tmp_lin_input, self, update=False)
                 except Exception:
                     success = False
 
@@ -290,8 +304,8 @@ class StateManager:
             step //= 2
 
         # Phase 3: make sure the reduced transition is correct
-        self.reset_state(src, update=False)
-        self._loader.execute_input(lin_input, self, update=False)
+        await self.reset_state(src, update=False)
+        await self._loader.execute_input(lin_input, self, update=False)
         try:
             assert dst == self._tracker.current_state
         except AssertionError:
@@ -320,7 +334,7 @@ class StateManagerContext:
         # we delay the call to the slicing decorator until needed
         return self._input[self._start:self._stop]
 
-    def __iter__(self):
+    async def __aiter__(self):
         self._start = self._stop = 0
         for idx, interaction in enumerate(self._input):
             ProfileValue('status')('fuzz')
@@ -329,7 +343,7 @@ class StateManagerContext:
             # the generator execution is suspended until next() is called so
             # the StateManager update is only called after the interaction
             # is executed by the loader
-            if self._sman.update(self.input_gen):
+            if await self._sman.update(self.input_gen):
                 self._start = idx + 1
             # FIXME The state manager interrupts the target to verify individual
             # transitions. To verify a transition, the last state is loaded, and

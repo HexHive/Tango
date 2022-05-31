@@ -22,6 +22,7 @@ from profiler import (ProfileLambda,
                      ProfileTimeElapsed)
 
 from webui import WebRenderer
+import asyncio
 
 class FuzzerSession:
     """
@@ -37,45 +38,48 @@ class FuzzerSession:
         :param      config: The fuzzer configuration object
         :type       config: FuzzerConfig
         """
+        self._config = config
 
-        self._input_gen = config.input_generator
-        self._loader = config.loader
-        self._sman = config.state_manager
-        self._entropy = config.entropy
-        self._workdir = config.work_dir
-        self._protocol = config.ch_env.protocol
+    @classmethod
+    async def create(cls, *args, **kwargs):
+        self = cls(*args, **kwargs)
+        self._input_gen = await self._config.input_generator
+        self._loader = await self._config.loader
+        self._sman = await self._config.state_manager
+        self._entropy = await self._config.entropy
+        self._workdir = await self._config.work_dir
+        self._protocol = await self._config.protocol
 
         ## After this point, the StateManager and StateTracker are both
         #  initialized and should be able to identify states and populate the SM
+        return self
 
-        self._load_seeds()
-
-    def _load_seeds(self):
+    async def _load_seeds(self):
         """
         Loops over the initial set of seeds to populate the state machine with
         known states.
         """
         for input in self._input_gen.seeds:
             try:
-                self._sman.reset_state()
+                await self._sman.reset_state()
                 # feed input to target and populate state machine
-                self._loader.execute_input(input, self._sman)
+                await self._loader.execute_input(input, self._sman)
                 info(f"Loaded seed file: {input}")
             except LoadedException as ex:
                 warning(f"Failed to load {input}: {ex.exception}")
 
-    def _loop(self):
+    async def _loop(self):
         # FIXME is there ever a proper terminating condition for fuzzing?
         while True:
             try:
                 # reset to StateManager's current target state
                 # FIXME this should probably be done by the exploration strategy
-                self._sman.reload_target()
+                await self._sman.reload_target()
                 while True:
                     try:
                         cur_state = self._sman.state_tracker.current_state
                         input = self._input_gen.generate(cur_state, self._entropy)
-                        self._sman.step(input)
+                        await self._sman.step(input)
                     except LoadedException as ex:
                         try:
                             raise ex.exception
@@ -102,12 +106,19 @@ class FuzzerSession:
                             # TODO save broken setup input
                             warning("Received channel setup exception")
                         except Exception as ex:
+                            import ipdb; ipdb.set_trace()
                             critical(f"Encountered unhandled loaded exception {ex = }")
                         # FIXME reset to StateManager's current target state
-                        self._sman.reload_target()
+                        await self._sman.reload_target()
+                    except asyncio.CancelledError:
+                        # the input generator cancelled an execution and would
+                        # like to react
+                        warning("Received interrupt, continuing!")
+                        continue
                     except Exception as ex:
+                        import ipdb; ipdb.set_trace()
                         critical(f"Encountered weird exception {ex = }")
-                        self._sman.reload_target()
+                        await self._sman.reload_target()
             except StateNotReproducibleException as ex:
                 warning(f"Target state {ex._faulty_state} not reachable anymore!")
             except Exception as ex:
@@ -123,15 +134,18 @@ class FuzzerSession:
                     exitmsg="Fuzzing resumed")
                 ProfiledObjects['elapsed'].toggle()
 
-    def start(self):
+    async def start(self):
+        await self._load_seeds()
+
         # reset state after the seed initialization stage
-        self._sman.reset_state()
+        await self._sman.reset_state()
 
         ProfileTimeElapsed('elapsed')
 
+        # FIXME the WebRenderer is async and can thus be started in the same loop
         WebRenderer(self).start()
 
         # launch fuzzing loop
-        self._loop()
+        await self._loop()
 
         # TODO anything else?

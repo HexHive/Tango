@@ -18,7 +18,6 @@ m_random.o: m_random.c /usr/include/stdc-predef.h /usr/include/time.h \
  /usr/include/x86_64-linux-gnu/bits/types/locale_t.h \
  /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h m_random.h \
  ../../src/doomtype.h ../../config.h /usr/include/strings.h \
- /usr/include/x86_64-linux-gnu/bits/strings_fortified.h \
  /usr/include/inttypes.h /usr/lib/gcc/x86_64-linux-gnu/7/include/stdint.h \
  /usr/include/stdint.h \
  /usr/include/x86_64-linux-gnu/bits/libc-header-start.h \
@@ -81,8 +80,6 @@ m_random.h:
 ../../config.h:
 
 /usr/include/strings.h:
-
-/usr/include/x86_64-linux-gnu/bits/strings_fortified.h:
 
 /usr/include/inttypes.h:
 

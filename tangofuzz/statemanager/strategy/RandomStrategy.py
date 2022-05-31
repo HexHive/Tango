@@ -1,6 +1,7 @@
 from statemanager import StateBase, StrategyBase, StateMachine
 from random import Random
 from profiler import ProfileValue
+from input import InputBase
 
 class RandomStrategy(StrategyBase):
     def __init__(self, entropy: Random, limit: int = 100, **kwargs):
@@ -44,5 +45,5 @@ class RandomStrategy(StrategyBase):
         else:
             self._invalid_states.discard(state)
 
-    def update_transition(self, source: StateBase, destination: StateBase, invalidate: bool = False):
+    def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, invalidate: bool = False):
         pass

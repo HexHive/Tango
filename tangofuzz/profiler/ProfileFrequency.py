@@ -1,4 +1,5 @@
 from profiler import PeriodicProfiler
+from inspect import iscoroutinefunction
 
 class ProfileFrequency(PeriodicProfiler):
     def __init__(self, name, **kwargs):
@@ -12,7 +13,14 @@ class ProfileFrequency(PeriodicProfiler):
         def func(*args, **kwargs):
             self._counter += 1
             return obj(*args, **kwargs)
-        return func
+        async def afunc(*args, **kwargs):
+            self._counter += 1
+            return await obj(*args, **kwargs)
+
+        if iscoroutinefunction(obj):
+            return afunc
+        else:
+            return func
 
     def _task(self):
         self._frequency = self._counter / self._period

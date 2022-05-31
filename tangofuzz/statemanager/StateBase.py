@@ -46,6 +46,14 @@ class StateBase(ABC):
     def predecessor_transition(self, transition):
         self._pred = transition
 
+    @property
+    def state_manager(self):
+        return self._sman
+
+    @state_manager.setter
+    def state_manager(self, sman):
+        self._sman = sman
+
     @abstractmethod
     def __eq__(self, other):
         pass

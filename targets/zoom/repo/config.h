@@ -33,6 +33,9 @@
 /* libpng installed */
 #define HAVE_LIBPNG 1
 
+/* Define to 1 if you have the `rt' library (-lrt). */
+#define HAVE_LIBRT 1
+
 /* libsamplerate installed */
 /* #undef HAVE_LIBSAMPLERATE */
 
@@ -95,3 +98,6 @@
 
 /* Version number of package */
 #define VERSION "3.0.1"
+
+/* 0 */
+#define WITH_DEBUG 1

@@ -28,6 +28,7 @@
 //
 #define FRACBITS		16
 #define FRACUNIT		(1<<FRACBITS)
+#define FRACTOFLOAT(x)  (((x)>>FRACBITS)+(((x)&(FRACUNIT-1))/(float)FRACUNIT))
 
 typedef int fixed_t;
 

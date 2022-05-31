@@ -8,6 +8,8 @@ websockets==10.0
 pydot==1.4.2
 #libgraphviz-dev (from apt)
 readline==6.2.4.1
-#pyroute2 @ git+https://github.com/hazimeh/pyroute2.git
+pyroute2
 #setcap cap_net_admin,cap_sys_admin,cap_dac_override+eip python3.9
 python3-xlib==0.15
+#libncurses-dev (from apt)
+async-property==0.2.1

@@ -7,11 +7,11 @@ class ChannelBase(ABC):
         self._timescale = timescale
 
     @abstractmethod
-    def send(self, data: ByteString) -> int:
+    async def send(self, data: ByteString) -> int:
         pass
 
     @abstractmethod
-    def receive(self) -> ByteString:
+    async def receive(self) -> ByteString:
         pass
 
     @abstractmethod

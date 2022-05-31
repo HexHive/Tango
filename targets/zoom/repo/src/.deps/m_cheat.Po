@@ -8,10 +8,7 @@ m_cheat.o: m_cheat.c /usr/include/stdc-predef.h /usr/include/string.h \
  /usr/lib/gcc/x86_64-linux-gnu/7/include/stddef.h \
  /usr/include/x86_64-linux-gnu/bits/types/locale_t.h \
  /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h \
- /usr/include/strings.h \
- /usr/include/x86_64-linux-gnu/bits/strings_fortified.h \
- /usr/include/x86_64-linux-gnu/bits/string_fortified.h doomtype.h \
- ../config.h /usr/include/inttypes.h \
+ /usr/include/strings.h doomtype.h ../config.h /usr/include/inttypes.h \
  /usr/lib/gcc/x86_64-linux-gnu/7/include/stdint.h /usr/include/stdint.h \
  /usr/include/x86_64-linux-gnu/bits/types.h \
  /usr/include/x86_64-linux-gnu/bits/typesizes.h \
@@ -50,10 +47,6 @@ m_cheat.o: m_cheat.c /usr/include/stdc-predef.h /usr/include/string.h \
 /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h:
 
 /usr/include/strings.h:
-
-/usr/include/x86_64-linux-gnu/bits/strings_fortified.h:
-
-/usr/include/x86_64-linux-gnu/bits/string_fortified.h:
 
 doomtype.h:
 

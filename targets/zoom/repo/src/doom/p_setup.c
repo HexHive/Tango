@@ -17,7 +17,7 @@
 //	set up initial state and misc. LUTs.
 //
 
-
+#include "p_setup.h"
 
 #include <math.h>
 
@@ -40,6 +40,13 @@
 
 #include "doomstat.h"
 
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/types.h>
+
+tf_feedback_t *tf_feedback;
 
 void	P_SpawnMapThing (mapthing_t*	mthing);
 
@@ -859,9 +866,18 @@ P_SetupLevel
 //
 void P_Init (void)
 {
+    int fd;
     P_InitSwitchList ();
     P_InitPicAnims ();
     R_InitSprites (sprnames);
+
+    // TANGOFUZZ init shm
+    fd = shm_open(TANGOFUZZ_FEEDBACK_SHM, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    if (fd == -1) return;
+    if (ftruncate(fd, TANGOFUZZ_FEEDBACK_SIZE) == -1) return;
+    tf_feedback = mmap(NULL, TANGOFUZZ_FEEDBACK_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    close(fd);
+    if (!tf_feedback) return;
 }
 
 

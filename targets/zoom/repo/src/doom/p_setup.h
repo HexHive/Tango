@@ -20,8 +20,38 @@
 #ifndef __P_SETUP__
 #define __P_SETUP__
 
+#include "doomdef.h"
+#include "d_player.h"
+#include "m_fixed.h"
+#include "tables.h"
 
+#define TANGOFUZZ_FEEDBACK_SHM  "/tangofuzz_feedback"
+#define TANGOFUZZ_FEEDBACK_SIZE sizeof(tf_feedback_t)
 
+typedef struct {
+  float x;
+  float y;
+  float z;
+  float angle;
+
+  playerstate_t playerstate;
+  int health; // to be copied from player->mo->health
+  int armorpoints;
+
+  boolean cards[NUMCARDS];
+  int weaponowned[NUMWEAPONS];
+  int ammo[NUMAMMO];
+
+  // mobj_t* attacker;
+  boolean attacker_valid;
+  float attacker_x;
+  float attacker_y;
+  float attacker_z;
+  // float attacker_angle;
+  boolean didsecret;
+} __attribute__((packed)) tf_feedback_t;
+
+extern tf_feedback_t *tf_feedback;
 
 // NOT called by W_Ticker. Fixme.
 void

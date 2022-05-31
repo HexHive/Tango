@@ -20,9 +20,12 @@
 
 #include "z_zone.h"
 #include "p_local.h"
+#include "p_setup.h"
 
 #include "doomstat.h"
 
+#include <string.h>
+// #include <math.h>
 
 int	leveltime;
 
@@ -149,5 +152,36 @@ void P_Ticker (void)
     P_RespawnSpecials ();
 
     // for par times
-    leveltime++;	
+    leveltime++;
+
+    // TANGOFUZZ advertise state of players[0] to fuzzer
+    if (playeringame[0]) {
+        tf_feedback->x = FRACTOFLOAT(players[0].mo->x);
+        tf_feedback->y = FRACTOFLOAT(players[0].mo->y);
+        tf_feedback->z = FRACTOFLOAT(players[0].mo->z);
+        tf_feedback->angle = ANGTODEGREE(players[0].mo->angle);
+
+        tf_feedback->playerstate = players[0].playerstate;
+        tf_feedback->health = players[0].mo->health;
+        tf_feedback->armorpoints = players[0].armorpoints;
+
+        tf_feedback->attacker_valid = (players[0].attacker != NULL && \
+                                        players[0].attacker != players[0].mo && \
+                                        players[0].attacker->health > 0);
+        if (tf_feedback->attacker_valid) {
+            tf_feedback->attacker_x = FRACTOFLOAT(players[0].attacker->x);
+            tf_feedback->attacker_y = FRACTOFLOAT(players[0].attacker->y);
+            tf_feedback->attacker_z = FRACTOFLOAT(players[0].attacker->z);
+            // tf_feedback->attacker_angle = atan2(
+            //                     FRACTOFLOAT(players[0].attacker->y - players[0].mo->y),
+            //                     FRACTOFLOAT(players[0].attacker->x - players[0].mo->x)
+            //                 ) * 180 / 3.14159265;
+        }
+
+        memcpy(tf_feedback->cards, players[0].cards, sizeof(players[0].cards));
+        memcpy(tf_feedback->weaponowned, players[0].weaponowned, sizeof(players[0].weaponowned));
+        memcpy(tf_feedback->ammo, players[0].ammo, sizeof(players[0].ammo));
+
+        tf_feedback->didsecret = players[0].didsecret;
+    }
 }

@@ -681,6 +681,7 @@ WINDRES
 EGREP
 GREP
 CPP
+WITH_DEBUG
 PNG_LIBS
 PNG_CFLAGS
 SAMPLERATE_LIBS
@@ -756,6 +757,7 @@ ac_user_opts='
 enable_option_checking
 with_libsamplerate
 with_libpng
+with_debug
 with_bashcompletiondir
 enable_dependency_tracking
 enable_silent_rules
@@ -1423,6 +1425,7 @@ Optional Packages:
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
   --without-libsamplerate Build without libsamplerate [default=check]
   --without-libpng        Build without libpng [default=check]
+  --with-debug            Add the debugging module
   --with-bashcompletiondir=DIR
                           Bash completion directory
 
@@ -3512,8 +3515,8 @@ $as_echo "no" >&6; }
 fi
 
 pkg_failed=no
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for sdl2 >= 2.0.1" >&5
-$as_echo_n "checking for sdl2 >= 2.0.1... " >&6; }
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for SDL" >&5
+$as_echo_n "checking for SDL... " >&6; }
 
 if test -n "$SDL_CFLAGS"; then
     pkg_cv_SDL_CFLAGS="$SDL_CFLAGS"
@@ -3553,7 +3556,7 @@ fi
 
 
 if test $pkg_failed = yes; then
-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+   	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 
 if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
@@ -3580,7 +3583,7 @@ Alternatively, you may set the environment variables SDL_CFLAGS
 and SDL_LIBS to avoid the need to call pkg-config.
 See the pkg-config man page for more details." "$LINENO" 5
 elif test $pkg_failed = untried; then
-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+     	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 	{ { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
 $as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
@@ -3603,8 +3606,8 @@ $as_echo "yes" >&6; }
 fi
 
 pkg_failed=no
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for SDL2_mixer >= 2.0.0" >&5
-$as_echo_n "checking for SDL2_mixer >= 2.0.0... " >&6; }
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for SDLMIXER" >&5
+$as_echo_n "checking for SDLMIXER... " >&6; }
 
 if test -n "$SDLMIXER_CFLAGS"; then
     pkg_cv_SDLMIXER_CFLAGS="$SDLMIXER_CFLAGS"
@@ -3644,7 +3647,7 @@ fi
 
 
 if test $pkg_failed = yes; then
-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+   	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 
 if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
@@ -3671,7 +3674,7 @@ Alternatively, you may set the environment variables SDLMIXER_CFLAGS
 and SDLMIXER_LIBS to avoid the need to call pkg-config.
 See the pkg-config man page for more details." "$LINENO" 5
 elif test $pkg_failed = untried; then
-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+     	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 	{ { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
 $as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
@@ -3694,8 +3697,8 @@ $as_echo "yes" >&6; }
 fi
 
 pkg_failed=no
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for SDL2_net >= 2.0.0" >&5
-$as_echo_n "checking for SDL2_net >= 2.0.0... " >&6; }
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for SDLNET" >&5
+$as_echo_n "checking for SDLNET... " >&6; }
 
 if test -n "$SDLNET_CFLAGS"; then
     pkg_cv_SDLNET_CFLAGS="$SDLNET_CFLAGS"
@@ -3735,7 +3738,7 @@ fi
 
 
 if test $pkg_failed = yes; then
-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+   	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 
 if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
@@ -3762,7 +3765,7 @@ Alternatively, you may set the environment variables SDLNET_CFLAGS
 and SDLNET_LIBS to avoid the need to call pkg-config.
 See the pkg-config man page for more details." "$LINENO" 5
 elif test $pkg_failed = untried; then
-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+     	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 	{ { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
 $as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
@@ -3799,8 +3802,8 @@ if test "x$with_libsamplerate" != xno; then :
 
 
 pkg_failed=no
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for samplerate >= 0.1.8" >&5
-$as_echo_n "checking for samplerate >= 0.1.8... " >&6; }
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for SAMPLERATE" >&5
+$as_echo_n "checking for SAMPLERATE... " >&6; }
 
 if test -n "$SAMPLERATE_CFLAGS"; then
     pkg_cv_SAMPLERATE_CFLAGS="$SAMPLERATE_CFLAGS"
@@ -3840,7 +3843,7 @@ fi
 
 
 if test $pkg_failed = yes; then
-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+   	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 
 if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
@@ -3866,7 +3869,7 @@ See \`config.log' for more details" "$LINENO" 5; }
 fi
 
 elif test $pkg_failed = untried; then
-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+     	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 
         if test "x$with_libsamplerate" != xcheck; then :
@@ -3906,8 +3909,8 @@ if test "x$with_libpng" != xno; then :
 
 
 pkg_failed=no
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for libpng >= 1.6.10" >&5
-$as_echo_n "checking for libpng >= 1.6.10... " >&6; }
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for PNG" >&5
+$as_echo_n "checking for PNG... " >&6; }
 
 if test -n "$PNG_CFLAGS"; then
     pkg_cv_PNG_CFLAGS="$PNG_CFLAGS"
@@ -3947,7 +3950,7 @@ fi
 
 
 if test $pkg_failed = yes; then
-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+   	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 
 if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
@@ -3973,7 +3976,7 @@ See \`config.log' for more details" "$LINENO" 5; }
 fi
 
 elif test $pkg_failed = untried; then
-        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+     	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 
         if test "x$with_libpng" != xcheck; then :
@@ -3997,6 +4000,20 @@ $as_echo "#define HAVE_LIBPNG 1" >>confdefs.h
 fi
 
 fi
+
+
+# Check whether --with-debug was given.
+if test "${with_debug+set}" = set; then :
+  withval=$with_debug;
+
+$as_echo "#define WITH_DEBUG 1" >>confdefs.h
+
+    WITH_DEBUG=1
+
+    CFLAGS="-O0 -ggdb"
+
+fi
+
 
 # TODO: We currently link everything against libraries that don't need it.
 # Use the specific library CFLAGS/LIBS variables instead of setting them here.
@@ -4045,6 +4062,51 @@ if test "x$ac_cv_lib_m_log" = xyes; then :
 _ACEOF
 
   LIBS="-lm $LIBS"
+
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for shm_open in -lrt" >&5
+$as_echo_n "checking for shm_open in -lrt... " >&6; }
+if ${ac_cv_lib_rt_shm_open+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lrt  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char shm_open ();
+int
+main ()
+{
+return shm_open ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_rt_shm_open=yes
+else
+  ac_cv_lib_rt_shm_open=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_rt_shm_open" >&5
+$as_echo "$ac_cv_lib_rt_shm_open" >&6; }
+if test "x$ac_cv_lib_rt_shm_open" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBRT 1
+_ACEOF
+
+  LIBS="-lrt $LIBS"
 
 fi
 
@@ -7162,9 +7224,7 @@ $as_echo X/"$am_mf" |
     { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
 $as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
 as_fn_error $? "Something went wrong bootstrapping makefile fragments
-    for automatic dependency tracking.  If GNU make was not used, consider
-    re-running the configure script with MAKE=\"gmake\" (or whatever is
-    necessary).  You can also try re-running configure with the
+    for automatic dependency tracking.  Try re-running configure with the
     '--disable-dependency-tracking' option to at least be able to build
     the package (albeit without support for automatic dependency tracking).
 See \`config.log' for more details" "$LINENO" 5; }

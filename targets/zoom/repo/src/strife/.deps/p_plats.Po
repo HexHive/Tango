@@ -15,14 +15,11 @@ p_plats.o: p_plats.c /usr/include/stdc-predef.h /usr/include/stdio.h \
  /usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h \
  /usr/lib/gcc/x86_64-linux-gnu/7/include/stdarg.h \
  /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
- /usr/include/x86_64-linux-gnu/bits/sys_errlist.h \
- /usr/include/x86_64-linux-gnu/bits/stdio.h \
- /usr/include/x86_64-linux-gnu/bits/stdio2.h ../../src/i_system.h \
+ /usr/include/x86_64-linux-gnu/bits/sys_errlist.h ../../src/i_system.h \
  ../../src/d_ticcmd.h ../../src/doomtype.h ../../config.h \
  /usr/include/strings.h \
  /usr/include/x86_64-linux-gnu/bits/types/locale_t.h \
  /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h \
- /usr/include/x86_64-linux-gnu/bits/strings_fortified.h \
  /usr/include/inttypes.h /usr/lib/gcc/x86_64-linux-gnu/7/include/stdint.h \
  /usr/include/stdint.h /usr/include/x86_64-linux-gnu/bits/wchar.h \
  /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
@@ -34,10 +31,8 @@ p_plats.o: p_plats.c /usr/include/stdc-predef.h /usr/include/stdio.h \
  /usr/include/linux/limits.h \
  /usr/include/x86_64-linux-gnu/bits/posix2_lim.h ../../src/d_event.h \
  ../../src/z_zone.h m_random.h ../../src/doomtype.h doomdef.h \
- /usr/include/string.h \
- /usr/include/x86_64-linux-gnu/bits/string_fortified.h \
- ../../src/i_timer.h ../../src/d_mode.h p_local.h r_local.h \
- ../../src/tables.h ../../src/m_fixed.h r_data.h r_defs.h \
+ /usr/include/string.h ../../src/i_timer.h ../../src/d_mode.h p_local.h \
+ r_local.h ../../src/tables.h ../../src/m_fixed.h r_data.h r_defs.h \
  ../../src/m_fixed.h d_think.h p_mobj.h doomdata.h info.h \
  ../../src/i_video.h ../../src/v_patch.h r_state.h d_player.h d_items.h \
  p_pspr.h ../../src/d_ticcmd.h ../../src/net_defs.h ../../src/sha1.h \
@@ -85,10 +80,6 @@ p_plats.o: p_plats.c /usr/include/stdc-predef.h /usr/include/stdio.h \
 
 /usr/include/x86_64-linux-gnu/bits/sys_errlist.h:
 
-/usr/include/x86_64-linux-gnu/bits/stdio.h:
-
-/usr/include/x86_64-linux-gnu/bits/stdio2.h:
-
 ../../src/i_system.h:
 
 ../../src/d_ticcmd.h:
@@ -102,8 +93,6 @@ p_plats.o: p_plats.c /usr/include/stdc-predef.h /usr/include/stdio.h \
 /usr/include/x86_64-linux-gnu/bits/types/locale_t.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h:
-
-/usr/include/x86_64-linux-gnu/bits/strings_fortified.h:
 
 /usr/include/inttypes.h:
 
@@ -142,8 +131,6 @@ m_random.h:
 doomdef.h:
 
 /usr/include/string.h:
-
-/usr/include/x86_64-linux-gnu/bits/string_fortified.h:
 
 ../../src/i_timer.h:
 

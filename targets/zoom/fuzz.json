@@ -1,7 +1,7 @@
 {
 	"exec": {
 		"path": "./targets/zoom/repo/src/chocolate-doom",
-		"args": ["./targets/zoom/repo/src/chocolate-doom", "-nomouse", "-nograbmouse", "-iwad", "Doom1.WAD", "-warp", "1", "-geometry", "1280x1024"],
+		"args": ["./targets/zoom/repo/src/chocolate-doom", "-nomouse", "-nograbmouse", "-iwad", "Doom1.WAD", "-warp", "1", "-extraconfig", "custom.config", "-geometry", "1280x1024", "-nomusic", "-skill", "5"],
 		"cwd": "./targets/zoom/repo/play",
 		"env": {
 		},
@@ -21,7 +21,9 @@
 	},
 	"statemanager": {
 		"type": "zoom",
-		"strategy": "uniform"
+		"strategy": "zoom",
+		"validate_transitions": false,
+		"minimize_transitions": false
 	},
 	"fuzzer": {
 		"lib": "./lib",

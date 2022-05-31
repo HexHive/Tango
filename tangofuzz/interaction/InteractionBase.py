@@ -5,7 +5,7 @@ from typing        import Sequence
 
 class InteractionBase(ABC):
     @abstractmethod
-    def perform(self, channel: ChannelBase):
+    async def perform(self, channel: ChannelBase):
         pass
 
     @abstractmethod

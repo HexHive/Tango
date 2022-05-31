@@ -10,6 +10,10 @@ class StateTrackerBase(ABC):
         # FIXME maybe make this specific to the state tracker that needs it?
         self._generator = generator
 
+    @abstractmethod
+    async def create(self, *args, **kwargs):
+        pass
+
     @property
     @abstractmethod
     def entry_state(self) -> StateBase:
@@ -30,3 +34,12 @@ class StateTrackerBase(ABC):
     def update(self, prev: StateBase, new: StateBase,
             input_gen: Callable[..., InputBase]):
         pass
+
+    @property
+    def state_manager(self):
+        return self._sman
+
+
+    @state_manager.setter
+    def state_manager(self, sman):
+        self._sman = sman

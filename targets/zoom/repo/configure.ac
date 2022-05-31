@@ -69,11 +69,20 @@ AS_IF([test "x$with_libpng" != xno], [
     ])
 ])
 
+AC_ARG_WITH([debug],
+AS_HELP_STRING([--with-debug], [Add the debugging module]),
+[
+    AC_DEFINE(WITH_DEBUG,1,0)
+    AC_SUBST(WITH_DEBUG,1)
+    CFLAGS="-O0 -ggdb"
+])
+
 # TODO: We currently link everything against libraries that don't need it.
 # Use the specific library CFLAGS/LIBS variables instead of setting them here.
 CFLAGS="$CFLAGS $SDL_CFLAGS ${SAMPLERATE_CFLAGS:-} ${PNG_CFLAGS:-}"
 LDFLAGS="$LDFLAGS $SDL_LIBS ${SAMPLERATE_LIBS:-} ${PNG_LIBS:-}"
 AC_CHECK_LIB(m, log)
+AC_CHECK_LIB(rt, shm_open)
 
 AC_CHECK_HEADERS([linux/kd.h dev/isa/spkrio.h dev/speaker/speaker.h])
 AC_CHECK_FUNCS(mmap ioperm)

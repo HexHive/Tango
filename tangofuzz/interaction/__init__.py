@@ -10,3 +10,7 @@ from .TransmitInteraction import TransmitInteraction
 from .MoveInteraction     import MoveInteraction
 from .ShootInteraction    import ShootInteraction
 from .ActivateInteraction import ActivateInteraction
+
+from .RotateInteraction import RotateInteraction
+from .ReachInteraction  import ReachInteraction
+from .KillInteraction   import KillInteraction

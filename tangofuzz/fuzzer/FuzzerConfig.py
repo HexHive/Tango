@@ -1,4 +1,5 @@
-from functools    import cached_property
+# from functools    import cached_property
+from common       import async_cached_property as cached_property
 from loader       import Environment
 from networkio    import (TCPChannelFactory,
                          TCPForkChannelFactory,
@@ -8,7 +9,7 @@ from networkio    import (TCPChannelFactory,
 from loader       import ReplayStateLoader, ReplayForkStateLoader, ZoomStateLoader
 from statemanager import (CoverageStateTracker, ZoomStateTracker,
                          StateManager,
-                         RandomStrategy, UniformStrategy)
+                         RandomStrategy, UniformStrategy, ZoomStrategy)
 from generator    import RandomInputGenerator, ZoomInputGenerator
 from random       import Random
 import json
@@ -16,7 +17,7 @@ import os
 import logging
 import ctypes
 from pathlib import Path
-from subprocess import DEVNULL
+from subprocess import DEVNULL, PIPE
 
 class FuzzerConfig:
     """
@@ -66,7 +67,9 @@ class FuzzerConfig:
         },
         "statemanager": {
             "type": "<coverage | grammar | hybrid | zoom | ...>",
-            "strategy": "<random | uniform | ...>",
+            "strategy": "<random | uniform | zoom | ...>",
+            "validate_transitions": <true | false>,
+            "minimize_transitions": <true | false>,
             ...
         },
         "fuzzer": {
@@ -96,14 +99,22 @@ class FuzzerConfig:
         else:
             self._bind_lib = None
 
+    @property
+    def lib_dir(self):
+        if (path := self._config["fuzzer"].get("lib")):
+            return os.path.realpath(path)
+        return None
+
     @cached_property
-    def exec_env(self):
+    async def exec_env(self):
         _config = self._config["exec"]
         for stdf in ["stdin", "stdout", "stderr"]:
             if stdf in _config:
                 _config[stdf] = open(_config[stdf], "wt")
             elif stdf != "stdin":
                 _config[stdf] = DEVNULL
+            else:
+                _config[stdf] = PIPE
         if not _config.get("env"):
             _config["env"] = dict(os.environ)
         _config["args"][0] = os.path.realpath(_config["args"][0])
@@ -116,21 +127,21 @@ class FuzzerConfig:
         return Environment(**_config)
 
     @cached_property
-    def protocol(self):
+    async def protocol(self):
         return self._config["channel"]["type"]
 
     @cached_property
-    def ch_env(self):
+    async def ch_env(self):
         _config = self._config["channel"]
-        if not self.use_forkserver:
+        if not await self.use_forkserver:
             if _config["type"] == "tcp":
                 return TCPChannelFactory(**_config["tcp"], \
-                    timescale=self.timescale)
+                    timescale=await self.timescale)
             elif _config["type"] == "udp":
                 return UDPChannelFactory(**_config["udp"], \
-                    timescale=self.timescale)
+                    timescale=await self.timescale)
             elif _config["type"] == "x11":
-                return X11ChannelFactory(timescale=self.timescale)
+                return X11ChannelFactory(timescale=await self.timescale)
             else:
                 raise NotImplemented()
         else:
@@ -138,91 +149,91 @@ class FuzzerConfig:
                 fork_location = _config["tcp"].pop("fork_location", "accept")
                 fork_before_accept = fork_location == "accept"
                 return TCPForkChannelFactory(**_config["tcp"], \
-                    timescale=self.timescale, \
+                    timescale=await self.timescale, \
                     fork_before_accept=fork_before_accept)
             elif _config["type"] == "udp":
                 return UDPForkChannelFactory(**_config["udp"], \
-                    timescale=self.timescale)
+                    timescale=await self.timescale)
             else:
                 raise NotImplemented()
 
     @cached_property
-    def loader(self):
+    async def loader(self):
         _config = self._config["loader"]
         if _config["type"] == "replay":
-            if not self.use_forkserver:
-                return ReplayStateLoader(self.exec_env, self.ch_env,
-                    self.disable_aslr, self.input_generator.startup_input)
+            if not await self.use_forkserver:
+                return ReplayStateLoader(await self.exec_env, await self.ch_env,
+                    await self.disable_aslr, (await self.input_generator).startup_input)
             else:
-                return ReplayForkStateLoader(self.exec_env, self.ch_env,
-                    self.disable_aslr, self.input_generator.startup_input)
+                return ReplayForkStateLoader(await self.exec_env, await self.ch_env,
+                    await self.disable_aslr, (await self.input_generator).startup_input)
         elif _config["type"] == "zoom":
-            return ZoomStateLoader(self.exec_env, self.ch_env,
-                    self.disable_aslr, self.input_generator.startup_input)
+            return ZoomStateLoader(await self.exec_env, await self.ch_env,
+                    await self.disable_aslr, (await self.input_generator).startup_input)
         else:
             raise NotImplemented()
 
     @cached_property
-    def state_tracker(self):
+    async def state_tracker(self):
         _config = self._config["statemanager"]
         state_type = _config.get("type", "coverage")
         if state_type == "coverage":
-            return CoverageStateTracker(self.input_generator, self.loader,
+            return await CoverageStateTracker.create(await self.input_generator, await self.loader,
                 bind_lib=self._bind_lib)
         elif state_type == "zoom":
-            return ZoomStateTracker(self.input_generator, self.loader)
+            return await ZoomStateTracker.create(await self.input_generator, await self.loader)
         else:
             raise NotImplemented()
 
     @cached_property
-    def input_generator(self):
+    async def input_generator(self):
         _config = self._config["input"]
         input_type = _config.get("type", "mutation")
         if input_type == "mutation":
-            return RandomInputGenerator(self.startup_pcap, self.seed_dir, self.protocol)
+            return RandomInputGenerator(await self.startup_pcap, await self.seed_dir, await self.protocol)
         elif input_type == "zoom":
-            return ZoomInputGenerator(self.startup_pcap, self.seed_dir, self.protocol)
+            return ZoomInputGenerator(await self.startup_pcap, await self.seed_dir, await self.protocol)
         else:
             raise NotImplemented()
 
     @cached_property
-    def entropy(self):
+    async def entropy(self):
         seed = self._config["fuzzer"].get("entropy")
         return Random(seed)
 
     @cached_property
-    def scheduler_strategy(self):
+    async def scheduler_strategy(self):
         _config = self._config["statemanager"]
         strategy_name = _config.get("strategy", "random")
+        entropy = await self.entropy
         if strategy_name == "random":
-            return lambda a, b: RandomStrategy(sm=a, entry_state=b, entropy=self.entropy)
+            return lambda a, b: RandomStrategy(sm=a, entry_state=b, entropy=entropy)
         elif strategy_name == "uniform":
-            return lambda a, b: UniformStrategy(sm=a, entry_state=b, entropy=self.entropy)
+            return lambda a, b: UniformStrategy(sm=a, entry_state=b, entropy=entropy)
+        elif strategy_name == "zoom":
+            return lambda a, b: ZoomStrategy(sm=a, entry_state=b, entropy=entropy)
         else:
             raise NotImplemented()
 
     @cached_property
-    def state_manager(self):
+    async def state_manager(self):
         _config = self._config["statemanager"]
-        return StateManager(self.loader, self.state_tracker,
-            self.scheduler_strategy, self.work_dir, self.ch_env.protocol)
+        validate = _config.get("validate_transitions", True)
+        minimize = _config.get("minimize_transitions", True)
+        return StateManager(await self.loader, await self.state_tracker,
+            await self.scheduler_strategy, await self.work_dir, await self.protocol,
+            validate, minimize)
 
     @cached_property
-    def startup_pcap(self):
+    async def startup_pcap(self):
         return self._config["input"].get("startup")
 
     @cached_property
-    def seed_dir(self):
+    async def seed_dir(self):
         return self._config["fuzzer"].get("seeds")
 
     @cached_property
-    def lib_dir(self):
-        if (path := self._config["fuzzer"].get("lib")):
-            return os.path.realpath(path)
-        return None
-
-    @cached_property
-    def work_dir(self):
+    async def work_dir(self):
         def mktree(root, tree):
             if tree:
                 for b, t in tree.items():
@@ -239,17 +250,17 @@ class FuzzerConfig:
         return wd
 
     @cached_property
-    def resume(self):
+    async def resume(self):
         return self._config["fuzzer"].get("resume", False)
 
     @cached_property
-    def timescale(self):
+    async def timescale(self):
         return self._config["fuzzer"].get("timescale", 1.0)
 
     @cached_property
-    def use_forkserver(self):
+    async def use_forkserver(self):
         return self._config["loader"].get("forkserver", False)
 
     @cached_property
-    def disable_aslr(self):
+    async def disable_aslr(self):
         return self._config["loader"].get("disable_aslr", False)

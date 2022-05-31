@@ -6,6 +6,7 @@ import asyncio
 from asyncio import (get_running_loop, run_coroutine_threadsafe, wait_for,
                     current_task)
 from time import perf_counter as now
+from inspect import iscoroutinefunction
 
 class ProfileEvent(ProfilerBase):
     def __init__(self, name, **kwargs):
@@ -14,14 +15,26 @@ class ProfileEvent(ProfilerBase):
             self._args = None
             self._listeners = []
 
+    def _notify_listeners(self, argt, ret):
+        for loop in self._listeners:
+            run_coroutine_threadsafe(self._listener_notify(argt, ret), loop)
+
     def __call__(self, obj):
         def func(*args, **kwargs):
             ret = obj(*args, **kwargs)
             argt = (args, kwargs)
-            for loop in self._listeners:
-                run_coroutine_threadsafe(self._listener_notify(argt, ret), loop)
+            self._notify_listeners(argt, ret)
             return ret
-        return func
+        async def afunc(*args, **kwargs):
+            ret = await obj(*args, **kwargs)
+            argt = (args, kwargs)
+            self._notify_listeners(argt, ret)
+            return ret
+
+        if iscoroutinefunction(obj):
+            return afunc
+        else:
+            return func
 
     @property
     def value(self):

@@ -1,7 +1,7 @@
-from . import critical
+from . import critical, debug
 from abc          import ABC, abstractmethod
 from typing       import Union
-from common       import LoadedException, ChannelBrokenException
+from common       import LoadedException, ChannelBrokenException, async_enumerate
 from loader       import Environment
 from networkio    import (ChannelFactoryBase,
                          ChannelBase)
@@ -33,7 +33,7 @@ class StateLoaderBase(ABC):
             personality(ADDR_NO_RANDOMIZE)
 
     @abstractmethod
-    def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, update: bool):
+    async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, update: bool):
         pass
 
     @property
@@ -43,7 +43,7 @@ class StateLoaderBase(ABC):
 
     @ProfileEvent("execute_input")
     @ProfileFrequency("execs")
-    def execute_input(self, input: InputBase, sman: StateManager, update: bool = True):
+    async def execute_input(self, input: InputBase, sman: StateManager, update: bool = True):
         """
         Executes the sequence of interactions specified by the input.
 
@@ -57,9 +57,10 @@ class StateLoaderBase(ABC):
             with sman.get_context(input) as ctx:
                 try:
                     idx = -1
-                    for idx, interaction in enumerate(ctx):
+                    async for idx, interaction in async_enumerate(ctx):
                         # FIXME figure out what other parameters this needs
-                        interaction.perform(self.channel)
+                        debug(interaction)
+                        await interaction.perform(self.channel)
                         # TODO perform fault detection
                     else:
                         ProfileValueMean("input_len", samples=100)(idx + 1)
@@ -70,7 +71,8 @@ class StateLoaderBase(ABC):
             idx = -1
             for idx, interaction in enumerate(input):
                 try:
-                    interaction.perform(self.channel)
+                    debug(interaction)
+                    await interaction.perform(self.channel)
                 except Exception as ex:
                     raise LoadedException(ex, input[:idx + 1])
             else:
@@ -82,6 +84,7 @@ class StateLoaderBase(ABC):
         try:
             # server may have killed the connection at this point and we need to
             # report it
-            data = self.channel.receive()
+            # FIXME this should now be addressed through asyncio task cancelling
+            data = await self.channel.receive()
         except ChannelBrokenException as ex:
             raise LoadedException(ex, input)

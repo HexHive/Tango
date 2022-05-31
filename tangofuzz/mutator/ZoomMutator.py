@@ -1,8 +1,12 @@
+from . import debug
+
 from typing import Sequence
+from statemanager import StateBase
 from input import InputBase
 from mutator import MutatorBase
 from interaction import (InteractionBase, MoveInteraction, ShootInteraction,
-                        ActivateInteraction, DelayInteraction)
+                        ActivateInteraction, DelayInteraction,
+                        RotateInteraction, ReachInteraction, KillInteraction)
 from random import Random
 from itertools import tee
 from enum import Enum
@@ -22,8 +26,13 @@ class ZoomMutator(MutatorBase):
         SHOOT = 2
         DELAY = 3
 
-    def __init__(self, entropy: Random):
+    def __init__(self, entropy: Random, state: StateBase):
         super().__init__(entropy)
+        self._clobbers = (
+                ("forward", "backward"),
+                ("strafe_left", "strafe_right", "rotate_left", "rotate_right")
+            )
+        self._state = state
 
     def __enter__(self):
         entropy = Random()
@@ -35,10 +44,24 @@ class ZoomMutator(MutatorBase):
         self._entropy.setstate(self._temp.getstate())
 
     def ___iter___(self, orig):
+        for mut in self.___iter_helper___(orig):
+            if isinstance(mut, (RotateInteraction, ReachInteraction)):
+                # deliberately ignore interactions that the strategy added to the
+                # SM because they're not entirely useful for random exploration
+                continue
+
+            yield mut
+            # # we always try to kill
+            # yield KillInteraction(self._state)
+
+    def ___iter_helper___(self, orig):
         with self as entropy:
             i = -1
             reorder_buffer = []
             for i, interaction in enumerate(orig()):
+                if isinstance(interaction, DelayInteraction):
+                    yield interaction
+                    continue
                 new_interaction = deepcopy(interaction)
                 seq = self._mutate(new_interaction, reorder_buffer, entropy)
                 yield from seq
@@ -99,41 +122,45 @@ class ZoomMutator(MutatorBase):
                 elif oper == self.RandomOperation.CREATE:
                     # FIXME use range(3) to enable delays, but they affect throughput
                     inter = self.RandomInteraction(entropy.choices(
-                            range(4),
-                            cum_weights=range(96, 100)
+                            range(2),
+                            cum_weights=(4, 7)#, 9, 10)
                         )[0])
                     if inter == self.RandomInteraction.MOVE:
-                        direction = entropy.choice(list(MoveInteraction.DIRECTION_KEY_MAP.keys()))
-                        stop = entropy.choice((True, False))
-                        new = MoveInteraction(direction, stop)
+                        new = MoveInteraction(None)
+                        new.mutate(self, entropy)
+                        yield new
+
+                        delay = entropy.random() * 2
+                        yield DelayInteraction(delay)
                     elif inter == self.RandomInteraction.ACTIVATE:
-                        new = ActivateInteraction()
+                        yield ActivateInteraction()
                     elif inter == self.RandomInteraction.SHOOT:
-                        new = ShootInteraction()
+                        yield ShootInteraction()
                     elif inter == self.RandomInteraction.DELAY:
                         delay = entropy.random() * 2
-                        new = DelayInteraction(delay)
-                    yield new
+                        yield DelayInteraction(delay)
         else:
             oper = self.RandomOperation(entropy.randint(4, 4))
             if oper == self.RandomOperation.CREATE:
                 # FIXME use range(3) to enable delays, but they affect throughput
                 inter = self.RandomInteraction(entropy.choices(
-                        range(4),
-                        cum_weights=range(96, 100)
+                        range(2),
+                        cum_weights=(4, 7)#, 9, 10)
                     )[0])
                 if inter == self.RandomInteraction.MOVE:
-                    direction = entropy.choice(list(MoveInteraction.DIRECTION_KEY_MAP.keys()))
-                    stop = entropy.choice((True, False))
-                    new = MoveInteraction(direction, stop)
+                    new = MoveInteraction(None)
+                    new.mutate(self, entropy)
+                    yield new
+
+                    delay = entropy.random() * 2
+                    yield DelayInteraction(delay)
                 elif inter == self.RandomInteraction.ACTIVATE:
-                    new = ActivateInteraction()
+                    yield ActivateInteraction()
                 elif inter == self.RandomInteraction.SHOOT:
-                    new = ShootInteraction()
+                    yield ShootInteraction()
                 elif inter == self.RandomInteraction.DELAY:
                     delay = entropy.random() * 2
-                    new = DelayInteraction(delay)
-                yield new
+                    yield DelayInteraction(delay)
 
             # when interaction is None, we should flush the reorder buffer
             yield from entropy.sample(reorder_buffer, k=len(reorder_buffer))

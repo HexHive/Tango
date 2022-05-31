@@ -65,6 +65,7 @@ extern const byte gammatable[5][256];
 #define ANG180          0x80000000
 #define ANG270          0xc0000000
 #define ANG_MAX         0xffffffff
+#define ANGTODEGREE(x)  ((float)x/ANG_MAX*360)
 
 #define ANG1            (ANG45 / 45)
 #define ANG60           (ANG180 / 3)

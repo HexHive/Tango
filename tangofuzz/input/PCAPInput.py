@@ -108,6 +108,7 @@ class PCAPInput(PreparedInput):
             cli = random.randint(40000, 65534)
             srv = random.randint(cli + 1, 65535)
         else:
+            return
             raise NotImplemented()
 
         cur_time = time.time()

@@ -1,6 +1,7 @@
 from __future__ import annotations
+from . import debug
 from networkio import ChannelBase, ChannelFactoryBase
-from common import ChannelSetupException
+from common import ChannelSetupException, async_wrapper
 
 from dataclasses import dataclass
 from Xlib import XK, display, ext, X, protocol
@@ -34,6 +35,7 @@ class X11Channel(ChannelBase):
                 time.sleep(self.WINDOW_POLL_WAIT)
             else:
                 break
+        self._keysdown = set()
 
     @classmethod
     def get_window(cls, display, program_name, window_name):
@@ -52,11 +54,29 @@ class X11Channel(ChannelBase):
 
         raise ChannelSetupException("Failed to find x11 window")
 
-    def send(self, key, release=False):
+    async def send(self, key_or_keys, down=True, clobbers=None):
+        if hasattr(key_or_keys, '__iter__') and not isinstance(key_or_keys, str):
+            keys = key_or_keys
+        else:
+            keys = (key_or_keys,)
+        clobbers = clobbers or ()
+
+        if down:
+            for c in clobbers:
+                if c in self._keysdown:
+                    await self._send_one_key_event(c, down=False)
+
+        for k in keys:
+            await self._send_one_key_event(k, down)
+
+        debug(self._keysdown)
+
+    @async_wrapper
+    def _send_one_key_event(self, key, down):
         keysym = XK.string_to_keysym(key)
         keycode = self._display.keysym_to_keycode(keysym)
 
-        event_ctor = protocol.event.KeyRelease if release else protocol.event.KeyPress
+        event_ctor = protocol.event.KeyPress if down else protocol.event.KeyRelease
 
         event = event_ctor(
            time = int(time.time()),
@@ -70,8 +90,19 @@ class X11Channel(ChannelBase):
         self._display.send_event(self._window, event, propagate=True)
         self._display.sync()
 
-    def receive(self):
+        if down:
+            self._keysdown.add(key)
+        else:
+            self._keysdown.discard(key)
+
+    async def receive(self):
         pass
+
+    async def clear(self):
+        keysdown = self._keysdown.copy()
+        for key in keysdown:
+            self._send_one_key_event(key, down=False)
+        return keysdown
 
     def close(self):
         pass

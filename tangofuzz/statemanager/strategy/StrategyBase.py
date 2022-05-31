@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Union
+from input import InputBase
 from statemanager import StateBase, StateMachine
 
 class StrategyBase(ABC):
@@ -25,7 +26,7 @@ class StrategyBase(ABC):
         pass
 
     @abstractmethod
-    def update_transition(self, source: StateBase, destination: StateBase, invalidate: bool):
+    def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, invalidate: bool):
         """
         Similar to update_state(), but for transitions.
 
@@ -34,6 +35,8 @@ class StrategyBase(ABC):
         :param      destination:  The destination state. This can be assumed to
                                   be the current state of the target too.
         :type       destination:  StateBase
+        :param      input:        The input associated with the transition.
+        :type       input:        InputBase
         :param      invalidate:   Whether or not the transition should be
                                   invalidated.
         :type       invalidate:   bool

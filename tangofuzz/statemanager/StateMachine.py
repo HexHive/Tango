@@ -1,6 +1,6 @@
 from . import debug
 
-from   itertools    import product as xproduct
+from   itertools    import product as xproduct, tee
 from   functools    import partial
 from   statemanager import StateBase
 from   input        import InputBase, PreparedInput, MemoryCachingDecorator
@@ -12,6 +12,14 @@ from profiler import ProfileValue, ProfileValueMean, ProfileEvent
 from statistics import mean
 from datetime import datetime
 now = datetime.now
+
+def shortest_simple_edge_paths(*args, **kwargs):
+    for path in nx.shortest_simple_paths(*args, **kwargs):
+        a, b = tee(path)
+        next(b) # skip one item in b
+        yield list(zip(a, b))
+
+nx.shortest_simple_edge_paths = shortest_simple_edge_paths
 
 class StateMachine:
     """
@@ -197,7 +205,10 @@ class StateMachine:
         if destination == source:
             yield [(source, destination, PreparedInput())]
         else:
-            paths = nx.all_simple_edge_paths(self._graph, source, destination)
+            if minimized_only:
+                paths = nx.shortest_simple_edge_paths(self._graph, source, destination)
+            else:
+                paths = nx.all_simple_edge_paths(self._graph, source, destination)
             for path in paths:
                 xpaths = xproduct(*(self.get_edge_with_inputs(*edge, minimized_only)
                                         for edge in path))

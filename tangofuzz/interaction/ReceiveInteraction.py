@@ -12,8 +12,8 @@ class ReceiveInteraction(InteractionBase):
 
     @ProfileEvent("perform_interaction")
     @ProfileFrequency("interactions", period=1)
-    def perform(self, channel: ChannelBase):
-        self._data = channel.receive()
+    async def perform(self, channel: ChannelBase):
+        self._data = await channel.receive()
         # TODO verify size? verify data??
 
     def __eq__(self, other: ReceiveInteraction):
