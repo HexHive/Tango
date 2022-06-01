@@ -4,13 +4,28 @@ from generator import InputGeneratorBase
 from networkio   import ChannelFactoryBase
 from statemanager import StateBase
 from input import InputBase, ZoomInput
-from interaction import KillInteraction, DelayInteraction, ActivateInteraction
+from interaction import (KillInteraction, DelayInteraction, ActivateInteraction,
+                        ResetKeysInteraction)
 from random import Random
 from mutator import ZoomMutator
 from enum import Enum, auto
 import asyncio
+from collections import OrderedDict
+
+class InterruptReason(Enum):
+    NO_REASON = auto()
+    ATTACKER_VALID = auto()
+    LAVA_PIT = auto()
+    PLAYER_DEATH = auto()
+
+    NUM_REASONS = auto()
 
 class ZoomInputGenerator(InputGeneratorBase):
+    PREEMPTION_LISTS = OrderedDict([
+        (0, (InterruptReason.PLAYER_DEATH,)),
+        (10, (InterruptReason.ATTACKER_VALID,)),
+    ])
+
     def __init__(self, startup: str, seed_dir: str, protocol: str):
         super().__init__(startup, seed_dir, protocol)
         self._reason = InterruptReason.NO_REASON
@@ -47,32 +62,45 @@ class ZoomInputGenerator(InputGeneratorBase):
                 if self._reason == InterruptReason.ATTACKER_VALID:
                     return ZoomInput((KillInteraction(state),))
                 elif self._reason == InterruptReason.PLAYER_DEATH:
-                    return ZoomInput((ActivateInteraction(),))
+                    return ZoomInput((ActivateInteraction(), ResetKeysInteraction()))
             finally:
-                self._reason = InterruptReason.NO_REASON
+                pass
+                # self._reason = InterruptReason.NO_REASON
+
+    @classmethod
+    def get_reason_priority(cls, reason):
+        for p, rs in cls.PREEMPTION_LISTS.items():
+            if reason in rs:
+                return p
+        else:
+            return p + 1
 
     async def feedback(self):
         while True:
-            if self._reason == InterruptReason.NO_REASON:
-                struct = self._state._sman._tracker._reader.struct
-                if struct.playerstate > 0:
-                    self._reason = InterruptReason.PLAYER_DEATH
-                elif struct.attacker_valid:
-                    self._reason = InterruptReason.ATTACKER_VALID
+            struct = self._state._sman._tracker._reader.struct
+            reasons = []
+            if struct.playerstate > 0:
+                reasons.append(InterruptReason.PLAYER_DEATH)
+            if struct.attacker_valid:
+                reasons.append(InterruptReason.ATTACKER_VALID)
 
-                if self._reason != InterruptReason.NO_REASON:
-                    task = getattr(asyncio.get_event_loop(), '_executing_task', None)
-                    if task is not None and not task.done():
-                        task.cancel()
-                        await DelayInteraction(10).perform(self._state._sman._loader._channel)
+            preemptive_reason = None
+            for r in reasons:
+                if self.get_reason_priority(r) < self.get_reason_priority(self._reason):
+                    preemptive_reason = r
+
+            if preemptive_reason:
+                self._reason = preemptive_reason
+                task = getattr(asyncio.get_event_loop(), '_executing_task', None)
+                if task is not None and not task.done():
+                    warning(f"Sending interrupt now! {self._reason = }")
+                    task.cancel()
+
+            elif (self._reason == InterruptReason.ATTACKER_VALID and \
+                    not struct.attacker_valid) or \
+                 (self._reason == InterruptReason.PLAYER_DEATH and \
+                    struct.playerstate == 0):
+                warning("Clearing reason, looking for new reasons")
+                self._reason = InterruptReason.NO_REASON
 
             await DelayInteraction(0.1).perform(self._state._sman._loader._channel)
-
-
-class InterruptReason(Enum):
-    NO_REASON = auto()
-    ATTACKER_VALID = auto()
-    LAVA_PIT = auto()
-    PLAYER_DEATH = auto()
-
-    NUM_REASONS = auto()

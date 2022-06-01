@@ -108,7 +108,7 @@ class FuzzerSession:
                         except Exception as ex:
                             import ipdb; ipdb.set_trace()
                             critical(f"Encountered unhandled loaded exception {ex = }")
-                        # FIXME reset to StateManager's current target state
+                        # reset to StateManager's current target state
                         await self._sman.reload_target()
                     except asyncio.CancelledError:
                         # the input generator cancelled an execution and would
@@ -119,6 +119,11 @@ class FuzzerSession:
                         import ipdb; ipdb.set_trace()
                         critical(f"Encountered weird exception {ex = }")
                         await self._sman.reload_target()
+            except asyncio.CancelledError:
+                # the input generator cancelled an execution and would like to
+                # react
+                warning("Received interrupt, continuing!")
+                continue
             except StateNotReproducibleException as ex:
                 warning(f"Target state {ex._faulty_state} not reachable anymore!")
             except Exception as ex:

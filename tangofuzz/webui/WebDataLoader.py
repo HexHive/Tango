@@ -32,7 +32,7 @@ class WebDataLoader:
 
         self.tasks = []
         self.tasks.append(asyncio.create_task(
-                ProfiledObjects['update_state'].listener(period=0.1)(self.update_graph)
+                ProfiledObjects['update_state'].listener(period=5)(self.update_graph)
             )
         )
         self.tasks.append(asyncio.create_task(

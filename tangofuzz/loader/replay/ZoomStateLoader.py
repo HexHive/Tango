@@ -171,14 +171,9 @@ class ZoomStateLoader(StateLoaderBase):
                                 f"source state ({source}) did not match current state ({sman.state_tracker.current_state})"
                             )
                         # perform the input
-                        inp = []
-                        for interaction in input:
-                            if isinstance(interaction, ActivateInteraction):
-                                inp.append(interaction)
-                                break
                         dst_x, dst_y, dst_z = map(lambda c: getattr(destination._struct, c), ('x', 'y', 'z'))
                         condition = lambda: sman._tracker.current_state == destination
-                        inp.append(ReachInteraction(destination, (dst_x, dst_y, dst_z), condition=condition))
+                        inp = (ReachInteraction(destination, (dst_x, dst_y, dst_z), condition=condition),)
                         inp = ZoomInput(inp)
 
                         await self.execute_input(inp, sman, update=update)

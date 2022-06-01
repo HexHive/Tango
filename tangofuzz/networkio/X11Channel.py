@@ -101,7 +101,7 @@ class X11Channel(ChannelBase):
     async def clear(self):
         keysdown = self._keysdown.copy()
         for key in keysdown:
-            self._send_one_key_event(key, down=False)
+            await self._send_one_key_event(key, down=False)
         return keysdown
 
     def close(self):
