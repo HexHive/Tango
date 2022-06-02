@@ -64,8 +64,8 @@ class ZoomStrategy(StrategyBase):
                 self._recalculate_target()
         else:
             self._invalid_states.discard(state)
-            if is_new or not hasattr(state, '_cycle'):
-                state._cycle = self._cycles - 1
+            # any state we reach in the current cycle is counted as visited
+            state._cycle = self._cycles
 
     def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, invalidate: bool = False):
         src_x, src_y, src_z = map(lambda c: getattr(source._struct, c), ('x', 'y', 'z'))

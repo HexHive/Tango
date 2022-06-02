@@ -5,7 +5,7 @@ from networkio   import ChannelFactoryBase
 from statemanager import StateBase
 from input import InputBase, ZoomInput
 from interaction import (KillInteraction, DelayInteraction, ActivateInteraction,
-                        ResetKeysInteraction, ReachInteraction)
+                        ResetKeysInteraction, ReachInteraction, MoveInteraction)
 from random import Random
 from mutator import ZoomMutator
 from enum import Enum, auto
