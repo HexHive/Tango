@@ -66,6 +66,8 @@ class ZoomInputGenerator(InputGeneratorBase):
                 if self._reason == InterruptReason.ATTACKER_VALID:
                     return ZoomInput((KillInteraction(state, from_location=self._attacked_location),))
                 elif self._reason == InterruptReason.PLAYER_DEATH:
+                    # FIXME hacky fix to avoid teleportation transitions
+                    state._sman._last_state = state._sman._tracker.entry_state
                     return ZoomInput((ActivateInteraction(), ResetKeysInteraction()))
                 elif self._reason == InterruptReason.SPECIAL_OBJECT:
                     return ZoomInput((ActivateInteraction(), MoveInteraction('forward', duration=1)))

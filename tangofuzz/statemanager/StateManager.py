@@ -109,6 +109,8 @@ class StateManager:
                     # leads to the faulty state
                     transition = next(x for x in target if x[1] == ex._faulty_state)
                     self._strategy.update_transition(transition[0], transition[1], transition[2], invalidate=True)
+            except asyncio.CancelledError:
+                raise
             except Exception:
                 # In this case, we need to force the strategy to yield a new
                 # target, because we're not entirely sure what went wrong. We
