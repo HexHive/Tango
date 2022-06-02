@@ -23,11 +23,11 @@ class ZoomFeedback(ctypes.Structure):
         ("weaponowned", ctypes.c_int * NUMWEAPONS),
         ("ammo", ctypes.c_int * NUMAMMO),
         ("attacker_valid", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
-        # ("attacker_angle", ctypes.c_float),
         ("attacker_x", ctypes.c_float),
         ("attacker_y", ctypes.c_float),
         ("attacker_z", ctypes.c_float),
-        ("didsecret", ctypes.c_int) # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
+        ("didsecret", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
+        ("canactivate", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
     ]
 
 class ZoomStateReader:

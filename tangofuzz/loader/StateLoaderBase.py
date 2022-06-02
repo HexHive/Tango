@@ -12,6 +12,7 @@ from statemanager import (StateBase,
 from interaction  import ReceiveInteraction
 from profiler import ProfileFrequency, ProfileValueMean, ProfileEvent, ProfileCount
 import ctypes
+import asyncio
 
 from ptrace import PtraceError
 
@@ -65,6 +66,8 @@ class StateLoaderBase(ABC):
                     else:
                         ProfileValueMean("input_len", samples=100)(idx + 1)
                         ProfileCount("total_interactions")(idx + 1)
+                except asyncio.CancelledError:
+                    raise
                 except Exception as ex:
                     raise LoadedException(ex, ctx.input_gen())
         else:
@@ -73,6 +76,8 @@ class StateLoaderBase(ABC):
                 try:
                     debug(interaction)
                     await interaction.perform(self.channel)
+                except asyncio.CancelledError:
+                    raise
                 except Exception as ex:
                     raise LoadedException(ex, input[:idx + 1])
             else:

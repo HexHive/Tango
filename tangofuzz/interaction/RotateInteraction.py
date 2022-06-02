@@ -7,6 +7,8 @@ import time
 from math import isclose
 from copy import deepcopy
 
+import asyncio
+
 class RotateInteraction(InteractionBase):
     def __init__(self, current_state, target_angle: float, tolerance: float=2.0):
         self._target = float(target_angle)
@@ -32,6 +34,7 @@ class RotateInteraction(InteractionBase):
         last = None
         while not isclose(delta := self.short_angle(self._struct.angle - self._target), 0, abs_tol=self._tol):
             debug(f"Still far from target {delta=}")
+
             if move and not last:
                 debug("Stopping movement while rotating")
                 await MoveInteraction(move, stop=True).perform(channel)

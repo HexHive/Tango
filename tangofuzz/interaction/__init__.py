@@ -14,4 +14,5 @@ from .ResetKeysInteraction import ResetKeysInteraction
 
 from .RotateInteraction import RotateInteraction
 from .ReachInteraction  import ReachInteraction
+from .GoToInteraction   import GoToInteraction
 from .KillInteraction   import KillInteraction

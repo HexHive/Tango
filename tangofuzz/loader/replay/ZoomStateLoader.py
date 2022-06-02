@@ -26,7 +26,7 @@ class ZoomStateLoader(StateLoaderBase):
     PROC_TERMINATE_WAIT = 0.1 # seconds
 
     def __init__(self, exec_env: Environment, ch_env: ChannelFactoryBase,
-            no_aslr: bool, startup_input: InputBase, path_retry_limit: int=50):
+            no_aslr: bool, startup_input: InputBase, path_retry_limit: int=5):
         # initialize the base class
         super().__init__(exec_env, ch_env, no_aslr)
         self._pobj = None # Popen object of child process
@@ -220,6 +220,9 @@ class ZoomStateLoader(StateLoaderBase):
             break
 
     async def execute_input(self, input: InputBase, sman: StateManager, update: bool = True):
-        asyncio.get_event_loop()._executing_task = asyncio.current_task()
+        if not hasattr(asyncio.get_event_loop(), '_executing_tasks'):
+            asyncio.get_event_loop()._executing_tasks = list()
+
+        asyncio.get_event_loop()._executing_tasks.append(asyncio.current_task())
         await super().execute_input(input, sman, update)
-        asyncio.get_event_loop()._executing_task = None
+        assert asyncio.get_event_loop()._executing_tasks.pop() == asyncio.current_task()

@@ -102,6 +102,8 @@ class FuzzerSession:
                         except ChannelBrokenException as ex:
                             # TODO save crashing/breaking input
                             debug(f"Received channel broken exception ({ex = })")
+                        except StateNotReproducibleException as ex:
+                            warning(f"Target state {ex._faulty_state} not reachable anymore!")
                         except ChannelSetupException:
                             # TODO save broken setup input
                             warning("Received channel setup exception")
@@ -122,7 +124,10 @@ class FuzzerSession:
             except asyncio.CancelledError:
                 # the input generator cancelled an execution and would like to
                 # react
-                warning("Received interrupt, continuing!")
+                warning("Received interrupt while reloading target, forcing input generation")
+                cur_state = self._sman.state_tracker.current_state
+                input = self._input_gen.generate(cur_state, self._entropy)
+                await self._sman.step(input)
                 continue
             except StateNotReproducibleException as ex:
                 warning(f"Target state {ex._faulty_state} not reachable anymore!")

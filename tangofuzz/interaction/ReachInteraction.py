@@ -15,13 +15,15 @@ from enum import Enum, auto
 class RecoveringAttempt(Enum):
     NOT_RECOVERING = auto()
     ACTIVATE = auto()
-    JITTER = auto()
+    JITTER_LEFT = auto()
+    JITTER_RIGHT = auto()
     ALL_ATTEMPTS = auto()
 
 class ReachInteraction(InteractionBase):
     MAX_STRAFE_DISTANCE = 50
     DISTANCE_SAMPLE_COUNT = 20
     DISTANCE_SAMPLE_VARIANCE = 400
+    MAX_RETRIES = 1
 
     def __init__(self, current_state, target_location: tuple, stop_at_target: bool=True, tolerance: float=5.0, condition=None):
         self._target = target_location
@@ -51,6 +53,7 @@ class ReachInteraction(InteractionBase):
         strafing = False
         d_samples = deque(maxlen=self.DISTANCE_SAMPLE_COUNT)
         recovering = RecoveringAttempt.NOT_RECOVERING
+        retries = 0
         try:
             while not (isclose(distancesq := self.l2_distance(
                                 (self._struct.x, self._struct.y),
@@ -65,20 +68,23 @@ class ReachInteraction(InteractionBase):
                 d_samples.append(distancesq)
                 if len(d_samples) == self.DISTANCE_SAMPLE_COUNT:
                     if variance(d_samples) < self.DISTANCE_SAMPLE_VARIANCE:
-                        if recovering == RecoveringAttempt.ALL_ATTEMPTS:
+                        if recovering == RecoveringAttempt.ALL_ATTEMPTS or \
+                                retries >= self.MAX_RETRIES:
                             raise ChannelTimeoutException("Unable to reach target location")
                         else:
                             recovering = RecoveringAttempt(recovering.value + 1)
                     elif recovering != RecoveringAttempt.NOT_RECOVERING:
+                        retries += 1
                         recovering = RecoveringAttempt.NOT_RECOVERING
 
                 if recovering == RecoveringAttempt.ACTIVATE:
                     await ActivateInteraction().perform(channel)
                     # wait for door to open or something
                     await DelayInteraction(0.5).perform(channel)
-                elif recovering == RecoveringAttempt.JITTER:
-                    # TODO
-                    pass
+                elif recovering == RecoveringAttempt.JITTER_LEFT:
+                    await MoveInteraction('strafe_left', duration=1).perform(channel)
+                elif recovering == RecoveringAttempt.JITTER_RIGHT:
+                    await MoveInteraction('strafe_right', duration=1).perform(channel)
 
                 if distancesq < self.MAX_STRAFE_DISTANCE ** 2:
                     strafing = True
@@ -124,4 +130,4 @@ class ReachInteraction(InteractionBase):
                 ), 0, abs_tol=self._tol**2)
 
     def __repr__(self):
-        return 'activate'
+        return f'bee-line to {self._target}'

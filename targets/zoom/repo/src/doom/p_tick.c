@@ -119,7 +119,55 @@ void P_RunThinkers (void)
     }
 }
 
+mobj_t*     usething;
+boolean canuse;
 
+boolean PTR_CanUseTraverse (intercept_t* in)
+{
+    int     side;
+    canuse = false;
+
+    if (!in->d.line->special)
+    {
+        P_LineOpening (in->d.line);
+        if (openrange <= 0)
+        {
+            // can't use through a wall
+            return false;
+        }
+        // not a special line, but keep checking
+        return true ;
+    }
+
+    side = 0;
+    if (P_PointOnLineSide (usething->x, usething->y, in->d.line) == 1)
+        side = 1;
+
+    canuse = true;
+
+    // can't use for than one special line in a row
+    return false;
+}
+
+void P_CanUseLines (player_t*  player) 
+{
+    int     angle;
+    fixed_t x1;
+    fixed_t y1;
+    fixed_t x2;
+    fixed_t y2;
+    
+    usething = player->mo;
+        
+    angle = player->mo->angle >> ANGLETOFINESHIFT;
+
+    x1 = player->mo->x;
+    y1 = player->mo->y;
+    x2 = x1 + (USERANGE>>FRACBITS)*finecosine[angle];
+    y2 = y1 + (USERANGE>>FRACBITS)*finesine[angle];
+    
+    P_PathTraverse ( x1, y1, x2, y2, PT_ADDLINES, PTR_CanUseTraverse );
+}
 
 //
 // P_Ticker
@@ -183,5 +231,7 @@ void P_Ticker (void)
         memcpy(tf_feedback->ammo, players[0].ammo, sizeof(players[0].ammo));
 
         tf_feedback->didsecret = players[0].didsecret;
+        P_CanUseLines(&players[0]);
+        tf_feedback->canactivate = canuse;
     }
 }

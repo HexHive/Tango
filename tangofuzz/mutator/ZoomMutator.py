@@ -44,13 +44,17 @@ class ZoomMutator(MutatorBase):
         self._entropy.setstate(self._temp.getstate())
 
     def ___iter___(self, orig):
+        last = None
         for mut in self.___iter_helper___(orig):
             if isinstance(mut, (RotateInteraction, ReachInteraction)):
                 # deliberately ignore interactions that the strategy added to the
                 # SM because they're not entirely useful for random exploration
                 continue
 
+            if isinstance(last, ActivateInteraction) and isinstance(mut, ActivateInteraction):
+                continue
             yield mut
+            last = mut
             # # we always try to kill
             # yield KillInteraction(self._state)
 
@@ -122,16 +126,14 @@ class ZoomMutator(MutatorBase):
                 elif oper == self.RandomOperation.CREATE:
                     # FIXME use range(3) to enable delays, but they affect throughput
                     inter = self.RandomInteraction(entropy.choices(
-                            range(2),
-                            cum_weights=(4, 7)#, 9, 10)
+                            range(1),
+                            cum_weights=(4,)#, 7, 9, 10)
                         )[0])
                     if inter == self.RandomInteraction.MOVE:
-                        new = MoveInteraction(None)
+                        duration = entropy.random() * 2
+                        new = MoveInteraction(None, duration=duration)
                         new.mutate(self, entropy)
                         yield new
-
-                        delay = entropy.random() * 2
-                        yield DelayInteraction(delay)
                     elif inter == self.RandomInteraction.ACTIVATE:
                         yield ActivateInteraction()
                     elif inter == self.RandomInteraction.SHOOT:
@@ -144,16 +146,14 @@ class ZoomMutator(MutatorBase):
             if oper == self.RandomOperation.CREATE:
                 # FIXME use range(3) to enable delays, but they affect throughput
                 inter = self.RandomInteraction(entropy.choices(
-                        range(2),
-                        cum_weights=(4, 7)#, 9, 10)
+                        range(1),
+                        cum_weights=(4,)#, 7, 9, 10)
                     )[0])
                 if inter == self.RandomInteraction.MOVE:
-                    new = MoveInteraction(None)
+                    duration = entropy.random() * 2
+                    new = MoveInteraction(None, duration=duration)
                     new.mutate(self, entropy)
                     yield new
-
-                    delay = entropy.random() * 2
-                    yield DelayInteraction(delay)
                 elif inter == self.RandomInteraction.ACTIVATE:
                     yield ActivateInteraction()
                 elif inter == self.RandomInteraction.SHOOT:

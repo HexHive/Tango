@@ -47,8 +47,8 @@ typedef struct {
   float attacker_x;
   float attacker_y;
   float attacker_z;
-  // float attacker_angle;
   boolean didsecret;
+  boolean canactivate;
 } __attribute__((packed)) tf_feedback_t;
 
 extern tf_feedback_t *tf_feedback;

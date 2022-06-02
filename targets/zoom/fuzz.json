@@ -1,7 +1,7 @@
 {
 	"exec": {
 		"path": "./targets/zoom/repo/src/chocolate-doom",
-		"args": ["./targets/zoom/repo/src/chocolate-doom", "-nomouse", "-nograbmouse", "-iwad", "Doom1.WAD", "-warp", "1", "-extraconfig", "custom.config", "-geometry", "1280x1024", "-nomusic", "-skill", "5"],
+		"args": ["./targets/zoom/repo/src/chocolate-doom", "-nomouse", "-nograbmouse", "-iwad", "Doom1.WAD", "-warp", "1", "-extraconfig", "custom.config", "-geometry", "1280x1024", "-nomusic", "-skill", "1"],
 		"cwd": "./targets/zoom/repo/play",
 		"env": {
 		},

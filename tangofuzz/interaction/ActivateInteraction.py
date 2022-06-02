@@ -8,9 +8,11 @@ class ActivateInteraction(InteractionBase):
 
     async def perform(self, channel: X11Channel):
         key = "space"
-        await channel.send(key, down=True)
-        await DelayInteraction(0.1).perform(channel)
-        await channel.send(key, down=False)
+        try:
+            await channel.send(key, down=True)
+            await DelayInteraction(0.1).perform(channel)
+        finally:
+            await channel.send(key, down=False)
 
     def mutate(self, mutator, entropy):
         pass
