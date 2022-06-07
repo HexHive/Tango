@@ -4,12 +4,14 @@ from   dataclasses import dataclass
 from pyroute2.netns import setns
 import socket
 from os import getpid
+from common import async_property
 
 class NetworkChannel(ChannelBase):
-    def __init__(self, netns: str, **kwargs):
+    def __init__(self, netns: str, timescale:float, **kwargs):
         super().__init__(**kwargs)
         self._netns = netns
         self._ctx = NetNSContext(nsname=self._netns)
+        self._timescale = timescale
 
     def nssocket(self, *args):
         """
@@ -20,6 +22,10 @@ class NetworkChannel(ChannelBase):
             s = socket.socket(*args)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             return s
+
+    @async_property
+    async def timescale(self):
+        return self._timescale
 
 class NetNSContext (object):
     """
@@ -63,6 +69,10 @@ class NetNSContext (object):
         return nspath
 
 @dataclass
-class TransportChannelFactory(ChannelFactoryBase):
+class NetworkChannelFactory(ChannelFactoryBase):
+    timescale: float
+
+@dataclass
+class TransportChannelFactory(NetworkChannelFactory):
     endpoint: str
     port: int

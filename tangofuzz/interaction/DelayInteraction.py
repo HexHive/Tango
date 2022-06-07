@@ -16,7 +16,7 @@ class DelayInteraction(InteractionBase):
     @ProfileEvent("perform_interaction")
     @ProfileFrequency("interactions", period=1)
     async def perform(self, channel: ChannelBase):
-        await sleep(self._time * channel._timescale)
+        await sleep(self._time * (await channel.timescale))
 
     def __eq__(self, other: DelayInteraction):
         return isinstance(other, DelayInteraction) and \

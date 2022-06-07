@@ -1,7 +1,8 @@
 from __future__ import annotations
 from . import debug
 from networkio import ChannelBase, ChannelFactoryBase
-from common import ChannelSetupException, async_wrapper
+from common import ChannelSetupException, async_wrapper, async_property
+from typing import Callable
 
 from dataclasses import dataclass
 from Xlib import XK, display, ext, X, protocol
@@ -10,19 +11,20 @@ import time
 
 @dataclass
 class X11ChannelFactory(ChannelFactoryBase):
+    struct_fn: Callable
     protocol: str = 'x11'
 
     def create(self, program_name=None, window_name=None, *args, **kwargs) -> X11Channel:
-        return X11Channel(program_name=program_name, window_name=window_name, \
-                            timescale=self.timescale)
+        return X11Channel(self.struct_fn, program_name=program_name, window_name=window_name)
 
 class X11Channel(ChannelBase):
     WINDOW_POLL_RETRIES = 10
     WINDOW_POLL_WAIT = 1.0
 
-    def __init__(self, *, program_name, window_name, **kwargs):
+    def __init__(self, struct_fn, *, program_name, window_name, **kwargs):
         super().__init__(**kwargs)
         self._display = display.Display()
+        self._struct_fn = struct_fn
 
         retries = 0
         while True:
@@ -36,6 +38,11 @@ class X11Channel(ChannelBase):
             else:
                 break
         self._keysdown = set()
+
+    @async_property
+    async def timescale(self):
+        ticrate = (await self._struct_fn()).ticrate
+        return 35 / ticrate if ticrate != 0 else 1
 
     @classmethod
     def get_window(cls, display, program_name, window_name):

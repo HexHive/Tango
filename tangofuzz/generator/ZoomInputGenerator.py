@@ -13,6 +13,7 @@ from enum import Enum, auto
 import asyncio
 from collections import OrderedDict
 from typing import Sequence, Tuple
+import networkx as nx
 
 class InterruptReason(Enum):
     NO_REASON = auto()
@@ -66,7 +67,7 @@ class ZoomInputGenerator(InputGeneratorBase):
         else:
             try:
                 if self._reason == InterruptReason.ATTACKER_VALID:
-                    return ZoomInput((KillInteraction(state, from_location=self._attacked_location),))
+                    return ZoomInput(self.generate_kill_sequence(state, from_location=self._attacked_location))
                 elif self._reason == InterruptReason.PLAYER_DEATH:
                     # FIXME hacky fix to avoid teleportation transitions
                     state._sman._last_state = state._sman._tracker.entry_state
@@ -78,11 +79,26 @@ class ZoomInputGenerator(InputGeneratorBase):
                 # self._reason = InterruptReason.NO_REASON
 
     def generate_follow_path(self, \
-            path: Sequence[Tuple[StateBase, StateBase, InputBase]]) -> InputBase:
+            path: Sequence[Tuple[StateBase, StateBase, InputBase]]):
         for src, dst, inp in path:
             dst_x, dst_y, dst_z = map(lambda c: getattr(dst._struct, c), ('x', 'y', 'z'))
             condition = lambda: dst._sman._tracker.current_state == dst
             yield ReachInteraction(src, (dst_x, dst_y, dst_z), condition=condition)
+
+    def generate_kill_sequence(self, state, from_location=None):
+        yield KillInteraction(state)
+        if from_location:
+            destination_state = min(
+                    filter(lambda x: nx.has_path(
+                            state._sman.state_machine._graph,
+                            state._sman._tracker._entry_state,
+                            x),
+                        state._sman.state_machine._graph.nodes), \
+                    key=lambda s: ReachInteraction.l2_distance(
+                            (from_location[0], from_location[1]),
+                            (s._struct.x, s._struct.y)))
+            path = next(state._sman._loader.live_path_gen(destination_state, state._sman))
+            yield from self.generate_follow_path(path)
 
     @classmethod
     def get_reason_priority(cls, reason):

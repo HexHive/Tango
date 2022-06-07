@@ -51,10 +51,11 @@ class MoveInteraction(InteractionBase):
         )
 
     def mutate(self, mutator, entropy):
-        self._dir = entropy.choices(
-                list(self.DIRECTION_KEY_MAP.keys()),
-                cum_weights=(5, 8, 11, 12, 13, 14)
-            )[0]
+        if not self._dir:
+            self._dir = entropy.choices(
+                    list(self.DIRECTION_KEY_MAP.keys()),
+                    cum_weights=(5, 8, 11, 12, 13, 14)
+                )[0]
         self._stop = entropy.choice((True, False))
         if not self._stop and self._duration:
             a, b = self._duration.as_integer_ratio()

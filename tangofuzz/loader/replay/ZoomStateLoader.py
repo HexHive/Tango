@@ -155,6 +155,8 @@ class ZoomStateLoader(StateLoaderBase):
                     try:
                         await self.load_state(initial_state, sman, update)
                     except asyncio.CancelledError:
+                        # see comment in sman.reset_state
+                        sman._last_state = sman._tracker.current_state
                         raise
                     except Exception:
                         exhaustive = True
@@ -177,7 +179,8 @@ class ZoomStateLoader(StateLoaderBase):
                                 f"source state ({source}) did not match current state ({sman.state_tracker.current_state})"
                             )
                         # perform the follow interaction
-                        await interaction.perform(channel)
+                        inp = ZoomInput((interaction,))
+                        await self.execute_input(inp, sman, update=update)
                         # check if destination matches the current state
                         if destination != sman.state_tracker.current_state:
                             faulty_state = destination

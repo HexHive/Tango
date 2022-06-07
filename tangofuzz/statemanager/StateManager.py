@@ -12,6 +12,8 @@ from loader       import StateLoaderBase
 from profiler     import ProfileValue, ProfileFrequency, ProfileCount
 import asyncio
 
+from interaction import ReachInteraction
+
 class StateManager:
     def __init__(self, loader: StateLoaderBase, tracker: StateTrackerBase,
             strategy_ctor: Callable[[StateMachine, StateBase], StrategyBase],
@@ -68,6 +70,14 @@ class StateManager:
             if update:
                 self._last_state = self._tracker.current_state
                 self._strategy.update_state(self._last_state, is_new=False)
+        except asyncio.CancelledError:
+            # if an interrupt is received while loading a state (e.g. door),
+            # self._last_state is not set to the current state because of the
+            # exception. Instead, at the next input step, a transition is
+            # "discovered" between the last state and the new state.
+            if update:
+                self._last_state = self._tracker.current_state
+            raise
         except StateNotReproducibleException as ex:
             if update:
                 faulty_state = ex._faulty_state
@@ -94,6 +104,7 @@ class StateManager:
             try:
                 should_reset = self._strategy.step()
                 if should_reset:
+                    debug(f'Stepping to new {self._strategy.target = }')
                     await self.reset_state(self._strategy.target)
                     target_state = self._tracker.current_state
                     debug(f'Stepped to new {target_state = }')
@@ -153,6 +164,12 @@ class StateManager:
 
             if current_state != self._last_state:
                 debug(f"Possible transition from {self._last_state} to {current_state}")
+
+                if ReachInteraction.l2_distance(
+                    (self._last_state._struct.x, self._last_state._struct.y),
+                    (current_state._struct.x, current_state._struct.y)) > 1000000:
+                    import ipdb; ipdb.set_trace()
+
                 if self._last_state.last_input is not None:
                     last_input = self._last_state.last_input + input_gen()
                 else:

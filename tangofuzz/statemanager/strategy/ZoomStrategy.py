@@ -8,7 +8,7 @@ from interaction import ReachInteraction
 import networkx as nx
 
 class ZoomStrategy(StrategyBase):
-    def __init__(self, entropy: Random, limit: int=100, **kwargs):
+    def __init__(self, entropy: Random, limit: int=50, **kwargs):
         super().__init__(**kwargs)
         self._entropy = entropy
         self._counter = 0

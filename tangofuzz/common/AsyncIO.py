@@ -1,6 +1,6 @@
 import asyncio
 import functools
-from async_property import async_cached_property
+from async_property import async_property, async_cached_property
 
 def async_wrapper(fn):
     @functools.wraps(fn)

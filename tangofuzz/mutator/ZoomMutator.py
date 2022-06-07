@@ -15,11 +15,12 @@ from copy import deepcopy
 class ZoomMutator(MutatorBase):
     class RandomOperation(Enum):
         DELETE = 0
-        PUSHORDER = 1
-        POPORDER = 2
-        REPEAT = 3
-        CREATE = 4
-        OP_COUNT = 5
+        CREATE = 1
+        REPEAT = 2
+        PUSHORDER = 3
+        POPORDER = 4
+        YIELD = 5
+        OP_COUNT = 6
 
     class RandomInteraction(Enum):
         MOVE = 0
@@ -91,7 +92,7 @@ class ZoomMutator(MutatorBase):
     def _mutate(self, interaction: InteractionBase, reorder_buffer: Sequence, entropy: Random) -> Sequence[InteractionBase]:
         if interaction is not None:
             interaction.mutate(self, entropy)
-            # TODO perform random operation
+            # perform random operation
             low = 0
             for _ in range(entropy.randint(1, 4)):
                 if low >= self.RandomOperation.OP_COUNT.value:
@@ -113,6 +114,8 @@ class ZoomMutator(MutatorBase):
                     new = MoveInteraction(None, duration=duration)
                     new.mutate(self, entropy)
                     yield new
+                elif oper == self.RandomOperation.YIELD:
+                    yield interaction
         elif not reorder_buffer:
             duration = entropy.random() * 2
             new = MoveInteraction(None, duration=duration)

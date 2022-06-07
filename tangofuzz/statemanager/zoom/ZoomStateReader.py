@@ -28,6 +28,7 @@ class ZoomFeedback(ctypes.Structure):
         ("attacker_z", ctypes.c_float),
         ("didsecret", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
         ("canactivate", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
+        ("ticrate", ctypes.c_float),
     ]
 
 class ZoomStateReader:

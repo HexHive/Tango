@@ -141,7 +141,9 @@ class FuzzerConfig:
                 return UDPChannelFactory(**_config["udp"], \
                     timescale=await self.timescale)
             elif _config["type"] == "x11":
-                return X11ChannelFactory(timescale=await self.timescale)
+                async def struct_fn():
+                    return (await self.state_tracker)._reader.struct
+                return X11ChannelFactory(struct_fn=struct_fn)
             else:
                 raise NotImplemented()
         else:

@@ -21,7 +21,7 @@ class InputBase(ABC):
         return f"{self.__class__.__name__}:0x{self.id:08X}"
 
     def ___len___(self):
-        raise NotImplemented()
+        raise NotImplemented
 
     def __eq__(self, other):
         diff = False
@@ -179,7 +179,7 @@ class SlicingDecorator(DecoratorBase):
         return f'SlicedInput:0x{self._input.id:08X} (0x{self._input_id:08X}[{fmt}])'
 
     def ___len___(self, orig):
-        raise NotImplemented()
+        raise NotImplemented
 
 class JoiningDecorator(DecoratorBase):
     def __init__(self, *others):
@@ -199,7 +199,7 @@ class JoiningDecorator(DecoratorBase):
         return f'JoinedInput:0x{self._input.id:08X} ({" || ".join((id, *ids))})'
 
     def ___len___(self, orig):
-        raise NotImplemented()
+        raise NotImplemented
 
 class MemoryCachingDecorator(DecoratorBase):
     def __init__(self):
@@ -240,7 +240,7 @@ class DecoratedInput(InputBase):
         self.___decorator___ = decorator
 
     def ___iter___(self):
-        raise NotImplemented()
+        raise NotImplemented
 
     def __del__(self):
         self.___decorator___.undecorate()
