@@ -2,7 +2,7 @@ from __future__ import annotations
 from interaction import InteractionBase, DelayInteraction
 from networkio   import X11Channel
 from collections import OrderedDict
-
+from math import isclose
 
 class MoveInteraction(InteractionBase):
     DIRECTION_KEY_MAP = OrderedDict([
@@ -63,9 +63,16 @@ class MoveInteraction(InteractionBase):
             self._duration = a / b
 
     def __eq__(self, other: MoveInteraction) -> bool:
-        return isinstance(other, MoveInteraction) and \
-            other._dir == self._dir and other._stop == self._stop and \
-            (self._duration and other._duration) # FIXME
+        eq = isinstance(other, MoveInteraction) and \
+            other._dir == self._dir and other._stop == self._stop
+        if not eq:
+            return False
+        if not self._duration and not other._duration:
+            return True
+        elif self._duration and other._duration:
+            return isclose(self._duration, other._duration, rel_tol=0.1)
+        else:
+            return False
 
     def __repr__(self):
         return (f'{"move" if not self._stop else "stop"} {self._dir}'

@@ -24,7 +24,7 @@ class FileCachingDecorator(MemoryCachingDecorator):
 
         self._prefix_len = len(tuple(prefix))
         # FIXME this assumes ReplayStateLoader is used
-        joined = sman._loader._startup_input + prefix + input
+        joined = sman._loader._generator.startup_input + prefix + input
         inp = super().__call__(input, copy=copy)
 
         input_typ = self.get_parent_class(input.___iter___)

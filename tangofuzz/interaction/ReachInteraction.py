@@ -113,7 +113,7 @@ class ReachInteraction(InteractionBase):
                     debug(f'Performing {current=}')
                     await current.perform(channel)
                     last = current
-                await DelayInteraction(0.01).perform(channel)
+                await DelayInteraction(0.03).perform(channel)
         finally:
             if last and (self._stop or strafing):
                 await last.stop(channel)

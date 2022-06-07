@@ -22,13 +22,11 @@ class ReplayStateLoader(StateLoaderBase):
     PROC_TERMINATE_RETRIES = 5
     PROC_TERMINATE_WAIT = 0.1 # seconds
 
-    def __init__(self, exec_env: Environment, ch_env: ChannelFactoryBase,
-            no_aslr: bool, startup_input: InputBase, path_retry_limit: int=50):
+    def __init__(self, *args, path_retry_limit: int=50, **kwargs):
         # initialize the base class
-        super().__init__(exec_env, ch_env, no_aslr)
+        super().__init__(*args, **kwargs)
         self._pobj = None # Popen object of child process
         self._limit = path_retry_limit
-        self._startup_input = startup_input
         self._netns_name = f'ns:{uuid4()}'
         self._netns = NetNS(self._netns_name, flags=os.O_CREAT | os.O_EXCL)
         self._netns.link('set', index=1, state='up')
@@ -111,7 +109,7 @@ class ReplayStateLoader(StateLoaderBase):
                 self._launch_target()
 
                 ## Send startup input
-                self.execute_input(self._startup_input, None, update=False)
+                self.execute_input(self._generator.startup_input, None, update=False)
 
                 if sman is not None and update:
                     # FIXME should this be done here? (see comment in StateManager.reset_state)

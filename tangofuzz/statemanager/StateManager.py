@@ -99,6 +99,7 @@ class StateManager:
                     debug(f'Stepped to new {target_state = }')
                 break
             except StateNotReproducibleException as ex:
+                target = self._strategy.target
                 if isinstance(target, StateBase):
                     # in case the selected state is unreachable, reset_state()
                     # would have already asked the strategy to invalidate the

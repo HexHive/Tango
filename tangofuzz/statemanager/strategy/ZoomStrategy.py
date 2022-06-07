@@ -1,3 +1,5 @@
+from .. import warning
+
 from statemanager import StateBase, StrategyBase, StateMachine
 from random import Random
 from profiler import ProfileValue
@@ -74,3 +76,4 @@ class ZoomStrategy(StrategyBase):
             # FIXME this interaction is not used, since it is replaced by the loader
             inp = ZoomInput([ReachInteraction(destination, (src_x, src_y, src_z))])
             self._sm.update_transition(destination, source, inp)
+            warning(f"Added reverse transition from {destination} to {source}")

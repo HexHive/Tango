@@ -11,6 +11,7 @@ from .MoveInteraction     import MoveInteraction
 from .ShootInteraction    import ShootInteraction
 from .ActivateInteraction import ActivateInteraction
 from .ResetKeysInteraction import ResetKeysInteraction
+from .RespawnInteraction  import RespawnInteraction
 
 from .RotateInteraction import RotateInteraction
 from .ReachInteraction  import ReachInteraction

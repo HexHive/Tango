@@ -25,13 +25,11 @@ class ZoomStateLoader(StateLoaderBase):
     PROC_TERMINATE_RETRIES = 5
     PROC_TERMINATE_WAIT = 0.1 # seconds
 
-    def __init__(self, exec_env: Environment, ch_env: ChannelFactoryBase,
-            no_aslr: bool, startup_input: InputBase, path_retry_limit: int=5):
+    def __init__(self, *args, path_retry_limit: int=5, **kwargs):
         # initialize the base class
-        super().__init__(exec_env, ch_env, no_aslr)
+        super().__init__(*args, **kwargs)
         self._pobj = None # Popen object of child process
         self._limit = path_retry_limit
-        self._startup_input = startup_input
 
     def __del__(self):
         if self._pobj:
@@ -98,6 +96,7 @@ class ZoomStateLoader(StateLoaderBase):
         return self._channel
 
     def live_path_gen(self, state, sman):
+        previous = None
         while True:
             source_state = sman._tracker.current_state
             current_path = []
@@ -113,12 +112,16 @@ class ZoomStateLoader(StateLoaderBase):
                     ZoomInput((ReachInteraction(source_state, (intermediate._struct.x, intermediate._struct.y)),)))
                 )
                 source_state = intermediate
-            current_path.extend(next(sman.state_machine.get_min_paths(state, source_state)))
+            if previous != source_state:
+                paths = sman.state_machine.get_min_paths(state, source_state)
+                previous = source_state
+            current_path.extend(next(paths))
             yield current_path
 
     async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, update: bool = True):
         if sman is not None:
             initial_state = sman._tracker.current_state
+            # whenever a new state is requested, we stop sending inputs
             await self._channel.clear()
         else:
             await self._launch_target()
@@ -131,6 +134,8 @@ class ZoomStateLoader(StateLoaderBase):
             if initial_state == state:
                 return
             if not initial_state in sman.state_machine._graph:
+                # the exhaustive search accounts for initial states that are not in
+                # the graph by bee-lining to the closest in-graph state
                 path_gen = None
                 exhaustive = True
             else:
@@ -163,20 +168,16 @@ class ZoomStateLoader(StateLoaderBase):
                 try:
                     # reconstruct target state by replaying inputs
                     cached_path = list(path)
-                    for source, destination, input in cached_path:
+                    follow_inp = self._generator.generate_follow_path(cached_path)
+                    for (source, destination, _), interaction in zip(cached_path, follow_inp):
                         # check if source matches the current state
                         if source != sman.state_tracker.current_state:
                             faulty_state = source
                             raise StabilityException(
                                 f"source state ({source}) did not match current state ({sman.state_tracker.current_state})"
                             )
-                        # perform the input
-                        dst_x, dst_y, dst_z = map(lambda c: getattr(destination._struct, c), ('x', 'y', 'z'))
-                        condition = lambda: sman._tracker.current_state == destination
-                        inp = (ReachInteraction(destination, (dst_x, dst_y, dst_z), condition=condition),)
-                        inp = ZoomInput(inp)
-
-                        await self.execute_input(inp, sman, update=update)
+                        # perform the follow interaction
+                        await interaction.perform(channel)
                         # check if destination matches the current state
                         if destination != sman.state_tracker.current_state:
                             faulty_state = destination
@@ -189,7 +190,7 @@ class ZoomStateLoader(StateLoaderBase):
                         # state; otherwise, it is responsible for saving the
                         # path
                         # FIXME this should all probably be in the loader
-                        sman._current_path[:] = list(cached_path)
+                        sman._current_path[:] = cached_path
                     break
                 except StabilityException as ex:
                     warning(f"Failed to follow unstable path (reason = {ex.args[0]})! Retrying... ({paths_tried = })")

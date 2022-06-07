@@ -7,6 +7,7 @@ from networkio    import (ChannelFactoryBase,
                          ChannelBase)
 from input        import (InputBase,
                          PreparedInput)
+from generator    import InputGeneratorBase
 from statemanager import (StateBase,
                          StateManager)
 from interaction  import ReceiveInteraction
@@ -22,9 +23,10 @@ class StateLoaderBase(ABC):
     switching program states.
     """
     def __init__(self, exec_env: Environment, ch_env: ChannelFactoryBase,
-            no_aslr: bool):
+            input_generator: InputGeneratorBase, no_aslr: bool):
         self._exec_env = exec_env
         self._ch_env = ch_env
+        self._generator = input_generator
 
         if no_aslr:
             ADDR_NO_RANDOMIZE = 0x0040000

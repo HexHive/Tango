@@ -163,13 +163,13 @@ class FuzzerConfig:
         if _config["type"] == "replay":
             if not await self.use_forkserver:
                 return ReplayStateLoader(await self.exec_env, await self.ch_env,
-                    await self.disable_aslr, (await self.input_generator).startup_input)
+                    await self.input_generator, await self.disable_aslr)
             else:
                 return ReplayForkStateLoader(await self.exec_env, await self.ch_env,
-                    await self.disable_aslr, (await self.input_generator).startup_input)
+                    await self.input_generator, await self.disable_aslr)
         elif _config["type"] == "zoom":
             return ZoomStateLoader(await self.exec_env, await self.ch_env,
-                    await self.disable_aslr, (await self.input_generator).startup_input)
+                    await self.input_generator, await self.disable_aslr)
         else:
             raise NotImplemented()
 

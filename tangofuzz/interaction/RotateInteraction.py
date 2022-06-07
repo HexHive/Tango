@@ -48,7 +48,7 @@ class RotateInteraction(InteractionBase):
                 await last.stop(channel)
             await current.perform(channel)
             last = current
-            await DelayInteraction(0.01).perform(channel)
+            await DelayInteraction(0.03).perform(channel)
 
         if last:
             await last.stop(channel)

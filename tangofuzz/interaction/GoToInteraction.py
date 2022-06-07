@@ -9,6 +9,7 @@ from copy import deepcopy
 from collections import deque
 from statistics import variance
 from enum import Enum, auto
+import networkx as nx
 
 class GoToInteraction(InteractionBase):
     def __init__(self, current_state, target_location: tuple, stop_at_target: bool=True, tolerance: float=5.0):
@@ -17,7 +18,12 @@ class GoToInteraction(InteractionBase):
         self._state = current_state
         self._stop = stop_at_target
         self._tol = tolerance
-        self._target_state = min(self._state._sman.state_machine._graph.nodes, \
+        self._target_state = min(
+                    filter(lambda x: nx.has_path(
+                            self._state._sman.state_machine._graph,
+                            self._state._sman._tracker._entry_state,
+                            x),
+                        self._state._sman.state_machine._graph.nodes), \
                     key=lambda s: ReachInteraction.l2_distance(
                             (target_location[0], target_location[1]),
                             (s._struct.x, s._struct.y)))

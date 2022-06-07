@@ -4,7 +4,6 @@ from . import debug, warning
 from interaction import (InteractionBase, RotateInteraction, ReachInteraction,
                         ShootInteraction, MoveInteraction, GoToInteraction)
 from networkio   import X11Channel
-import time
 from math import atan2
 from copy import deepcopy
 
@@ -40,11 +39,11 @@ class KillInteraction(InteractionBase):
                     ) * 180 / 3.14159265) % 360
 
                 debug(f"Adjusting rotation to target {self._struct.angle=} {angle=}")
-                if self._struct.ammo[0] > 0:
-                    weapon = 2
-                    await RotateInteraction(self._state, angle).perform(channel)
-                elif self._struct.ammo[1] > 0:
+                if self._struct.ammo[1] > 0:
                     weapon = 3
+                    await RotateInteraction(self._state, angle).perform(channel)
+                elif self._struct.ammo[0] > 0:
+                    weapon = 2
                     await RotateInteraction(self._state, angle).perform(channel)
                 else:
                     weapon = 1

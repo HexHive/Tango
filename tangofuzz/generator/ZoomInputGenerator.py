@@ -5,12 +5,14 @@ from networkio   import ChannelFactoryBase
 from statemanager import StateBase
 from input import InputBase, ZoomInput
 from interaction import (KillInteraction, DelayInteraction, ActivateInteraction,
-                        ResetKeysInteraction, ReachInteraction, MoveInteraction)
+                        ResetKeysInteraction, ReachInteraction, MoveInteraction,
+                        RespawnInteraction)
 from random import Random
 from mutator import ZoomMutator
 from enum import Enum, auto
 import asyncio
 from collections import OrderedDict
+from typing import Sequence, Tuple
 
 class InterruptReason(Enum):
     NO_REASON = auto()
@@ -68,12 +70,19 @@ class ZoomInputGenerator(InputGeneratorBase):
                 elif self._reason == InterruptReason.PLAYER_DEATH:
                     # FIXME hacky fix to avoid teleportation transitions
                     state._sman._last_state = state._sman._tracker.entry_state
-                    return ZoomInput((ActivateInteraction(), ResetKeysInteraction()))
+                    return ZoomInput((RespawnInteraction(state), ResetKeysInteraction()))
                 elif self._reason == InterruptReason.SPECIAL_OBJECT:
                     return ZoomInput((ActivateInteraction(), MoveInteraction('forward', duration=1)))
             finally:
                 pass
                 # self._reason = InterruptReason.NO_REASON
+
+    def generate_follow_path(self, \
+            path: Sequence[Tuple[StateBase, StateBase, InputBase]]) -> InputBase:
+        for src, dst, inp in path:
+            dst_x, dst_y, dst_z = map(lambda c: getattr(dst._struct, c), ('x', 'y', 'z'))
+            condition = lambda: dst._sman._tracker.current_state == dst
+            yield ReachInteraction(src, (dst_x, dst_y, dst_z), condition=condition)
 
     @classmethod
     def get_reason_priority(cls, reason):

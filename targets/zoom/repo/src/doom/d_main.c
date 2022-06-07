@@ -1877,6 +1877,7 @@ void D_DoomMain (void)
 	G_TimeDemo (demolumpname);
 	D_DoomLoop ();  // never returns
     }
+    singletics = true;
 	
     if (startloadgame >= 0)
     {
