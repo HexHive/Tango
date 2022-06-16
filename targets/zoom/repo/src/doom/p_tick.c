@@ -123,6 +123,7 @@ void P_RunThinkers (void)
 
 mobj_t*     usething;
 boolean canuse;
+extern boolean onground;
 
 boolean PTR_CanUseTraverse (intercept_t* in)
 {
@@ -206,7 +207,7 @@ void P_Ticker (void)
     leveltime++;
 
     // TANGOFUZZ advertise state of players[0] to fuzzer
-    if (playeringame[0]) {
+    if (playeringame[0] && onground) {
         tf_feedback->x = FRACTOFLOAT(players[0].mo->x);
         tf_feedback->y = FRACTOFLOAT(players[0].mo->y);
         tf_feedback->z = FRACTOFLOAT(players[0].mo->z);
