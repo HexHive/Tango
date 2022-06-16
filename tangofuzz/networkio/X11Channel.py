@@ -45,7 +45,7 @@ class X11Channel(ChannelBase):
 
     @async_property
     async def timescale(self):
-        ticrate = (await self._struct_fn()).ticrate
+        ticrate = (await self._struct_fn()).tic_rate
         debug(f'{ticrate=}')
         return 35 / ticrate if ticrate >= 35 else 1
 

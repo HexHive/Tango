@@ -167,8 +167,8 @@ class StateManager:
                 debug(f"Possible transition from {self._last_state} to {current_state}")
 
                 if ReachInteraction.l2_distance(
-                    (self._last_state._struct.x, self._last_state._struct.y),
-                    (current_state._struct.x, current_state._struct.y)) > 3000000:
+                    (self._last_state._struct.player_location.x, self._last_state._struct.player_location.y),
+                    (current_state._struct.player_location.x, current_state._struct.player_location.y)) > 3000000:
                     import ipdb; ipdb.set_trace()
 
                 if self._last_state.last_input is not None:

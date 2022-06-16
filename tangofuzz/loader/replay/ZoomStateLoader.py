@@ -112,13 +112,13 @@ class ZoomStateLoader(StateLoaderBase):
                             state),
                         sman.state_machine._graph.nodes), \
                     key=lambda s: ReachInteraction.l2_distance(
-                            (source_state._struct.x, source_state._struct.y),
-                            (s._struct.x, s._struct.y))
+                            (source_state._struct.player_location.x, source_state._struct.player_location.y),
+                            (s._struct.player_location.x, s._struct.player_location.y))
                         )
                 # FIXME the interaction here is not actually used; it is replaced
                 # below by the loader
                 current_path.append((source_state, intermediate, \
-                    ZoomInput((ReachInteraction(source_state, (intermediate._struct.x, intermediate._struct.y)),)))
+                    ZoomInput((ReachInteraction(source_state, (intermediate._struct.player_location.x, intermediate._struct.player_location.y)),)))
                 )
                 source_state = intermediate
             if previous != source_state:

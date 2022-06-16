@@ -38,8 +38,8 @@ class ZoomState(StateBase):
 
     @classmethod
     def _calc_hash(cls, struct: ZoomFeedback):
-        return hash((struct.x // cls.CELL_DIMENSION,
-                     struct.y // cls.CELL_DIMENSION))
+        return hash((struct.player_location.x // cls.CELL_DIMENSION,
+                     struct.player_location.y // cls.CELL_DIMENSION))
 
     def __hash__(self):
         return self._hash
@@ -49,6 +49,6 @@ class ZoomState(StateBase):
 
     def __repr__(self):
         # return f'ZoomState({hex(hash(self))})'
-        return (f'x={int(self._struct.x // self.CELL_DIMENSION)}\n'
-                f'y={int(self._struct.y // self.CELL_DIMENSION)}\n'
-                f'z={int(self._struct.z // 8)}')
+        return (f'x={int(self._struct.player_location.x // self.CELL_DIMENSION)}\n'
+                f'y={int(self._struct.player_location.y // self.CELL_DIMENSION)}\n'
+                f'z={int(self._struct.player_location.z // 8)}')

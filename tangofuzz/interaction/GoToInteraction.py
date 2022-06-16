@@ -26,7 +26,7 @@ class GoToInteraction(InteractionBase):
                         self._state._sman.state_machine._graph.nodes), \
                     key=lambda s: ReachInteraction.l2_distance(
                             (target_location[0], target_location[1]),
-                            (s._struct.x, s._struct.y)))
+                            (s._struct.player_location.x, s._struct.player_location.y)))
 
     def __deepcopy__(self, memo):
         cls = self.__class__

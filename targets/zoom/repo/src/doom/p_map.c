@@ -39,6 +39,8 @@
 // Data.
 #include "sounds.h"
 
+#include "p_setup.h"
+
 // Spechit overrun magic value.
 //
 // This is the value used by PrBoom-plus.  I think the value below is 
@@ -362,6 +364,8 @@ boolean PIT_CheckThing (mobj_t* thing)
 	{
 	    // can remove thing
 	    P_TouchSpecialThing (thing, tmthing);
+            tf_feedback->pickup_location = (tf_location_t){tmthing->x, tmthing->y, tmthing->z};
+            tf_feedback->pickup_valid = true;
 	}
 	return !solid;
     }

@@ -208,35 +208,35 @@ void P_Ticker (void)
 
     // TANGOFUZZ advertise state of players[0] to fuzzer
     if (playeringame[0] && onground) {
-        tf_feedback->x = FRACTOFLOAT(players[0].mo->x);
-        tf_feedback->y = FRACTOFLOAT(players[0].mo->y);
-        tf_feedback->z = FRACTOFLOAT(players[0].mo->z);
-        tf_feedback->angle = ANGTODEGREE(players[0].mo->angle);
+        tf_feedback->player_location = (tf_location_t){
+            FRACTOFLOAT(players[0].mo->x),
+            FRACTOFLOAT(players[0].mo->y),
+            FRACTOFLOAT(players[0].mo->z)
+        };
+        tf_feedback->player_angle = ANGTODEGREE(players[0].mo->angle);
 
-        tf_feedback->playerstate = players[0].playerstate;
+        tf_feedback->player_state = players[0].playerstate;
         tf_feedback->health = players[0].mo->health;
-        tf_feedback->armorpoints = players[0].armorpoints;
+        tf_feedback->armor_points = players[0].armorpoints;
 
         tf_feedback->attacker_valid = (players[0].attacker != NULL && \
                                         players[0].attacker != players[0].mo && \
                                         players[0].attacker->health > 0);
         if (tf_feedback->attacker_valid) {
-            tf_feedback->attacker_x = FRACTOFLOAT(players[0].attacker->x);
-            tf_feedback->attacker_y = FRACTOFLOAT(players[0].attacker->y);
-            tf_feedback->attacker_z = FRACTOFLOAT(players[0].attacker->z);
-            // tf_feedback->attacker_angle = atan2(
-            //                     FRACTOFLOAT(players[0].attacker->y - players[0].mo->y),
-            //                     FRACTOFLOAT(players[0].attacker->x - players[0].mo->x)
-            //                 ) * 180 / 3.14159265;
+            tf_feedback->attacker_location = (tf_location_t){
+                FRACTOFLOAT(players[0].attacker->x),
+                FRACTOFLOAT(players[0].attacker->y),
+                FRACTOFLOAT(players[0].attacker->z)
+            };
         }
 
         memcpy(tf_feedback->cards, players[0].cards, sizeof(players[0].cards));
-        memcpy(tf_feedback->weaponowned, players[0].weaponowned, sizeof(players[0].weaponowned));
+        memcpy(tf_feedback->weapon_owned, players[0].weaponowned, sizeof(players[0].weaponowned));
         memcpy(tf_feedback->ammo, players[0].ammo, sizeof(players[0].ammo));
 
-        tf_feedback->didsecret = players[0].didsecret;
+        tf_feedback->did_secret = players[0].didsecret;
         P_CanUseLines(&players[0]);
-        tf_feedback->canactivate = canuse;
+        tf_feedback->can_activate = canuse;
 
         if (prev_gametic == -1) {
             prev_gametic = gametic;
@@ -245,9 +245,21 @@ void P_Ticker (void)
 
         cur_time = I_GetTimeMS();
         if (cur_time - prev_time > 100) {
-            tf_feedback->ticrate = (gametic - prev_gametic) / (float)(cur_time - prev_time) * 1000;
+            tf_feedback->tic_rate = (gametic - prev_gametic) / (float)(cur_time - prev_time) * 1000;
             prev_gametic = gametic;
             prev_time = cur_time;
         }
+
+        switch (players[0].mo->subsector->sector->special) {
+            case 5:
+            case 7:
+            case 16:
+                tf_feedback->floor_is_lava = true;
+                break;
+            case 9:
+            case 99:
+                tf_feedback->secret_sector = true;
+                break;
+        };
     }
 }

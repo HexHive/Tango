@@ -28,8 +28,8 @@ class ZoomStrategy(StrategyBase):
     @staticmethod
     def _calculate_edge_weight(src, dst, data):
         return ReachInteraction.l2_distance(
-            (src._struct.x, src._struct.y),
-            (dst._struct.x, dst._struct.y)
+            (src._struct.player_location.x, src._struct.player_location.y),
+            (dst._struct.player_location.x, dst._struct.player_location.y)
         )
 
     def _recalculate_target(self):
@@ -78,8 +78,8 @@ class ZoomStrategy(StrategyBase):
                 state._cycle = self._cycles - 1
 
     def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, invalidate: bool = False):
-        src_x, src_y, src_z = map(lambda c: getattr(source._struct, c), ('x', 'y', 'z'))
-        dst_x, dst_y, dst_z = map(lambda c: getattr(destination._struct, c), ('x', 'y', 'z'))
+        src_x, src_y, src_z = map(lambda c: getattr(source._struct.player_location, c), ('x', 'y', 'z'))
+        dst_x, dst_y, dst_z = map(lambda c: getattr(destination._struct.player_location, c), ('x', 'y', 'z'))
         if dst_z > src_z or abs(src_z - dst_z) <= 16:
             # FIXME this interaction is not used, since it is replaced by the loader
             inp = ZoomInput([ReachInteraction(destination, (src_x, src_y, src_z))])
@@ -136,13 +136,13 @@ class ZoomPreemptor:
                 reasons.append(InterruptReason.PLAYER_DEATH)
             if struct.attacker_valid:
                 if not self._attacked_location:
-                    self._attacked_location = (struct.x, struct.y)
+                    self._attacked_location = (struct.player_location.x, struct.player_location.y)
                 if ReachInteraction.l2_distance(
-                        (struct.x, struct.y),
-                        (struct.attacker_x, struct.attacker_y)) < \
+                        (struct.player_location.x, struct.player_location.y),
+                        (struct.attacker_location.x, struct.attacker_location.y)) < \
                         self.ATTACKER_MAX_TRIGGER_DISTANCE**2:
                     reasons.append(InterruptReason.ATTACKER_VALID)
-            if struct.canactivate:
+            if struct.can_activate:
                 reasons.append(InterruptReason.SPECIAL_OBJECT)
 
             if reasons:
@@ -170,7 +170,7 @@ class ZoomPreemptor:
                  (self._reason == InterruptReason.PLAYER_DEATH and \
                     struct.playerstate == 0) or \
                  (self._reason == InterruptReason.SPECIAL_OBJECT and \
-                    not struct.canactivate):
+                    not struct.can_activate):
                 warning("Clearing reason, looking for new reasons")
                 self._reason = InterruptReason.NO_REASON
                 self._attacked_location = None

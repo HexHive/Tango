@@ -32,24 +32,32 @@ typedef struct {
   float x;
   float y;
   float z;
-  float angle;
+} __attribute__((packed)) tf_location_t;
 
-  playerstate_t playerstate;
-  int health; // to be copied from player->mo->health
-  int armorpoints;
+typedef struct {
+  tf_location_t player_location;
+  float         player_angle;
 
-  boolean cards[NUMCARDS];
-  int weaponowned[NUMWEAPONS];
-  int ammo[NUMAMMO];
+  playerstate_t player_state;
+  int           health;                   // copied from player->mo->health
+  int           armor_points;
 
-  // mobj_t* attacker;
-  boolean attacker_valid;
-  float attacker_x;
-  float attacker_y;
-  float attacker_z;
-  boolean didsecret;
-  boolean canactivate;
-  float ticrate;
+  boolean       cards[NUMCARDS];
+  int           weapon_owned[NUMWEAPONS];
+  int           ammo[NUMAMMO];
+
+  boolean       attacker_valid;
+  tf_location_t attacker_location;
+
+  boolean       did_secret;
+
+  boolean       can_activate;
+  float         tic_rate;
+  boolean       floor_is_lava;
+  boolean       secret_sector;
+
+  boolean       pickup_valid;
+  tf_location_t pickup_location;
 } __attribute__((packed)) tf_feedback_t;
 
 extern tf_feedback_t *tf_feedback;

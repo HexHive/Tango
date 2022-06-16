@@ -6,29 +6,36 @@ import ctypes
 import posix_ipc
 from string import ascii_letters, digits
 
+class ZoomLocation(ctypes.Structure):
+    _fields_ = [
+        ("x", ctypes.c_float),
+        ("y", ctypes.c_float),
+        ("z", ctypes.c_float),
+    ]
+
 class ZoomFeedback(ctypes.Structure):
     NUMCARDS = 6
     NUMWEAPONS = 9
     NUMAMMO = 4
 
     _fields_ = [
-        ("x", ctypes.c_float),
-        ("y", ctypes.c_float),
-        ("z", ctypes.c_float),
-        ("angle", ctypes.c_float),
-        ("playerstate", ctypes.c_int),
+        ("player_location", ZoomLocation),
+        ("player_angle", ctypes.c_float),
+        ("player_state", ctypes.c_int),
         ("health", ctypes.c_int),
-        ("armorpoints", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
+        ("armor_points", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
         ("cards", ctypes.c_int * NUMCARDS),
-        ("weaponowned", ctypes.c_int * NUMWEAPONS),
+        ("weapon_owned", ctypes.c_int * NUMWEAPONS),
         ("ammo", ctypes.c_int * NUMAMMO),
         ("attacker_valid", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
-        ("attacker_x", ctypes.c_float),
-        ("attacker_y", ctypes.c_float),
-        ("attacker_z", ctypes.c_float),
-        ("didsecret", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
-        ("canactivate", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
-        ("ticrate", ctypes.c_float),
+        ("attacker_location", ZoomLocation),
+        ("did_secret", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
+        ("can_activate", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
+        ("tic_rate", ctypes.c_float),
+        ("floor_is_lava", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
+        ("secret_sector", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
+        ("pickup_valid", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
+        ("pickup_location", ZoomLocation),
     ]
 
 class ZoomStateReader:

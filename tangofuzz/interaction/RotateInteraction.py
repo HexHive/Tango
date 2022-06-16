@@ -32,13 +32,13 @@ class RotateInteraction(InteractionBase):
 
     async def perform_internal(self, channel: X11Channel, move: str=None):
         last = None
-        while not isclose(delta := self.short_angle(self._struct.angle - self._target), 0, abs_tol=self._tol):
+        while not isclose(delta := self.short_angle(self._struct.player_angle - self._target), 0, abs_tol=self._tol):
             debug(f"Still far from target {delta=}")
 
             if move and not last:
                 debug("Stopping movement while rotating")
                 await MoveInteraction(move, stop=True).perform(channel)
-            d = self._target - self._struct.angle
+            d = self._target - self._struct.player_angle
             if self.short_angle(d) > 0:
                 current = MoveInteraction('rotate_left')
             else:

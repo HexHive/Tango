@@ -32,7 +32,7 @@ class ZoomInputGenerator(InputGeneratorBase):
     def generate_follow_path(self, \
             path: Sequence[Tuple[StateBase, StateBase, InputBase]]):
         for src, dst, inp in path:
-            dst_x, dst_y, dst_z = map(lambda c: getattr(dst._struct, c), ('x', 'y', 'z'))
+            dst_x, dst_y, dst_z = map(lambda c: getattr(dst._struct.player_location, c), ('x', 'y', 'z'))
             condition = lambda: dst._sman._tracker.current_state == dst
             yield ReachInteraction(src, (dst_x, dst_y, dst_z), condition=condition)
 
@@ -47,6 +47,6 @@ class ZoomInputGenerator(InputGeneratorBase):
                         state._sman.state_machine._graph.nodes), \
                     key=lambda s: ReachInteraction.l2_distance(
                             (from_location[0], from_location[1]),
-                            (s._struct.x, s._struct.y)))
+                            (s._struct.player_location.x, s._struct.player_location.y)))
             path = next(state._sman._loader.live_path_gen(destination_state, state._sman))
             yield from self.generate_follow_path(path)

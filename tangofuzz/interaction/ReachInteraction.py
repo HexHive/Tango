@@ -56,13 +56,13 @@ class ReachInteraction(InteractionBase):
         retries = 0
         try:
             while not (isclose(distancesq := self.l2_distance(
-                                (self._struct.x, self._struct.y),
+                                (self._struct.player_location.x, self._struct.player_location.y),
                                 (self._target[0], self._target[1])
                             ), 0, abs_tol=self._tol**2) and \
                         (self._con() if self._con else True)):
                 angle = (atan2(
-                                self._target[1] - self._struct.y,
-                                self._target[0] - self._struct.x
+                                self._target[1] - self._struct.player_location.y,
+                                self._target[0] - self._struct.player_location.x
                             ) * 180 / 3.14159265) % 360
                 debug(f"Still far from target {distancesq=} {angle=}")
                 d_samples.append(distancesq)
@@ -88,7 +88,7 @@ class ReachInteraction(InteractionBase):
 
                 if distancesq < self.MAX_STRAFE_DISTANCE ** 2:
                     strafing = True
-                    delta = RotateInteraction.short_angle(angle - self._struct.angle) % 360
+                    delta = RotateInteraction.short_angle(angle - self._struct.player_angle) % 360
                     if delta < 20 or 340 < delta:
                         current = MoveInteraction('forward')
                     elif 20 <= delta <= 160:
@@ -98,7 +98,7 @@ class ReachInteraction(InteractionBase):
                     elif 200 <= delta <= 340:
                         current = MoveInteraction('strafe_right')
                 else:
-                    debug(f"Adjusting rotation to target {self._struct.angle=} {angle=}")
+                    debug(f"Adjusting rotation to target {self._struct.player_angle=} {angle=}")
                     await RotateInteraction(self._state, angle).perform(channel, move=last._dir if last else None)
                     if strafing and last._dir != 'forward':
                         debug(f'Releasing {last=}')

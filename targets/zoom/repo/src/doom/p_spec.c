@@ -1058,7 +1058,8 @@ void P_PlayerInSpecialSector (player_t* player)
       case 9:
 	// SECRET SECTOR
 	player->secretcount++;
-	sector->special = 0;
+	sector->special = 99;
+      case 99:
 	break;
 			
       case 11:

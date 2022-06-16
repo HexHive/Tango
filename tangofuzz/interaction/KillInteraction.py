@@ -32,21 +32,21 @@ class KillInteraction(InteractionBase):
         limit = 10
         while self._struct.attacker_valid and limit > 0:
             angle = (atan2(
-                    self._struct.attacker_y - self._struct.y,
-                    self._struct.attacker_x - self._struct.x
+                    self._struct.attacker_location.y - self._struct.player_location.y,
+                    self._struct.attacker_location.x - self._struct.player_location.x
                 ) * 180 / 3.14159265) % 360
 
-            debug(f"Adjusting rotation to target {self._struct.angle=} {angle=}")
-            if self._struct.ammo[1] > 0:
+            debug(f"Adjusting rotation to target {self._struct.player_angle=} {angle=}")
+            if self._struct.weapon_owned[1] and self._struct.ammo[1] > 0:
                 weapon = 3
                 await RotateInteraction(self._state, angle).perform(channel)
-            elif self._struct.ammo[0] > 0:
+            elif self._struct.weapon_owned[0] and self._struct.ammo[0] > 0:
                 weapon = 2
                 await RotateInteraction(self._state, angle).perform(channel)
             else:
                 weapon = 1
                 await ReachInteraction(self._state,
-                    (self._struct.attacker_x, self._struct.attacker_y)).perform(channel)
+                    (self._struct.attacker_location.x, self._struct.attacker_location.y)).perform(channel)
 
             await ShootInteraction(weapon).perform(channel)
             limit -= 1
