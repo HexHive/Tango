@@ -127,7 +127,7 @@ void P_CalcHeight (player_t* player)
 		player->deltaviewheight = 1;
 	}
     }
-    player->viewz = player->mo->z + player->viewheight + bob;
+    player->viewz = player->mo->z + player->viewheight;// + bob;
 
     if (player->viewz > player->mo->ceilingz-4*FRACUNIT)
 	player->viewz = player->mo->ceilingz-4*FRACUNIT;
