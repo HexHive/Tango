@@ -5812,7 +5812,7 @@ ac_config_headers="$ac_config_headers config.h:config.hin"
 
 
 
-ac_config_files="$ac_config_files Makefile man/Makefile man/bash-completion/Makefile man/bash-completion/doom.template man/bash-completion/heretic.template man/bash-completion/hexen.template man/bash-completion/strife.template midiproc/Makefile opl/Makefile opl/examples/Makefile pcsound/Makefile pkg/Makefile pkg/config.make pkg/osx/Info.plist rpm.spec data/Makefile src/Makefile src/doom.appdata.xml src/doom.desktop src/doom-screensaver.desktop src/doom/Makefile src/heretic.appdata.xml src/heretic.desktop src/heretic/Makefile src/hexen.appdata.xml src/hexen.desktop src/hexen/Makefile src/resource.rc src/setup-res.rc src/setup/Makefile src/setup/setup.desktop src/setup/setup-manifest.xml src/strife.appdata.xml src/strife.desktop src/strife/Makefile textscreen/Makefile textscreen/examples/Makefile textscreen/fonts/Makefile"
+ac_config_files="$ac_config_files Makefile man/Makefile man/bash-completion/Makefile man/bash-completion/doom.template midiproc/Makefile opl/Makefile opl/examples/Makefile pcsound/Makefile pkg/Makefile pkg/config.make pkg/osx/Info.plist rpm.spec data/Makefile src/Makefile src/doom.appdata.xml src/doom.desktop src/doom-screensaver.desktop src/doom/Makefile src/resource.rc src/setup-res.rc src/setup/Makefile src/setup/setup.desktop src/setup/setup-manifest.xml textscreen/Makefile textscreen/examples/Makefile textscreen/fonts/Makefile"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -6552,9 +6552,6 @@ do
     "man/Makefile") CONFIG_FILES="$CONFIG_FILES man/Makefile" ;;
     "man/bash-completion/Makefile") CONFIG_FILES="$CONFIG_FILES man/bash-completion/Makefile" ;;
     "man/bash-completion/doom.template") CONFIG_FILES="$CONFIG_FILES man/bash-completion/doom.template" ;;
-    "man/bash-completion/heretic.template") CONFIG_FILES="$CONFIG_FILES man/bash-completion/heretic.template" ;;
-    "man/bash-completion/hexen.template") CONFIG_FILES="$CONFIG_FILES man/bash-completion/hexen.template" ;;
-    "man/bash-completion/strife.template") CONFIG_FILES="$CONFIG_FILES man/bash-completion/strife.template" ;;
     "midiproc/Makefile") CONFIG_FILES="$CONFIG_FILES midiproc/Makefile" ;;
     "opl/Makefile") CONFIG_FILES="$CONFIG_FILES opl/Makefile" ;;
     "opl/examples/Makefile") CONFIG_FILES="$CONFIG_FILES opl/examples/Makefile" ;;
@@ -6569,20 +6566,11 @@ do
     "src/doom.desktop") CONFIG_FILES="$CONFIG_FILES src/doom.desktop" ;;
     "src/doom-screensaver.desktop") CONFIG_FILES="$CONFIG_FILES src/doom-screensaver.desktop" ;;
     "src/doom/Makefile") CONFIG_FILES="$CONFIG_FILES src/doom/Makefile" ;;
-    "src/heretic.appdata.xml") CONFIG_FILES="$CONFIG_FILES src/heretic.appdata.xml" ;;
-    "src/heretic.desktop") CONFIG_FILES="$CONFIG_FILES src/heretic.desktop" ;;
-    "src/heretic/Makefile") CONFIG_FILES="$CONFIG_FILES src/heretic/Makefile" ;;
-    "src/hexen.appdata.xml") CONFIG_FILES="$CONFIG_FILES src/hexen.appdata.xml" ;;
-    "src/hexen.desktop") CONFIG_FILES="$CONFIG_FILES src/hexen.desktop" ;;
-    "src/hexen/Makefile") CONFIG_FILES="$CONFIG_FILES src/hexen/Makefile" ;;
     "src/resource.rc") CONFIG_FILES="$CONFIG_FILES src/resource.rc" ;;
     "src/setup-res.rc") CONFIG_FILES="$CONFIG_FILES src/setup-res.rc" ;;
     "src/setup/Makefile") CONFIG_FILES="$CONFIG_FILES src/setup/Makefile" ;;
     "src/setup/setup.desktop") CONFIG_FILES="$CONFIG_FILES src/setup/setup.desktop" ;;
     "src/setup/setup-manifest.xml") CONFIG_FILES="$CONFIG_FILES src/setup/setup-manifest.xml" ;;
-    "src/strife.appdata.xml") CONFIG_FILES="$CONFIG_FILES src/strife.appdata.xml" ;;
-    "src/strife.desktop") CONFIG_FILES="$CONFIG_FILES src/strife.desktop" ;;
-    "src/strife/Makefile") CONFIG_FILES="$CONFIG_FILES src/strife/Makefile" ;;
     "textscreen/Makefile") CONFIG_FILES="$CONFIG_FILES textscreen/Makefile" ;;
     "textscreen/examples/Makefile") CONFIG_FILES="$CONFIG_FILES textscreen/examples/Makefile" ;;
     "textscreen/fonts/Makefile") CONFIG_FILES="$CONFIG_FILES textscreen/fonts/Makefile" ;;

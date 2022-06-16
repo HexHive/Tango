@@ -50,6 +50,7 @@ m4/lt~obsolete.m4
 # can automatically generate from config.status script
 # (which is called by configure script))
 Makefile
+GNUmakefile
 
 # Chocolate-Doom-specific
 /config.h
@@ -60,6 +61,7 @@ Makefile
 config.*
 pkg/osx/Info.plist
 rpm.spec
+rpm.spec.in
 src/chocolate-doom
 src/chocolate-doom-screensaver.desktop
 src/chocolate-doom-setup
@@ -93,3 +95,4 @@ textscreen/examples/calculator
 textscreen/examples/guitest
 *.o
 *.a
+*.cbp
