@@ -6,7 +6,7 @@ class ResetKeysInteraction(InteractionBase):
     def __init__(self):
         pass
 
-    async def perform(self, channel: X11Channel):
+    async def perform_internal(self, channel: X11Channel):
         await channel.clear()
 
     def mutate(self, mutator, entropy):

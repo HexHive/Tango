@@ -25,7 +25,7 @@ class ReachInteraction(InteractionBase):
     DISTANCE_SAMPLE_VARIANCE = 400
     MAX_RETRIES = 1
 
-    def __init__(self, current_state, target_location: tuple, stop_at_target: bool=True, tolerance: float=5.0, condition=None):
+    def __init__(self, current_state, target_location: tuple, stop_at_target: bool=True, tolerance: float=20.0, condition=None):
         self._target = target_location
         self._struct = current_state.state_manager._tracker._reader.struct
         self._state = current_state
@@ -48,7 +48,7 @@ class ReachInteraction(InteractionBase):
     def l2_distance(a, b):
         return sum(map(lambda x: (x[0] - x[1])**2, zip(a, b)))
 
-    async def perform(self, channel: X11Channel):
+    async def perform_internal(self, channel: X11Channel):
         last = None
         strafing = False
         d_samples = deque(maxlen=self.DISTANCE_SAMPLE_COUNT)

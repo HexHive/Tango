@@ -19,7 +19,7 @@ class RespawnInteraction(InteractionBase):
                 setattr(result, k, getattr(self, k))
         return result
 
-    async def perform(self, channel: X11Channel):
+    async def perform_internal(self, channel: X11Channel):
         await ActivateInteraction().perform(channel)
         tracker = self._state._sman.state_tracker
         while tracker.current_state != tracker.entry_state:

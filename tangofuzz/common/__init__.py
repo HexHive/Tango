@@ -1,3 +1,9 @@
+import sys, logging
+logger = logging.getLogger("common")
+for func in ('debug', 'info', 'warning', 'error', 'critical'):
+    setattr(sys.modules[__name__], func, getattr(logger, func))
+
+
 from .Exceptions import (LoadedException,
                         StabilityException,
                         StatePrecisionException,
@@ -8,7 +14,10 @@ from .Exceptions import (LoadedException,
                         ProcessTerminatedException,
                         StateNotReproducibleException)
 from .Logger import ColoredLogger
-from .AsyncIO import (async_wrapper,
-                     async_property,
+from .AsyncIO import (async_property,
                      async_cached_property,
-                     async_enumerate)
+                     async_enumerate,
+                     # wrappers:
+                     sync_to_async,
+                     async_suspendable,
+                     Suspendable)

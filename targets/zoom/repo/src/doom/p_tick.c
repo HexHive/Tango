@@ -21,6 +21,8 @@
 #include "z_zone.h"
 #include "p_local.h"
 #include "p_setup.h"
+#include "d_loop.h"
+#include "i_timer.h"
 
 #include "doomstat.h"
 
@@ -176,6 +178,7 @@ void P_CanUseLines (player_t*  player)
 void P_Ticker (void)
 {
     int		i;
+    static int prev_gametic = -1, prev_time, cur_time;
     
     // run the tic
     if (paused)
@@ -233,5 +236,17 @@ void P_Ticker (void)
         tf_feedback->didsecret = players[0].didsecret;
         P_CanUseLines(&players[0]);
         tf_feedback->canactivate = canuse;
+
+        if (prev_gametic == -1) {
+            prev_gametic = gametic;
+            prev_time = I_GetTimeMS();
+        }
+
+        cur_time = I_GetTimeMS();
+        if (cur_time - prev_time > 100) {
+            tf_feedback->ticrate = (gametic - prev_gametic) / (float)(cur_time - prev_time) * 1000;
+            prev_gametic = gametic;
+            prev_time = cur_time;
+        }
     }
 }

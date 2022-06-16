@@ -33,7 +33,7 @@ class MoveInteraction(InteractionBase):
                         clobbered |= self.DIRECTION_KEY_MAP[c]
         return clobbered
 
-    async def perform(self, channel: X11Channel):
+    async def perform_internal(self, channel: X11Channel):
         keys = self.DIRECTION_KEY_MAP.get(self._dir, ())
         await channel.send(keys,
             down=not self._stop,

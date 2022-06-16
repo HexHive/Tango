@@ -6,7 +6,7 @@ import asyncio
 from asyncio import (get_running_loop, run_coroutine_threadsafe, wait_for,
                     current_task)
 from time import perf_counter as now
-from inspect import iscoroutinefunction
+from asyncio import iscoroutinefunction
 
 class ProfileEvent(ProfilerBase):
     def __init__(self, name, **kwargs):

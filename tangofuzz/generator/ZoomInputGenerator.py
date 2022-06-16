@@ -1,4 +1,4 @@
-from . import debug, warning
+from . import debug, warning, critical
 
 from generator import InputGeneratorBase
 from networkio   import ChannelFactoryBase
@@ -14,6 +14,7 @@ import asyncio
 from collections import OrderedDict
 from typing import Sequence, Tuple
 import networkx as nx
+from common import Suspendable
 
 class InterruptReason(Enum):
     NO_REASON = auto()
@@ -37,46 +38,33 @@ class ZoomInputGenerator(InputGeneratorBase):
         self._reason = InterruptReason.NO_REASON
         self._feedback_task = None
         self._attacked_location = None
+        self._resumable_keys = []
 
     def generate(self, state: StateBase, entropy: Random) -> InputBase:
-        if self._reason == InterruptReason.NO_REASON:
-            if self._feedback_task is None or self._feedback_task.done():
-                if self._feedback_task is not None:
-                    # prev_result = await self._feedback_task
-                    pass
-                self._state = state
-                self._feedback_task = asyncio.create_task(self.feedback())
-
-            candidate = state.get_escaper()
-            if candidate is None:
-                out_edges = list(state.out_edges)
-                if out_edges:
-                    _, dst, data = entropy.choice(out_edges)
-                    candidate = data['minimized']
-                else:
-                    in_edges = list(state.in_edges)
-                    if in_edges:
-                        _, dst, data = entropy.choice(in_edges)
-                        candidate = data['minimized']
-                    elif self.seeds:
-                        candidate = entropy.choice(self.seeds)
-                    else:
-                        candidate = ZoomInput()
-
-            return ZoomMutator(entropy, state)(candidate)
-        else:
-            try:
-                if self._reason == InterruptReason.ATTACKER_VALID:
-                    return ZoomInput(self.generate_kill_sequence(state, from_location=self._attacked_location))
-                elif self._reason == InterruptReason.PLAYER_DEATH:
-                    # FIXME hacky fix to avoid teleportation transitions
-                    state._sman._last_state = state._sman._tracker.entry_state
-                    return ZoomInput((RespawnInteraction(state), ResetKeysInteraction()))
-                elif self._reason == InterruptReason.SPECIAL_OBJECT:
-                    return ZoomInput((ActivateInteraction(), MoveInteraction('forward', duration=1)))
-            finally:
+        if self._feedback_task is None or self._feedback_task.done():
+            if self._feedback_task is not None:
+                # prev_result = await self._feedback_task
                 pass
-                # self._reason = InterruptReason.NO_REASON
+            self._state = state
+            self._feedback_task = asyncio.create_task(self.feedback())
+
+        candidate = state.get_escaper()
+        if candidate is None:
+            out_edges = list(state.out_edges)
+            if out_edges:
+                _, dst, data = entropy.choice(out_edges)
+                candidate = data['minimized']
+            else:
+                in_edges = list(state.in_edges)
+                if in_edges:
+                    _, dst, data = entropy.choice(in_edges)
+                    candidate = data['minimized']
+                elif self.seeds:
+                    candidate = entropy.choice(self.seeds)
+                else:
+                    candidate = ZoomInput()
+
+        return ZoomMutator(entropy, state)(candidate)
 
     def generate_follow_path(self, \
             path: Sequence[Tuple[StateBase, StateBase, InputBase]]):
@@ -109,6 +97,11 @@ class ZoomInputGenerator(InputGeneratorBase):
             return p + 1
 
     async def feedback(self):
+        self._target_task = asyncio.get_running_loop().main_task
+        self._target_task.coro.set_callbacks(
+            suspend_cb=self.suspend_cb, resume_cb=self.resume_cb
+        )
+
         pending = 0
         while True:
             struct = self._state._sman._tracker._reader.struct
@@ -143,15 +136,8 @@ class ZoomInputGenerator(InputGeneratorBase):
 
             if preemptive_reason:
                 self._reason = preemptive_reason
-                tasks = getattr(asyncio.get_event_loop(), '_executing_tasks', [])
-                for task in tasks:
-                    warning(f"Sending interrupt now! {task=} {self._reason = }")
-                    task.cancel()
-                if not tasks:
-                    warning("No tasks to interrupt!")
-                else:
-                    tasks.clear()
-
+                warning(f"Interrupting main task due to {self._reason=}")
+                asyncio.create_task(self.handle_reason(preemptive_reason))
             elif (self._reason == InterruptReason.ATTACKER_VALID and \
                     not struct.attacker_valid) or \
                  (self._reason == InterruptReason.PLAYER_DEATH and \
@@ -163,3 +149,61 @@ class ZoomInputGenerator(InputGeneratorBase):
                 self._attacked_location = None
 
             await DelayInteraction(0.1).perform(self._state._sman._loader._channel)
+
+    async def handle_reason(self, reason):
+        async def internal_handle_reason():
+            main_task = self._target_task
+            self._target_task = asyncio.current_task()
+
+            try:
+                if self.get_reason_priority(reason) > self.get_reason_priority(self._reason):
+                    warning(f"My {reason=} is less important than existing {self._reason=}. Ignoring")
+                    return True
+
+                channel = self._state._sman._loader._channel
+                if reason == InterruptReason.PLAYER_DEATH:
+                    # FIXME is this the correct way to handle this?
+                    try:
+                        main_task.coro.suspend()
+                        await RespawnInteraction(self._state).perform(channel)
+                        await ResetKeysInteraction().perform(channel)
+                    finally:
+                        main_task.coro.resume()
+                    main_task.cancel()
+                    return False
+                elif reason == InterruptReason.ATTACKER_VALID:
+                    try:
+                        main_task.coro.suspend()
+                        await KillInteraction(self._state).perform(channel)
+                    finally:
+                        main_task.coro.resume()
+                    return True
+                elif reason == InterruptReason.SPECIAL_OBJECT:
+                    try:
+                        main_task.coro.suspend()
+                        await ActivateInteraction().perform(channel)
+                    finally:
+                        main_task.coro.resume()
+                    return True
+            except asyncio.CancelledError:
+                warning(f"Interrupt handler got cancelled! Propagating to {main_task=}")
+                main_task.cancel()
+            finally:
+                warning(f"Finished processing {reason=}")
+                self._target_task = main_task
+
+        inter_task = asyncio.current_task()
+        inter_task.suspendable_ancestors = []
+        inter_task.coro = Suspendable(internal_handle_reason())
+        inter_task.coro.set_callbacks(
+            suspend_cb=self.suspend_cb, resume_cb=self.resume_cb
+        )
+        await inter_task.coro
+
+    def suspend_cb(self):
+        res = self._state._sman._loader._channel.sync_clear()
+        self._resumable_keys.extend(res)
+
+    def resume_cb(self):
+        self._state._sman._loader._channel.sync_send(self._resumable_keys)
+        self._resumable_keys.clear()

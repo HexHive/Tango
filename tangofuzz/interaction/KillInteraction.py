@@ -23,7 +23,7 @@ class KillInteraction(InteractionBase):
                 setattr(result, k, getattr(self, k))
         return result
 
-    async def perform(self, channel: X11Channel):
+    async def perform_internal(self, channel: X11Channel):
         if self._struct.attacker_valid:
             restore = await channel.clear()
         else:

@@ -7,7 +7,7 @@ class ShootInteraction(InteractionBase):
     def __init__(self, weapon: int=2):
         self._weapon = weapon
 
-    async def perform(self, channel: X11Channel):
+    async def perform_internal(self, channel: X11Channel):
         seq = (str(self._weapon), "Control_L")
         for key in seq:
             try:

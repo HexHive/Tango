@@ -1,7 +1,7 @@
 from .. import warning
 
 from typing       import Union
-from common       import StabilityException, StateNotReproducibleException, async_wrapper
+from common       import StabilityException, StateNotReproducibleException, sync_to_async
 from loader       import Environment
 from input        import InputBase, ZoomInput
 from interaction  import (ReachInteraction, ActivateInteraction, DelayInteraction,
@@ -15,11 +15,12 @@ from time         import sleep
 from ptrace.binding import ptrace_traceme
 import subprocess
 from profiler import ProfileCount
-from itertools import chain
+from itertools import chain, cycle
 from pyroute2 import netns, NetNS
 import os
 from uuid import uuid4
 import asyncio
+import networkx as nx
 
 class ZoomStateLoader(StateLoaderBase):
     PROC_TERMINATE_RETRIES = 5
@@ -53,7 +54,7 @@ class ZoomStateLoader(StateLoaderBase):
     def preexec_function():
         os.setpgrp()
 
-    @async_wrapper
+    @sync_to_async()
     def _launch_target(self):
         # TODO later replace this by a forkserver to reduce reset costs
 
@@ -100,8 +101,16 @@ class ZoomStateLoader(StateLoaderBase):
         while True:
             source_state = sman._tracker.current_state
             current_path = []
-            if not source_state in sman.state_machine._graph:
-                intermediate = min(sman.state_machine._graph.nodes, \
+            if not source_state in sman.state_machine._graph or not nx.has_path(
+                            sman.state_machine._graph,
+                            source_state,
+                            state):
+                intermediate = min(
+                        filter(lambda x: nx.has_path(
+                            sman.state_machine._graph,
+                            x,
+                            state),
+                        sman.state_machine._graph.nodes), \
                     key=lambda s: ReachInteraction.l2_distance(
                             (source_state._struct.x, source_state._struct.y),
                             (s._struct.x, s._struct.y))
@@ -113,7 +122,7 @@ class ZoomStateLoader(StateLoaderBase):
                 )
                 source_state = intermediate
             if previous != source_state:
-                paths = sman.state_machine.get_min_paths(state, source_state)
+                paths = cycle(sman.state_machine.get_min_paths(state, source_state))
                 previous = source_state
             current_path.extend(next(paths))
             yield current_path
@@ -133,13 +142,13 @@ class ZoomStateLoader(StateLoaderBase):
         elif isinstance((state := state_or_path), StateBase):
             if initial_state == state:
                 return
-            if not initial_state in sman.state_machine._graph:
-                # the exhaustive search accounts for initial states that are not in
-                # the graph by bee-lining to the closest in-graph state
-                path_gen = None
-                exhaustive = True
-            else:
-                path_gen = (next(sman.state_machine.get_min_paths(state, initial_state)),)#sman.state_machine.get_min_paths(state, initial_state)
+            # if not initial_state in sman.state_machine._graph:
+            # the exhaustive search accounts for initial states that are not in
+            # the graph by bee-lining to the closest in-graph state
+            path_gen = None
+            exhaustive = True
+            # else:
+                # path_gen = (next(sman.state_machine.get_min_paths(state, initial_state)),)#sman.state_machine.get_min_paths(state, initial_state)
         else:
             path_gen = (state_or_path,)
             state = None
@@ -199,8 +208,6 @@ class ZoomStateLoader(StateLoaderBase):
                     warning(f"Failed to follow unstable path (reason = {ex.args[0]})! Retrying... ({paths_tried = })")
                     ProfileCount('paths_failed')(1)
                     continue
-                except asyncio.CancelledError:
-                    raise
                 except Exception as ex:
                     # FIXME might want to avoid catching certain exception, e.g. asyncio.CancelledError
                     warning(f"Exception encountered following path ({ex = })! Retrying... ({paths_tried = })")
@@ -224,9 +231,9 @@ class ZoomStateLoader(StateLoaderBase):
             break
 
     async def execute_input(self, input: InputBase, sman: StateManager, update: bool = True):
-        if not hasattr(asyncio.get_event_loop(), '_executing_tasks'):
-            asyncio.get_event_loop()._executing_tasks = list()
+        if not hasattr(asyncio.get_running_loop(), '_executing_tasks'):
+            asyncio.get_running_loop()._executing_tasks = list()
 
-        asyncio.get_event_loop()._executing_tasks.append(asyncio.current_task())
+        asyncio.get_running_loop()._executing_tasks.append(asyncio.current_task())
         await super().execute_input(input, sman, update)
-        assert asyncio.get_event_loop()._executing_tasks.pop() == asyncio.current_task()
+        assert asyncio.get_running_loop()._executing_tasks.pop() == asyncio.current_task()

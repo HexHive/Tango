@@ -39,7 +39,7 @@ class GoToInteraction(InteractionBase):
                 setattr(result, k, getattr(self, k))
         return result
 
-    async def perform(self, channel: X11Channel):
+    async def perform_internal(self, channel: X11Channel):
         await self._state._sman._loader.load_state(self._target_state, self._state._sman, update=False)
         await ReachInteraction(self._state, self._target, self._stop, self._tol).perform(channel)
 

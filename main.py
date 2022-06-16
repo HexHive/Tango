@@ -2,7 +2,6 @@ from tangofuzz import *
 
 from fuzzer import FuzzerSession, FuzzerConfig
 import logging
-import asyncio
 
 logging.getLogger().setLevel(logging.WARN)
 logging.getLogger("statemanager").setLevel(logging.DEBUG)
@@ -16,9 +15,6 @@ logging.getLogger("mutator").setLevel(logging.DEBUG)
 logging.getLogger("interaction").setLevel(logging.DEBUG)
 logging.getLogger("loader").setLevel(logging.DEBUG)
 
-async def main():
-    config = FuzzerConfig("./targets/zoom/fuzz.json")
-    sess = await FuzzerSession.create(config)
-    await sess.start()
-
-asyncio.run(main())
+config = FuzzerConfig("./targets/zoom/fuzz.json")
+sess = FuzzerSession(config)
+sess.run()

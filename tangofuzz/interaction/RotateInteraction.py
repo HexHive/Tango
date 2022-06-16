@@ -30,7 +30,7 @@ class RotateInteraction(InteractionBase):
     def short_angle(angle):
         return sorted((angle, angle - 360, angle + 360), key=lambda x: abs(x))[0]
 
-    async def perform(self, channel: X11Channel, move: str=None):
+    async def perform_internal(self, channel: X11Channel, move: str=None):
         last = None
         while not isclose(delta := self.short_angle(self._struct.angle - self._target), 0, abs_tol=self._tol):
             debug(f"Still far from target {delta=}")

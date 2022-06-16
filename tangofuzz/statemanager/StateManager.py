@@ -71,10 +71,11 @@ class StateManager:
                 self._last_state = self._tracker.current_state
                 self._strategy.update_state(self._last_state, is_new=False)
         except asyncio.CancelledError:
-            # if an interrupt is received while loading a state (e.g. door),
+            # if an interrupt is received while loading a state (e.g. death),
             # self._last_state is not set to the current state because of the
             # exception. Instead, at the next input step, a transition is
-            # "discovered" between the last state and the new state.
+            # "discovered" between the last state and the new state, which is
+            # wrong
             if update:
                 self._last_state = self._tracker.current_state
             raise
@@ -121,12 +122,11 @@ class StateManager:
                     # leads to the faulty state
                     transition = next(x for x in target if x[1] == ex._faulty_state)
                     self._strategy.update_transition(transition[0], transition[1], transition[2], invalidate=True)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
+            except Exception as ex:
                 # In this case, we need to force the strategy to yield a new
                 # target, because we're not entirely sure what went wrong. We
                 # invalidate the target state and hope for the best.
+                warning(f'Failed to step to new target; invalidating it {ex=}')
                 self._strategy.update_state(self._strategy.target_state, invalidate=True)
 
         await self._loader.execute_input(input, self, update=True)
@@ -167,7 +167,7 @@ class StateManager:
 
                 if ReachInteraction.l2_distance(
                     (self._last_state._struct.x, self._last_state._struct.y),
-                    (current_state._struct.x, current_state._struct.y)) > 1000000:
+                    (current_state._struct.x, current_state._struct.y)) > 3000000:
                     import ipdb; ipdb.set_trace()
 
                 if self._last_state.last_input is not None:
@@ -226,8 +226,6 @@ class StateManager:
                             self._strategy.update_state(current_state, invalidate=True)
                         stable = False
                         ProfileCount('unstable')(1)
-                    except asyncio.CancelledError:
-                        raise
                     except Exception as ex:
                         debug(f'{ex}')
                         if new_state:
@@ -250,8 +248,6 @@ class StateManager:
                                 # should work, for now
                                 self._current_path, current_state, last_input)
                             last_input = FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=False)
-                        except asyncio.CancelledError:
-                            raise
                         except Exception as ex:
                             # Minimization failed, again probably due to an
                             # indeterministic target

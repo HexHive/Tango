@@ -2,7 +2,6 @@ from __future__ import annotations
 from interaction import InteractionBase
 from networkio   import ChannelBase
 from typing      import Sequence
-from profiler    import ProfileFrequency, ProfileEvent
 from math        import isclose
 from asyncio     import sleep
 
@@ -13,9 +12,7 @@ class DelayInteraction(InteractionBase):
         # configurable
         self._maxdelay = 5
 
-    @ProfileEvent("perform_interaction")
-    @ProfileFrequency("interactions", period=1)
-    async def perform(self, channel: ChannelBase):
+    async def perform_internal(self, channel: ChannelBase):
         await sleep(self._time * (await channel.timescale))
 
     def __eq__(self, other: DelayInteraction):

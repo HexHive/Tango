@@ -2,15 +2,12 @@ from __future__ import annotations
 from interaction import InteractionBase
 from networkio   import ChannelBase
 from typing      import ByteString
-from profiler    import ProfileFrequency, ProfileEvent
 
 class TransmitInteraction(InteractionBase):
     def __init__(self, data: ByteString):
         self._data = data
 
-    @ProfileEvent("perform_interaction")
-    @ProfileFrequency("interactions", period=1)
-    async def perform(self, channel: ChannelBase):
+    async def perform_internal(self, channel: ChannelBase):
         sent = await channel.send(self._data)
         if sent < len(self._data):
             self._data = self._data[:sent]

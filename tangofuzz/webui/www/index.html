@@ -204,16 +204,19 @@
 				}
 				switch(msg.cmd) {
 				case "update_graph":
-					await viz.renderString(msg.items.dot)
-					.then(function(element) {
-						element = parser.parseFromString(element, "image/svg+xml").documentElement;
-						svg.innerHTML = element.innerHTML;
-						svg.setAttribute('viewBox', element.getAttribute('viewBox'));
-					})
-					.catch(error => {
-						viz = new Viz();
-						console.error(error);
-					});
+					// await viz.renderString(msg.items.dot)
+					// .then(function(element) {
+					// 	element = parser.parseFromString(element, "image/svg+xml").documentElement;
+					// 	svg.innerHTML = element.innerHTML;
+					// 	svg.setAttribute('viewBox', element.getAttribute('viewBox'));
+					// })
+					// .catch(error => {
+					// 	viz = new Viz();
+					// 	console.error(error);
+					// });
+					let element = parser.parseFromString(msg.items.svg, "image/svg+xml").documentElement;
+					svg.innerHTML = element.innerHTML;
+					svg.setAttribute('viewBox', element.getAttribute('viewBox'));
 					break;
 				case "update_stats":
 					for await (const [stat, value] of Object.entries(msg.items)) {

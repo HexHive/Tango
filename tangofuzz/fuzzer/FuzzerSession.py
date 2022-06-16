@@ -13,6 +13,7 @@ from common        import (StabilityException,
                           ProcessCrashedException,
                           ProcessTerminatedException,
                           StateNotReproducibleException)
+from common        import Suspendable
 import os
 
 from profiler import (ProfileLambda,
@@ -40,9 +41,7 @@ class FuzzerSession:
         """
         self._config = config
 
-    @classmethod
-    async def create(cls, *args, **kwargs):
-        self = cls(*args, **kwargs)
+    async def initialize(self):
         self._input_gen = await self._config.input_generator
         self._loader = await self._config.loader
         self._sman = await self._config.state_manager
@@ -52,7 +51,6 @@ class FuzzerSession:
 
         ## After this point, the StateManager and StateTracker are both
         #  initialized and should be able to identify states and populate the SM
-        return self
 
     async def _load_seeds(self):
         """
@@ -113,8 +111,7 @@ class FuzzerSession:
                         # reset to StateManager's current target state
                         await self._sman.reload_target()
                     except asyncio.CancelledError:
-                        # the input generator cancelled an execution and would
-                        # like to react
+                        # the input generator cancelled an execution
                         warning("Received interrupt, continuing!")
                         continue
                     except Exception as ex:
@@ -122,17 +119,8 @@ class FuzzerSession:
                         critical(f"Encountered weird exception {ex = }")
                         await self._sman.reload_target()
             except asyncio.CancelledError:
-                # the input generator cancelled an execution and would like to
-                # react
-                while True:
-                    try:
-                        warning("Received interrupt while reloading target, forcing input generation")
-                        cur_state = self._sman.state_tracker.current_state
-                        input = self._input_gen.generate(cur_state, self._entropy)
-                        await self._sman.step(input)
-                        break
-                    except asyncio.CancelledError:
-                        continue
+                # the input generator cancelled an execution
+                warning("Received interrupt while reloading target")
                 continue
             except StateNotReproducibleException as ex:
                 warning(f"Target state {ex._faulty_state} not reachable anymore!")
@@ -149,7 +137,7 @@ class FuzzerSession:
                     exitmsg="Fuzzing resumed")
                 ProfiledObjects['elapsed'].toggle()
 
-    async def start(self):
+    async def _start(self):
         await self._load_seeds()
 
         # reset state after the seed initialization stage
@@ -164,3 +152,13 @@ class FuzzerSession:
         await self._loop()
 
         # TODO anything else?
+
+    async def _bootstrap(self):
+        await self.initialize()
+        main_task = asyncio.get_running_loop().main_task = asyncio.current_task()
+        main_task.suspendable_ancestors = []
+        main_task.coro = Suspendable(self._start())
+        await main_task.coro
+
+    def run(self):
+        asyncio.run(self._bootstrap())

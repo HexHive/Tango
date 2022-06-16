@@ -136,10 +136,12 @@ class WebDataLoader:
         P = nx.nx_pydot.to_pydot(G)
 
         dot = str(P)
+        svg = P.create_svg().decode()
         msg = json.dumps({
             'cmd': 'update_graph',
             'items': {
-                'dot': dot
+                'dot': dot,
+                'svg': svg
             }
         })
 
