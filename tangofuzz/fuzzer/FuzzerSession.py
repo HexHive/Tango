@@ -154,10 +154,11 @@ class FuzzerSession:
         # TODO anything else?
 
     async def _bootstrap(self):
-        await self.initialize()
         main_task = asyncio.get_running_loop().main_task = asyncio.current_task()
         main_task.suspendable_ancestors = []
         main_task.coro = Suspendable(self._start())
+
+        await self.initialize()
         await main_task.coro
 
     def run(self):

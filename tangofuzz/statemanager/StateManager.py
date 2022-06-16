@@ -28,6 +28,7 @@ class StateManager:
         self._minimize = minimize_transitions
 
         self._last_state = self._tracker.entry_state
+        self._last_state.state_manager = self
         self._sm = StateMachine(self._last_state)
         self._strategy = strategy_ctor(self._sm, self._last_state)
         self._current_path = []
