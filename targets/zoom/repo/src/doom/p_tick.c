@@ -219,14 +219,14 @@ void P_Ticker (void)
         tf_feedback->health = players[0].mo->health;
         tf_feedback->armor_points = players[0].armorpoints;
 
-        tf_feedback->attacker_valid = (players[0].attacker != NULL && \
-                                        players[0].attacker != players[0].mo && \
-                                        players[0].attacker->health > 0);
+        tf_feedback->attacker_valid = (tf_attacker != NULL && \
+                                       tf_attacker->health > 0 && \
+                                       P_CheckSight(players[0].mo, tf_attacker));
         if (tf_feedback->attacker_valid) {
             tf_feedback->attacker_location = (tf_location_t){
-                FRACTOFLOAT(players[0].attacker->x),
-                FRACTOFLOAT(players[0].attacker->y),
-                FRACTOFLOAT(players[0].attacker->z)
+                FRACTOFLOAT(tf_attacker->x),
+                FRACTOFLOAT(tf_attacker->y),
+                FRACTOFLOAT(tf_attacker->z)
             };
         }
 
@@ -260,6 +260,11 @@ void P_Ticker (void)
             case 99:
                 tf_feedback->secret_sector = true;
                 break;
+            default:
+                tf_feedback->floor_is_lava = false;
+                tf_feedback->secret_sector = false;
         };
+
+        // tf_feedback->level_finished = gameaction == ga_completed;
     }
 }

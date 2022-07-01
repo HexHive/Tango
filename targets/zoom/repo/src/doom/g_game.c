@@ -1330,6 +1330,7 @@ void G_ExitLevel (void)
 {
     secretexit = false;
     gameaction = ga_completed;
+    tf_feedback->level_finished = true;
 }
 
 // Here's for the german edition.
@@ -1342,6 +1343,7 @@ void G_SecretExitLevel (void)
     else
 	secretexit = true;
     gameaction = ga_completed;
+    tf_feedback->level_finished = true;
 }
 
 void G_DoCompleted (void)

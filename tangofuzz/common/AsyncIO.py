@@ -123,9 +123,15 @@ class Suspendable:
 class OwnerDecorator(ABC):
     _is_coroutine = asyncio.coroutines._is_coroutine
 
+    def __init__(self, *, owned=True):
+        self._owned = owned
+
     def __call__(self, fn):
         self._fn = fn
-        return self
+        if self._owned:
+            return self
+        else:
+            return self.wrap(self._fn)
 
     def set_name_and_update(self, owner, name):
         if hasattr(self._fn, '__set_name__'):
@@ -149,7 +155,8 @@ class OwnerDecorator(ABC):
         raise NotImplemented
 
 class async_suspendable(OwnerDecorator):
-    def __init__(self, suspend_cb=None, resume_cb=None):
+    def __init__(self, *, suspend_cb=None, resume_cb=None, **kwargs):
+        super().__init__(**kwargs)
         self._suspend_cb = suspend_cb or (lambda *a, **k: None)
         self._resume_cb = resume_cb or (lambda *a, **k: None)
 
@@ -169,7 +176,8 @@ class async_suspendable(OwnerDecorator):
             self._resume_cb = getattr(owner, self._resume_cb)
 
 class sync_to_async(OwnerDecorator):
-    def __init__(self, *, get_future_cb=None, done_cb=None):
+    def __init__(self, *, get_future_cb=None, done_cb=None, **kwargs):
+        super().__init__(**kwargs)
         self._get_future_cb = get_future_cb
         self._done_cb = done_cb
 

@@ -57,10 +57,14 @@ typedef struct {
   boolean       secret_sector;
 
   boolean       pickup_valid;
+  int           pickup_type;
   tf_location_t pickup_location;
+
+  boolean           level_finished;
 } __attribute__((packed)) tf_feedback_t;
 
 extern tf_feedback_t *tf_feedback;
+extern mobj_t *tf_attacker;
 
 // NOT called by W_Ticker. Fixme.
 void

@@ -34,7 +34,9 @@ class ZoomInputGenerator(InputGeneratorBase):
         for src, dst, inp in path:
             dst_x, dst_y, dst_z = map(lambda c: getattr(dst._struct.player_location, c), ('x', 'y', 'z'))
             condition = lambda: dst._sman._tracker.current_state == dst
-            yield ReachInteraction(src, (dst_x, dst_y, dst_z), condition=condition)
+            yield ReachInteraction(src, (dst_x, dst_y, dst_z),
+                sufficient_condition=condition,
+                necessary_condition=condition)
 
     def generate_kill_sequence(self, state, from_location=None):
         yield KillInteraction(state)

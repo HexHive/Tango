@@ -35,7 +35,9 @@ class ZoomFeedback(ctypes.Structure):
         ("floor_is_lava", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
         ("secret_sector", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
         ("pickup_valid", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
+        ("pickup_type", ctypes.c_int),
         ("pickup_location", ZoomLocation),
+        ("level_finished", ctypes.c_int), # c_int instead of bool because boolean is typedef'd as enum in doomtype.h
     ]
 
 class ZoomStateReader:

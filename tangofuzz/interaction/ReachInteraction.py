@@ -25,13 +25,18 @@ class ReachInteraction(InteractionBase):
     DISTANCE_SAMPLE_VARIANCE = 400
     MAX_RETRIES = 1
 
-    def __init__(self, current_state, target_location: tuple, stop_at_target: bool=True, tolerance: float=20.0, condition=None):
+    def __init__(self, current_state, target_location: tuple,
+            stop_at_target: bool=True, tolerance: float=20.0,
+            necessary_condition=None, sufficient_condition=None,
+            force_strafe: bool=False):
         self._target = target_location
         self._struct = current_state.state_manager._tracker._reader.struct
         self._state = current_state
         self._stop = stop_at_target
-        self._tol = tolerance
-        self._con = condition
+        self._tol = max(tolerance, self.MAX_STRAFE_DISTANCE)
+        self._nec = necessary_condition or (lambda: True)
+        self._suf = sufficient_condition or (lambda: False)
+        self._fstrafe = force_strafe
 
     def __deepcopy__(self, memo):
         cls = self.__class__
@@ -55,11 +60,11 @@ class ReachInteraction(InteractionBase):
         recovering = RecoveringAttempt.NOT_RECOVERING
         retries = 0
         try:
-            while not (isclose(distancesq := self.l2_distance(
-                                (self._struct.player_location.x, self._struct.player_location.y),
-                                (self._target[0], self._target[1])
-                            ), 0, abs_tol=self._tol**2) and \
-                        (self._con() if self._con else True)):
+            while not self._suf() \
+                    and not (isclose(distancesq := self.l2_distance(
+                            (self._struct.player_location.x, self._struct.player_location.y),
+                            (self._target[0], self._target[1])
+                        ), 0, abs_tol=self._tol**2) and self._nec()):
                 angle = (atan2(
                                 self._target[1] - self._struct.player_location.y,
                                 self._target[0] - self._struct.player_location.x
@@ -86,7 +91,7 @@ class ReachInteraction(InteractionBase):
                 elif recovering == RecoveringAttempt.JITTER_RIGHT:
                     await MoveInteraction('strafe_right', duration=1).perform(channel)
 
-                if distancesq < self.MAX_STRAFE_DISTANCE ** 2:
+                if distancesq < self.MAX_STRAFE_DISTANCE ** 2 or self._fstrafe:
                     strafing = True
                     delta = RotateInteraction.short_angle(angle - self._struct.player_angle) % 360
                     if delta < 20 or 340 < delta:

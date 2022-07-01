@@ -1,6 +1,9 @@
 from statemanager import StateBase, StateManager, ZoomFeedback
 from input        import InputBase
 from ctypes import pointer
+from collections import namedtuple
+
+Cell = namedtuple('Cell', ['x', 'y', 'z'])
 
 class ZoomState(StateBase):
     _cache = {}
@@ -27,6 +30,12 @@ class ZoomState(StateBase):
         pointer(dst)[0] = struct
         return dst
 
+    @classmethod
+    def location_to_cell(cls, location):
+        return Cell(location.x // cls.CELL_DIMENSION,
+                    location.y // cls.CELL_DIMENSION,
+                    location.z // 8)
+
     def get_escaper(self) -> InputBase:
         # TODO generate a possible input to escape the current state
         # TODO (basically select an interesting input and mutate it)
@@ -38,8 +47,7 @@ class ZoomState(StateBase):
 
     @classmethod
     def _calc_hash(cls, struct: ZoomFeedback):
-        return hash((struct.player_location.x // cls.CELL_DIMENSION,
-                     struct.player_location.y // cls.CELL_DIMENSION))
+        return hash(cls.location_to_cell(struct.player_location))
 
     def __hash__(self):
         return self._hash
@@ -48,7 +56,10 @@ class ZoomState(StateBase):
         return hash(self) == hash(other)
 
     def __repr__(self):
-        # return f'ZoomState({hex(hash(self))})'
-        return (f'x={int(self._struct.player_location.x // self.CELL_DIMENSION)}\n'
-                f'y={int(self._struct.player_location.y // self.CELL_DIMENSION)}\n'
-                f'z={int(self._struct.player_location.z // 8)}')
+        cell = self.location_to_cell(self._struct.player_location)
+        rep = (f'(x={int(cell.x)} '
+               f'y={int(cell.y)} '
+               f'z={int(cell.z)})')
+        # if hasattr(self, '_tags'):
+            # rep += f'\ntags={self._tags}'
+        return rep

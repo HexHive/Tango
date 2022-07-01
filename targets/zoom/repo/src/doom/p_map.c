@@ -364,8 +364,38 @@ boolean PIT_CheckThing (mobj_t* thing)
 	{
 	    // can remove thing
 	    P_TouchSpecialThing (thing, tmthing);
-            tf_feedback->pickup_location = (tf_location_t){tmthing->x, tmthing->y, tmthing->z};
-            tf_feedback->pickup_valid = true;
+            // if (!tf_feedback->pickup_valid) {
+            // we don't care about dropped items because they move
+            switch (thing->sprite) {
+                case SPR_ARM1:
+                case SPR_ARM2:
+                case SPR_BKEY:
+                case SPR_YKEY:
+                case SPR_RKEY:
+                case SPR_BSKU:
+                case SPR_YSKU:
+                case SPR_RSKU:
+                case SPR_BFUG:
+                case SPR_MGUN:
+                case SPR_CSAW:
+                case SPR_LAUN:
+                case SPR_PLAS:
+                case SPR_SHOT:
+                case SPR_SGN2:
+                    if ((thing->flags & MF_DROPPED) == 0) {
+                        tf_feedback->pickup_location = (tf_location_t){
+                            FRACTOFLOAT(thing->x),
+                            FRACTOFLOAT(thing->y),
+                            FRACTOFLOAT(thing->z)
+                        };
+                        tf_feedback->pickup_type = thing->sprite;
+                        if (tf_feedback->pickup_type)
+                                tf_feedback->pickup_valid = true;
+                    }
+                default:
+                    break;
+            }
+            // }
 	}
 	return !solid;
     }

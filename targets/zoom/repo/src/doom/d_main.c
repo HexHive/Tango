@@ -195,6 +195,8 @@ void D_Display (void)
 	borderdrawcount = 3;
     }
 
+    // force prevent wipe
+    wipegamestate = gamestate;
     // save the current screen if about to wipe
     if (gamestate != wipegamestate)
     {
@@ -1877,6 +1879,7 @@ void D_DoomMain (void)
 	G_TimeDemo (demolumpname);
 	D_DoomLoop ();  // never returns
     }
+    nodrawers = M_CheckParm ("-nodraw");
     singletics = true;
 	
     if (startloadgame >= 0)

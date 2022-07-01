@@ -24,6 +24,11 @@ from profiler import (ProfileLambda,
 
 from webui import WebRenderer
 import asyncio
+from code import InteractiveConsole
+# it seems this library fixes the handling of arrows and other
+# special console signals
+import readline
+import signal
 
 class FuzzerSession:
     """
@@ -100,8 +105,6 @@ class FuzzerSession:
                         except ChannelBrokenException as ex:
                             # TODO save crashing/breaking input
                             debug(f"Received channel broken exception ({ex = })")
-                        except StateNotReproducibleException as ex:
-                            warning(f"Target state {ex._faulty_state} not reachable anymore!")
                         except ChannelSetupException:
                             # TODO save broken setup input
                             warning("Received channel setup exception")
@@ -110,9 +113,15 @@ class FuzzerSession:
                             critical(f"Encountered unhandled loaded exception {ex = }")
                         # reset to StateManager's current target state
                         await self._sman.reload_target()
-                    except asyncio.CancelledError:
+                    except asyncio.CancelledError as ex:
                         # the input generator cancelled an execution
                         warning("Received interrupt, continuing!")
+                        if ex.args and ex.args[0] == "finished":
+                            warning("Level finished! Restarting :D")
+                            await asyncio.sleep(10)
+                            await self._sman._loader._launch_target()
+                            self._sman._strategy._seek.clear()
+                            self._sman._last_state = self._sman._tracker.entry_state
                         continue
                     except Exception as ex:
                         import ipdb; ipdb.set_trace()
@@ -126,16 +135,6 @@ class FuzzerSession:
                 warning(f"Target state {ex._faulty_state} not reachable anymore!")
             except Exception as ex:
                 critical(f"Encountered exception while resetting state! {ex = }")
-            except KeyboardInterrupt:
-                from code import InteractiveConsole
-                # it seems this library fixes the handling of arrows and other
-                # special console signals
-                import readline
-                repl = InteractiveConsole(locals=locals())
-                ProfiledObjects['elapsed'].toggle()
-                repl.interact(banner="Fuzzing paused (type exit() to quit)",
-                    exitmsg="Fuzzing resumed")
-                ProfiledObjects['elapsed'].toggle()
 
     async def _start(self):
         await self._load_seeds()
@@ -161,5 +160,16 @@ class FuzzerSession:
         await self.initialize()
         await main_task.coro
 
+    def sigint_handler(self, sig, frame):
+        main_task = asyncio.get_running_loop().main_task
+        main_task.coro.suspend()
+        repl = InteractiveConsole(locals=locals())
+        ProfiledObjects['elapsed'].toggle()
+        repl.interact(banner="Fuzzing paused (type exit() to quit)",
+            exitmsg="Fuzzing resumed")
+        ProfiledObjects['elapsed'].toggle()
+        main_task.coro.resume()
+
     def run(self):
+        signal.signal(signal.SIGINT, self.sigint_handler)
         asyncio.run(self._bootstrap())

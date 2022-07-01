@@ -32,6 +32,7 @@
 #include "s_sound.h"
 
 #include "doomstat.h"
+#include "p_setup.h"
 
 
 void G_PlayerReborn (int player);
@@ -452,6 +453,18 @@ P_NightmareRespawn (mobj_t* mobj)
 //
 void P_MobjThinker (mobj_t* mobj)
 {
+    if (mobj->type != MT_PLAYER &&
+            (mobj->flags & MF_SHOOTABLE) != 0 &&
+            (mobj->flags & MF_COUNTKILL) != 0) {
+        if (tf_attacker == NULL || tf_attacker->health <= 0 ||
+                !P_CheckSight(players[0].mo, tf_attacker) ||
+                (P_AproxDistance(mobj->x - players[0].mo->x,
+                    mobj->y - players[0].mo->y) <= \
+                P_AproxDistance(tf_attacker->x - players[0].mo->x,
+                    tf_attacker->y - players[0].mo->y))) {
+            tf_attacker = mobj;
+        }
+    }
     // momentum movement
     if (mobj->momx
 	|| mobj->momy

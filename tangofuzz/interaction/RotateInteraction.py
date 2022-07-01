@@ -43,9 +43,10 @@ class RotateInteraction(InteractionBase):
                 current = MoveInteraction('rotate_left')
             else:
                 current = MoveInteraction('rotate_right')
-            if last and last != current:
-                debug("Switching rotation direction")
-                await last.stop(channel)
+            if last != current:
+                if last:
+                    debug("Switching rotation direction")
+                    await last.stop(channel)
             await current.perform(channel)
             last = current
             await DelayInteraction(0.03).perform(channel)

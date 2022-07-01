@@ -54,7 +54,7 @@ class KillInteraction(InteractionBase):
                 break
 
         # FIXME does this result in changing the shm struct?
-        self._struct.attacker_valid = False
+        # self._struct.attacker_valid = False
 
         # restore previous movement, if any
         await channel.send(restore, down=True)

@@ -95,7 +95,7 @@ class StateMachine:
             ProfileValueMean("transition_length", samples=0)(len(input))
 
 
-    def dissolve_state(self, state: StateBase):
+    def dissolve_state(self, state: StateBase, stitch: bool=True):
         """
         Deletes a state from the state machine, stitching incoming and outgoing
         transitions to maintain graph connectivity.
@@ -114,24 +114,32 @@ class StateMachine:
 
         # TODO minimize transitions before stitching?
 
-        t_product = xproduct(
-            flatten(self._graph.in_edges(state, data=True)),
-            flatten(self._graph.out_edges(state, data=True))
-        )
-        for (src_in, _, min_in, input_in), (_, dst_out, min_out, input_out) in t_product:
-            # FIXME inputs are cached to add the __len__() functionality so that
-            # the WebUI graph can be properly displayed
-            # FIXME this should be remedied by introducing length propagation
-            # of inputs, where all inputs support the __len__() function
-            stitched = MemoryCachingDecorator()(input_in + input_out, copy=False)
-            minimized = MemoryCachingDecorator()(min_in + min_out, copy=False)
-
-            self.update_transition(
-                source=src_in,
-                destination=dst_out,
-                input=minimized
+        if stitch:
+            t_product = xproduct(
+                flatten(self._graph.in_edges(state, data=True)),
+                flatten(self._graph.out_edges(state, data=True))
             )
+            for (src_in, _, min_in, input_in), (_, dst_out, min_out, input_out) in t_product:
+                # FIXME inputs are cached to add the __len__() functionality so that
+                # the WebUI graph can be properly displayed
+                # FIXME this should be remedied by introducing length propagation
+                # of inputs, where all inputs support the __len__() function
+                stitched = MemoryCachingDecorator()(input_in + input_out, copy=False)
+                minimized = MemoryCachingDecorator()(min_in + min_out, copy=False)
+
+                self.update_transition(
+                    source=src_in,
+                    destination=dst_out,
+                    input=minimized
+                )
         self._graph.remove_node(state)
+
+    def delete_transition(self, source: StateBase, destination: StateBase):
+        if source not in self._graph or destination not in self._graph \
+                or not destination in nx.neighbors(self._graph, source):
+            raise KeyError("Transition not valid")
+
+        self._graph.remove_edge(source, destination)
 
     def get_any_path(self, destination: StateBase, source: StateBase=None) \
         -> List[Tuple[StateBase, StateBase, InputBase]]:

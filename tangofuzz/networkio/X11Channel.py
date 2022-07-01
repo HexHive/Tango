@@ -9,6 +9,8 @@ from Xlib import XK, display, ext, X, protocol
 import sys
 import time
 from multiprocessing import Lock
+from statistics import mean, stdev
+from collections import deque
 
 @dataclass
 class X11ChannelFactory(ChannelFactoryBase):
@@ -42,12 +44,16 @@ class X11Channel(ChannelBase):
 
         self._suspend_called = 0
         self._mutex = Lock()
+        self._samples = deque(maxlen=100)
 
     @async_property
     async def timescale(self):
-        ticrate = (await self._struct_fn()).tic_rate
-        debug(f'{ticrate=}')
-        return 35 / ticrate if ticrate >= 35 else 1
+        tic_rate = (await self._struct_fn()).tic_rate
+        self._samples.append(tic_rate)
+        tic_rate = mean(self._samples)
+        tic_std = stdev(self._samples) if len(self._samples) > 1 else 0.0
+        # debug(f'mean {tic_rate=} stdev={tic_std}')
+        return 35 / tic_rate if tic_rate >= 35 else 1
 
     @classmethod
     def get_window(cls, display, program_name, window_name):
@@ -81,7 +87,7 @@ class X11Channel(ChannelBase):
         for k in keys:
             await self._send_one_key_event_safe(k, down)
 
-        debug(self._keysdown)
+        # debug(self._keysdown)
 
     def sync_send(self, key_or_keys, down=True, clobbers=None):
         if hasattr(key_or_keys, '__iter__') and not isinstance(key_or_keys, str):
@@ -98,12 +104,13 @@ class X11Channel(ChannelBase):
         for k in keys:
             self._sync_send_one_key_event(k, down)
 
-        debug(self._keysdown)
+        # debug(self._keysdown)
 
     async def _send_one_key_event_safe(self, key, down):
         return await self._send_one_key_event(key, down)
 
-    @async_suspendable('_send_one_key_suspend_callback', '_send_one_key_resume_callback')
+    @async_suspendable(suspend_cb='_send_one_key_suspend_callback',
+                       resume_cb='_send_one_key_resume_callback')
     @sync_to_async(done_cb='_send_one_key_done_callback')
     def _send_one_key_event(self, key, down):
         return self._sync_send_one_key_event(key, down)

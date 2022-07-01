@@ -61,14 +61,18 @@ class StateManager:
             # needs to execute inputs to reach the target state (e.g. ReplayStateLoader)
             # so that no new edges are added between the last state and the entry state
             # FIXME should this be done by the loader instead?
-            self._last_state = self._tracker.entry_state
+            # self._last_state = self._tracker.entry_state
 
         try:
+            # FIXME update==True is temporary; should not be considered for main
+            # Switch to True to force web UI graph update
             if state_or_path is None:
                 await self._loader.load_state(self._tracker.entry_state, self, update=False)
             else:
                 await self._loader.load_state(state_or_path, self, update=False)
             if update:
+                if self._tracker.current_state not in self.state_machine._graph:
+                    import pdb; pdb.set_trace()
                 self._last_state = self._tracker.current_state
                 self._strategy.update_state(self._last_state, is_new=False)
         except asyncio.CancelledError:
@@ -78,20 +82,27 @@ class StateManager:
             # "discovered" between the last state and the new state, which is
             # wrong
             if update:
+                if self._tracker.current_state not in self.state_machine._graph:
+                    import pdb; pdb.set_trace()
                 self._last_state = self._tracker.current_state
             raise
         except StateNotReproducibleException as ex:
             if update:
                 faulty_state = ex._faulty_state
-                debug(f"Dissolving irreproducible {faulty_state = }")
-                self._sm.dissolve_state(faulty_state)
-                self._strategy.update_state(faulty_state, invalidate=True)
-                ProfileCount("dissolved_states")(1)
+                if faulty_state != self._tracker.entry_state:
+                    try:
+                        debug(f"Dissolving irreproducible {faulty_state = }")
+                        self._sm.dissolve_state(faulty_state, stitch=False)
+                        ProfileCount("dissolved_states")(1)
+                    except KeyError as ex:
+                        warning(f"Faulty state was not even valid")
+                    self._strategy.update_state(faulty_state, invalidate=True)
             raise
 
     async def reload_target(self):
-        debug(f"Reloading target state {self._strategy.target}")
-        await self.reset_state(self._strategy.target)
+        strategy_target = self._strategy.target
+        debug(f"Reloading target state {strategy_target}")
+        await self.reset_state(strategy_target)
 
     def get_context(self, input: InputBase) -> StateManagerContext:
         return StateManagerContext(self, input)
@@ -102,33 +113,42 @@ class StateManager:
         scheduler. May need to receive information about the current state to
         update it.
         """
+        should_reset = self._strategy.step()
         while True:
             try:
-                should_reset = self._strategy.step()
                 if should_reset:
-                    debug(f'Stepping to new {self._strategy.target = }')
-                    await self.reset_state(self._strategy.target)
+                    strategy_target = self._strategy.target
+                    debug(f'Stepping to new {strategy_target = }')
+                    await self.reset_state(strategy_target)
                     target_state = self._tracker.current_state
                     debug(f'Stepped to new {target_state = }')
                 break
             except StateNotReproducibleException as ex:
-                target = self._strategy.target
-                if isinstance(target, StateBase):
+                if isinstance(strategy_target, StateBase):
                     # in case the selected state is unreachable, reset_state()
                     # would have already asked the strategy to invalidate the
                     # faulty state along its path
                     pass
-                elif hasattr(target, '__iter__'):
+                elif hasattr(strategy_target, '__iter__'):
                     # find and invalidate the transition along the path that
                     # leads to the faulty state
-                    transition = next(x for x in target if x[1] == ex._faulty_state)
-                    self._strategy.update_transition(transition[0], transition[1], transition[2], invalidate=True)
+                    try:
+                        transition = next(x for x in strategy_target if x[1] == ex._faulty_state)
+                        try:
+                            debug(f"Deleting irreproducible transition {transition=}")
+                            self._sm.delete_transition(transition[0], transition[1])
+                        except KeyError as ex:
+                            warning(f"Faulty transition was not even valid")
+                        self._strategy.update_transition(transition[0], transition[1], transition[2], invalidate=True)
+                    except StopIteration:
+                        pass
             except Exception as ex:
                 # In this case, we need to force the strategy to yield a new
                 # target, because we're not entirely sure what went wrong. We
                 # invalidate the target state and hope for the best.
                 warning(f'Failed to step to new target; invalidating it {ex=}')
                 self._strategy.update_state(self._strategy.target_state, invalidate=True)
+                raise
 
         await self._loader.execute_input(input, self, update=True)
 
@@ -168,8 +188,9 @@ class StateManager:
 
                 if ReachInteraction.l2_distance(
                     (self._last_state._struct.player_location.x, self._last_state._struct.player_location.y),
-                    (current_state._struct.player_location.x, current_state._struct.player_location.y)) > 3000000:
-                    import ipdb; ipdb.set_trace()
+                    (current_state._struct.player_location.x, current_state._struct.player_location.y)) > 2000000:
+                    # import ipdb; ipdb.set_trace()
+                    pass
 
                 if self._last_state.last_input is not None:
                     last_input = self._last_state.last_input + input_gen()

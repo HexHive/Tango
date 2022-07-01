@@ -47,6 +47,7 @@
 #include <sys/types.h>
 
 tf_feedback_t *tf_feedback;
+mobj_t *tf_attacker;
 
 void	P_SpawnMapThing (mapthing_t*	mthing);
 
@@ -876,6 +877,8 @@ void P_Init (void)
     if (fd == -1) return;
     if (ftruncate(fd, TANGOFUZZ_FEEDBACK_SIZE) == -1) return;
     tf_feedback = mmap(NULL, TANGOFUZZ_FEEDBACK_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    memset(tf_feedback, 0, TANGOFUZZ_FEEDBACK_SIZE);
+    tf_attacker = NULL;
     close(fd);
     if (!tf_feedback) return;
 }

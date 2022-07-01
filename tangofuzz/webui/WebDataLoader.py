@@ -1,5 +1,7 @@
 from webui import WebLogHandler
 from profiler import ProfiledObjects
+from common import sync_to_async
+from statemanager import StateMachine
 import networkx as nx
 import json
 import asyncio
@@ -31,14 +33,16 @@ class WebDataLoader:
         self._fade = last_update_fade_out
 
         self.tasks = []
-        self.tasks.append(asyncio.create_task(
-                ProfiledObjects['update_state'].listener(period=0.5)(self.update_graph)
-            )
-        )
+        # self.tasks.append(asyncio.create_task(
+        #         ProfiledObjects['update_state'].listener(period=0.1)(self.update_graph)
+        #     )
+        # )
         self.tasks.append(asyncio.create_task(
                 ProfiledObjects['perform_interaction'].listener(period=1)(self.update_stats)
             )
         )
+
+        self._sm = None
 
         # handler = WebLogHandler(websocket)
         # logging.addHandler(handler)
@@ -62,17 +66,23 @@ class WebDataLoader:
     def fade_coeff(cls, fade, value):
         return max(0, (fade - value) / fade)
 
-    async def update_graph(self, sm, state, ret=None):
+    async def update_graph(self, sm, *args, ret=None, **kwargs):
         # update graph representation to be sent over WS
         # * color graph nodes and edges based on last_visit and added
         # * dump a DOT representation of the graph
         # * send over WS
 
+        if not self._sm:
+            if isinstance(sm, StateMachine):
+                self._sm = sm
+            else:
+                return
+
         # first we get a copy so that we can re-assign node and edge attributes
         try:
             # FIXME this is a hack: copying the graph might fail due to
             # concurrent access.
-            G = sm._graph.copy()
+            G = self._sm._graph.copy()
         except Exception:
             return
 
@@ -133,21 +143,21 @@ class WebDataLoader:
 
         G.graph["graph"] = {'rankdir': 'LR'}
         G.graph["node"] = {'style': 'filled'}
-        P = nx.nx_pydot.to_pydot(G)
+        P = await (sync_to_async(owned=False)(nx.nx_pydot.to_pydot)(G))
 
-        dot = str(P)
-        svg = P.create_svg().decode()
+        # dot = str(P)
+        svg = (await (sync_to_async(owned=False)(P.create_svg)())).decode()
         msg = json.dumps({
             'cmd': 'update_graph',
             'items': {
-                'dot': dot,
+                # 'dot': dot,
                 'svg': svg
             }
         })
 
         await self._ws.send(msg)
 
-    async def update_stats(self, interaction, channel, ret=None):
+    async def update_stats(self, *args, ret=None, **kwargs):
         # FIXME this is not thread-safe, and the websocket experience a data race
         stats = {'items': {}}
         for name, obj in ProfiledObjects.items():
