@@ -167,4 +167,5 @@ class X11Channel(ChannelBase):
         return keysdown
 
     def close(self):
-        pass
+        if hasattr(self, '_display') and self._display:
+            self._display.close()
