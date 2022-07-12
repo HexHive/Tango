@@ -1356,8 +1356,8 @@ void G_DoCompleted (void)
 	if (playeringame[i])
 	    G_PlayerFinishLevel (i);        // take away cards and stuff
 
-    if (automapactive)
-	AM_Stop ();
+ //    if (automapactive)
+	// AM_Stop ();
 
     if (gamemode != commercial)
     {

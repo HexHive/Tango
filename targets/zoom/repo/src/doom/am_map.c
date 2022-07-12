@@ -194,7 +194,7 @@ mline_t thintriangle_guy[] = {
 
 
 
-static int 	cheating = 0;
+static int 	cheating = 1;
 static int 	grid = 0;
 
 static int 	leveljuststarted = 1; 	// kluge until AM_LevelInit() is called
@@ -263,7 +263,7 @@ static patch_t *marknums[10]; // numbers used for marking by the automap
 static mpoint_t markpoints[AM_NUMMARKPOINTS]; // where the points are
 static int markpointnum = 0; // next point to be assigned
 
-static int followplayer = 1; // specifies whether to follow the player around
+static int followplayer = 0; // specifies whether to follow the player around
 
 cheatseq_t cheat_amap = CHEAT("iddt", 0);
 
@@ -463,6 +463,7 @@ void AM_initVariables(void)
 
     m_x = plr->mo->x - m_w/2;
     m_y = plr->mo->y - m_h/2;
+
     AM_changeWindowLoc();
 
     // for saving & restoring
@@ -550,6 +551,8 @@ void AM_Stop (void)
     stopped = true;
 }
 
+void AM_minOutWindowScale(void);
+
 //
 //
 //
@@ -562,6 +565,7 @@ void AM_Start (void)
     if (lastlevel != gamemap || lastepisode != gameepisode)
     {
 	AM_LevelInit();
+        AM_minOutWindowScale();
 	lastlevel = gamemap;
 	lastepisode = gameepisode;
     }
@@ -639,37 +643,7 @@ AM_Responder
 	rc = true;
         key = ev->data1;
 
-        if (key == key_map_east)          // pan right
-        {
-            if (!followplayer) m_paninc.x = FTOM(F_PANINC);
-            else rc = false;
-        }
-        else if (key == key_map_west)     // pan left
-        {
-            if (!followplayer) m_paninc.x = -FTOM(F_PANINC);
-            else rc = false;
-        }
-        else if (key == key_map_north)    // pan up
-        {
-            if (!followplayer) m_paninc.y = FTOM(F_PANINC);
-            else rc = false;
-        }
-        else if (key == key_map_south)    // pan down
-        {
-            if (!followplayer) m_paninc.y = -FTOM(F_PANINC);
-            else rc = false;
-        }
-        else if (key == key_map_zoomout)  // zoom out
-        {
-            mtof_zoommul = M_ZOOMOUT;
-            ftom_zoommul = M_ZOOMIN;
-        }
-        else if (key == key_map_zoomin)   // zoom in
-        {
-            mtof_zoommul = M_ZOOMIN;
-            ftom_zoommul = M_ZOOMOUT;
-        }
-        else if (key == key_map_toggle)
+        if (key == key_map_toggle)
         {
             bigstate = 0;
             viewactive = true;
@@ -713,6 +687,41 @@ AM_Responder
         {
             AM_clearMarks();
             plr->message = DEH_String(AMSTR_MARKSCLEARED);
+        }
+        else {
+            return false;
+        }
+        return rc;
+
+        if (key == key_map_east)          // pan right
+        {
+            if (!followplayer) m_paninc.x = FTOM(F_PANINC);
+            else rc = false;
+        }
+        else if (key == key_map_west)     // pan left
+        {
+            if (!followplayer) m_paninc.x = -FTOM(F_PANINC);
+            else rc = false;
+        }
+        else if (key == key_map_north)    // pan up
+        {
+            if (!followplayer) m_paninc.y = FTOM(F_PANINC);
+            else rc = false;
+        }
+        else if (key == key_map_south)    // pan down
+        {
+            if (!followplayer) m_paninc.y = -FTOM(F_PANINC);
+            else rc = false;
+        }
+        else if (key == key_map_zoomout)  // zoom out
+        {
+            mtof_zoommul = M_ZOOMOUT;
+            ftom_zoommul = M_ZOOMIN;
+        }
+        else if (key == key_map_zoomin)   // zoom in
+        {
+            mtof_zoommul = M_ZOOMIN;
+            ftom_zoommul = M_ZOOMOUT;
         }
         else
         {

@@ -431,6 +431,8 @@ boolean D_GrabMouseCallback(void)
 //
 void D_DoomLoop (void)
 {
+    boolean am_init = false;
+
     if (gamevariant == bfgedition &&
         (demorecording || (gameaction == ga_playdemo) || netgame))
     {
@@ -475,6 +477,11 @@ void D_DoomLoop (void)
 	// Update display, next frame, with current state.
         if (screenvisible)
             D_Display ();
+        if (!am_init) {
+            viewactive = false;
+            AM_Start();
+            am_init = true;
+        }
     }
 }
 
