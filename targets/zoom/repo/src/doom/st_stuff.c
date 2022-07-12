@@ -1077,7 +1077,7 @@ void ST_Drawer (boolean fullscreen, boolean refresh)
     st_firsttime = st_firsttime || refresh;
 
     // Do red-/gold-shifts from damage/items
-    ST_doPaletteStuff();
+    // ST_doPaletteStuff();
 
     // If just after ST_Start(), refresh all
     if (st_firsttime) ST_doRefresh();
