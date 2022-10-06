@@ -67,9 +67,10 @@ class StateManager:
             # FIXME update==True is temporary; should not be considered for main
             # Switch to True to force web UI graph update
             if state_or_path is None:
-                await self._loader.load_state(self._tracker.entry_state, self, update=False)
+                current_state = await self._loader.load_state(self._tracker.entry_state, self, update=False)
             else:
-                await self._loader.load_state(state_or_path, self, update=False)
+                current_state = await self._loader.load_state(state_or_path, self, update=False)
+            self._tracker.reset_state(current_state)
             if update:
                 if self._tracker.current_state not in self.state_machine._graph:
                     import pdb; pdb.set_trace()
@@ -104,8 +105,8 @@ class StateManager:
         debug(f"Reloading target state {strategy_target}")
         await self.reset_state(strategy_target)
 
-    def get_context(self, input: InputBase) -> StateManagerContext:
-        return StateManagerContext(self, input)
+    def get_context(self, input: InputBase, update: bool) -> StateManagerContext:
+        return StateManagerContext(self, input, update)
 
     async def step(self, input: InputBase):
         """
@@ -165,6 +166,10 @@ class StateManager:
         """
 
         updated = False
+
+        # update the current state (e.g., if it needs to track interesting cov)
+        self._tracker.update(input_gen)
+
         # WARN the StateBase object returned by the state tracker may have the
         # same hash(), but may be a different object. This means, any
         # modifications made to the state (or new attributes stored) may not
@@ -179,8 +184,7 @@ class StateManager:
                 current_state.state_manager = self
 
             self._strategy.update_state(current_state, is_new=new_state)
-            # update the current state (e.g., if it needs to track interesting cov)
-            self._tracker.update(self._last_state, current_state, input_gen)
+
             debug(f"Updated {'new ' if new_state else ''}{current_state = }")
 
             if current_state != self._last_state:
@@ -363,10 +367,11 @@ class StateManagerContext:
     and the second part continues to build up state for any following
     transition.
     """
-    def __init__(self, sman: StateManager, input: InputBase):
+    def __init__(self, sman: StateManager, input: InputBase, update: bool):
         self._sman = sman
         self._input = input
         self._start = self._stop = None
+        self._update = update
 
     def input_gen(self):
         # we delay the call to the slicing decorator until needed
@@ -381,7 +386,8 @@ class StateManagerContext:
             # the generator execution is suspended until next() is called so
             # the StateManager update is only called after the interaction
             # is executed by the loader
-            if await self._sman.update(self.input_gen):
+            self._sman._tracker.update(self.input_gen)
+            if self._update and await self._sman.update(self.input_gen):
                 self._start = idx + 1
             # FIXME The state manager interrupts the target to verify individual
             # transitions. To verify a transition, the last state is loaded, and

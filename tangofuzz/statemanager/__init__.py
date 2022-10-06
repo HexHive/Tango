@@ -12,6 +12,7 @@ from .strategy.UniformStrategy      import UniformStrategy
 from .StateTrackerBase              import StateTrackerBase
 from .coverage.CoverageState        import CoverageState
 from .coverage.CoverageReader       import CoverageReader
+from .coverage.GlobalCoverage       import GlobalCoverage
 from .coverage.CoverageStateTracker import CoverageStateTracker
 from .grammar.GrammarState          import GrammarState
 

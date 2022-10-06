@@ -3,6 +3,7 @@ from loader       import StateLoaderBase
 from statemanager import (StateBase,
                          StateTrackerBase,
                          CoverageState,
+                         GlobalCoverage,
                          CoverageReader)
 from input        import InputBase
 from generator    import InputGeneratorBase
@@ -28,9 +29,14 @@ class CoverageStateTracker(StateTrackerBase):
         self = cls(*args, **kwargs)
         await self._loader.load_state(None, None)
         self._reader = CoverageReader(self._shm_name)
-        self._entry_state = CoverageState(self._reader.array,
-            self._reader.address_of_buffer(self._reader._map),
-            bind_lib=self._bind_lib)
+
+        # initialize a global coverage map
+        self._global = GlobalCoverage(self._reader.length)
+
+        self._current_state = None
+        self.update(None, None)
+        self._entry_state = self._current_state
+
         return self
 
     @property
@@ -39,16 +45,24 @@ class CoverageStateTracker(StateTrackerBase):
 
     @property
     def current_state(self) -> CoverageState:
-        return CoverageState(self._reader.array,
-            self._reader.address_of_buffer(self._reader._map),
-            bind_lib=self._bind_lib)
+        return self._current_state
 
-    def update(self, prev: StateBase, new: StateBase,
-            input_gen: Callable[..., InputBase]):
-        super().update(prev, new, input_gen)
+    def update(self, input_gen: Callable[..., InputBase]):
+        super().update(input_gen)
+
+        prev = self._current_state
+
+        coverage_map = self._reader.array
+        set_list, clr_list = self._global.update(coverage_map)
+        if set_list or clr_list:
+            self._current_state = CoverageState(self._current_state, set_list, clr_list)
+
+        new = self._current_state
         # we maintain _a_ path to each new state we encounter so that
         # reproducing the state is more path-aware and does not invoke a graph
         # search every time
         if prev != new and new.predecessor_transition is None:
             new.predecessor_transition = (prev, input_gen())
-        # TODO update other stuffz
+
+    def reset_state(self, state: StateBase):
+        self._current_state = state

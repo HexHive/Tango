@@ -36,7 +36,7 @@ class StateLoaderBase(ABC):
             personality(ADDR_NO_RANDOMIZE)
 
     @abstractmethod
-    async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, update: bool):
+    async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, update: bool) -> StateBase:
         pass
 
     @property

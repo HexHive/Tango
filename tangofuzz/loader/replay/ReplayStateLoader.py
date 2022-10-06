@@ -80,7 +80,7 @@ class ReplayStateLoader(StateLoaderBase):
     def channel(self):
         return self._channel
 
-    def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, update: bool = True):
+    def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, update: bool = True) -> StateBase:
         if state_or_path is None or sman is None:
             # special case where the state tracker wants an initial state
             path_gen = ((),)
@@ -141,7 +141,7 @@ class ReplayStateLoader(StateLoaderBase):
                         # path
                         # FIXME this should all probably be in the loader
                         sman._current_path[:] = list(cached_path)
-                    break
+                    return destination
                 except StabilityException as ex:
                     warning(f"Failed to follow unstable path (reason = {ex.args[0]})! Retrying... ({paths_tried = })")
                     ProfileCount('paths_failed')(1)

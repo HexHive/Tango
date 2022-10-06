@@ -31,14 +31,19 @@ class StateTrackerBase(ABC):
         pass
 
     @abstractmethod
-    def update(self, prev: StateBase, new: StateBase,
-            input_gen: Callable[..., InputBase]):
+    def update(self, input_gen: Callable[..., InputBase]):
+        pass
+
+    def reset_state(self, state: StateBase):
+        """
+        Informs the state tracker that the loader has reset the target into a
+        state.
+        """
         pass
 
     @property
     def state_manager(self):
         return self._sman
-
 
     @state_manager.setter
     def state_manager(self, sman):

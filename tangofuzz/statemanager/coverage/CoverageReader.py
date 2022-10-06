@@ -29,17 +29,17 @@ class CoverageReader:
         _size = ctypes.sizeof(_type)
         # FIXME this is prone to race conditions when launching multiple fuzzers
         _mem, _map = self.init_array("/refuzz_size", _type, _size, False, False)
-        _size = _type.from_address(self.address_of_buffer(_map)).value
+        self._length = _type.from_address(self.address_of_buffer(_map)).value
         _map.close()
         _mem.unlink()
 
-        info(f"Obtained coverage map {_size=}")
+        info(f"Obtained coverage map {self._length=}")
 
         assert frozenset(tag[1:]).issubset(self.valid_chars)
         if tag[0] != "/":
             tag = "/%s" % (tag,)
 
-        _type = self.typecode_to_type['B'] * _size
+        _type = self.typecode_to_type['B'] * self._length
         _size = ctypes.sizeof(_type)
 
         self._mem, self._map = self.init_array(tag, _type, _size, create, force)
@@ -71,6 +71,10 @@ class CoverageReader:
     @property
     def array(self):
         return self._array
+
+    @property
+    def length(self):
+        return self._length
 
     @property
     def address(self):
