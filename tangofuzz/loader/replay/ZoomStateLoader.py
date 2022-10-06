@@ -205,7 +205,7 @@ class ZoomStateLoader(StateLoaderBase):
         source_state = source_state or sman._tracker.current_state
         return cycle(live_path_gen_corrector(source_state, destination_state, set()))
 
-    async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, update: bool = True):
+    async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, dryrun: bool=False):
         already_loading = self._loading
         try:
             self._loading = True
@@ -233,7 +233,7 @@ class ZoomStateLoader(StateLoaderBase):
                 #         path_gen = self.live_path_gen(state_or_path[-1][1], sman)
                 #         state_or_path = None
                 #         state = None
-                if update:
+                if not dryrun:
                     sman._last_state = initial_state
             else:
                 await self._launch_target()
@@ -265,7 +265,7 @@ class ZoomStateLoader(StateLoaderBase):
                 for path in path_gen:
                     if sman is not None and not exhaustive:
                         try:
-                            await self.load_state(initial_state, sman, update)
+                            await self.load_state(initial_state, sman, dryrun=dryrun)
                         except asyncio.CancelledError:
                             # see comment in sman.reset_state
                             if sman._tracker.current_state not in sman.state_machine._graph:
@@ -276,7 +276,7 @@ class ZoomStateLoader(StateLoaderBase):
                             exhaustive = True
                             continue
 
-                    if sman is not None and update:
+                    if sman is not None and not dryrun:
                         # FIXME should this be done here? (see comment in StateManager.reset_state)
                         sman._last_state = initial_state
 
@@ -314,7 +314,7 @@ class ZoomStateLoader(StateLoaderBase):
                             faulty_state = destination
                             # perform the follow interaction
                             inp = ZoomInput((interaction,))
-                            await self.execute_input(inp, sman, update=update)
+                            await self.execute_input(inp, sman, dryrun=dryrun)
                             # check if destination matches the current state
                             if destination != (current_state := sman.state_tracker.current_state):
                                 raise StabilityException(
@@ -358,10 +358,10 @@ class ZoomStateLoader(StateLoaderBase):
                 self._loading = False
 
 
-    async def execute_input(self, input: InputBase, sman: StateManager, update: bool = True):
+    async def execute_input(self, input: InputBase, sman: StateManager, dryrun: bool=False):
         if not hasattr(asyncio.get_running_loop(), '_executing_tasks'):
             asyncio.get_running_loop()._executing_tasks = list()
 
         asyncio.get_running_loop()._executing_tasks.append(asyncio.current_task())
-        await super().execute_input(input, sman, update)
+        await super().execute_input(input, sman, dryrun=dryrun)
         assert asyncio.get_running_loop()._executing_tasks.pop() == asyncio.current_task()

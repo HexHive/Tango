@@ -40,7 +40,7 @@ class GoToInteraction(InteractionBase):
         return result
 
     async def perform_internal(self, channel: X11Channel):
-        await self._state._sman._loader.load_state(self._target_state, self._state._sman, update=False)
+        await self._state._sman._loader.load_state(self._target_state, self._state._sman, dryrun=True)
         await ReachInteraction(self._state, self._target, self._stop, self._tol).perform(channel)
 
     def mutate(self, mutator, entropy):

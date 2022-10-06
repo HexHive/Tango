@@ -46,11 +46,11 @@ class StateManager:
         self._current_path.clear()
 
     @ProfileFrequency('resets')
-    async def reset_state(self, state_or_path=None, update=True):
-        if update:
+    async def reset_state(self, state_or_path=None, dryrun=False):
+        if not dryrun:
             ProfileValue('status')('reset_state')
             self._reset_current_path()
-        if self._last_state and update:
+        if self._last_state and not dryrun:
             # must clear last state's input whenever a new state is loaded
             # WARN if using SnapshotStateLoader, the snapshot must be taken when
             # the state is first reached, not when a transition is about to
@@ -67,11 +67,11 @@ class StateManager:
             # FIXME update==True is temporary; should not be considered for main
             # Switch to True to force web UI graph update
             if state_or_path is None:
-                current_state = await self._loader.load_state(self._tracker.entry_state, self, update=False)
+                current_state = await self._loader.load_state(self._tracker.entry_state, self, dryrun=True)
             else:
-                current_state = await self._loader.load_state(state_or_path, self, update=False)
+                current_state = await self._loader.load_state(state_or_path, self, dryrun=True)
             self._tracker.reset_state(current_state)
-            if update:
+            if not dryrun:
                 if self._tracker.current_state not in self.state_machine._graph:
                     import pdb; pdb.set_trace()
                 self._last_state = self._tracker.current_state
@@ -82,13 +82,13 @@ class StateManager:
             # exception. Instead, at the next input step, a transition is
             # "discovered" between the last state and the new state, which is
             # wrong
-            if update:
+            if not dryrun:
                 if self._tracker.current_state not in self.state_machine._graph:
                     import pdb; pdb.set_trace()
                 self._last_state = self._tracker.current_state
             raise
         except StateNotReproducibleException as ex:
-            if update:
+            if not dryrun:
                 faulty_state = ex._faulty_state
                 if faulty_state != self._tracker.entry_state:
                     try:
@@ -105,8 +105,8 @@ class StateManager:
         debug(f"Reloading target state {strategy_target}")
         await self.reset_state(strategy_target)
 
-    def get_context(self, input: InputBase, update: bool) -> StateManagerContext:
-        return StateManagerContext(self, input, update)
+    def get_context(self, input: InputBase, dryrun: bool) -> StateManagerContext:
+        return StateManagerContext(self, input, dryrun)
 
     async def step(self, input: InputBase):
         """
@@ -151,7 +151,7 @@ class StateManager:
                 self._strategy.update_state(self._strategy.target_state, invalidate=True)
                 raise
 
-        await self._loader.execute_input(input, self, update=True)
+        await self._loader.execute_input(input, self, dryrun=False)
 
     async def update(self, input_gen: Callable[..., InputBase]) -> bool:
         """
@@ -210,8 +210,8 @@ class StateManager:
                         # modify it, but at this stage, we may want to restore state
                         # using that path
                         self._last_path = self._current_path.copy()
-                        await self.reset_state(self._last_state, update=False)
-                        await self._loader.execute_input(last_input, self, update=False)
+                        await self.reset_state(self._last_state, dryrun=True)
+                        await self._loader.execute_input(last_input, self, dryrun=True)
                         assert current_state == self._tracker.current_state
                         debug(f"{current_state} is reproducible")
                     except AssertionError:
@@ -233,9 +233,9 @@ class StateManager:
 
                         debug(f"Reloading last state ({self._last_state})")
                         self._current_path[:] = self._last_path
-                        await self.reset_state(self._current_path, update=False)
+                        await self.reset_state(self._current_path, dryrun=True)
                         if self._last_state.last_input is not None:
-                            await self._loader.execute_input(self._last_state.last_input, self, update=False)
+                            await self._loader.execute_input(self._last_state.last_input, self, dryrun=True)
                         ProfileCount('imprecise')(1)
                         # WARN we set update to be True, despite no change in state,
                         # to force the StateManagerContext object to trim the
@@ -304,10 +304,10 @@ class StateManager:
         # is done in phase 2 anyway
         while begin > end // 2:
             success = True
-            await self.reset_state(src, update=False)
+            await self.reset_state(src, dryrun=True)
             exp_input = input[begin:]
             try:
-                await self._loader.execute_input(exp_input, self, update=False)
+                await self._loader.execute_input(exp_input, self, dryrun=True)
             except Exception:
                 success = False
 
@@ -329,10 +329,10 @@ class StateManager:
             cur = 0
             while cur + step < end:
                 success = True
-                await self.reset_state(src, update=False)
+                await self.reset_state(src, dryrun=True)
                 tmp_lin_input = lin_input[:cur] + lin_input[cur + step:]
                 try:
-                    await self._loader.execute_input(tmp_lin_input, self, update=False)
+                    await self._loader.execute_input(tmp_lin_input, self, dryrun=True)
                 except Exception:
                     success = False
 
@@ -346,8 +346,8 @@ class StateManager:
             step //= 2
 
         # Phase 3: make sure the reduced transition is correct
-        await self.reset_state(src, update=False)
-        await self._loader.execute_input(lin_input, self, update=False)
+        await self.reset_state(src, dryrun=True)
+        await self._loader.execute_input(lin_input, self, dryrun=True)
         try:
             assert dst == self._tracker.current_state
         except AssertionError:
@@ -367,11 +367,11 @@ class StateManagerContext:
     and the second part continues to build up state for any following
     transition.
     """
-    def __init__(self, sman: StateManager, input: InputBase, update: bool):
+    def __init__(self, sman: StateManager, input: InputBase, dryrun: bool):
         self._sman = sman
         self._input = input
         self._start = self._stop = None
-        self._update = update
+        self._dryrun = dryrun
 
     def input_gen(self):
         # we delay the call to the slicing decorator until needed

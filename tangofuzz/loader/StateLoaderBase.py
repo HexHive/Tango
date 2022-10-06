@@ -36,7 +36,7 @@ class StateLoaderBase(ABC):
             personality(ADDR_NO_RANDOMIZE)
 
     @abstractmethod
-    async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, update: bool) -> StateBase:
+    async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, dryrun: bool) -> StateBase:
         pass
 
     @property
@@ -46,7 +46,7 @@ class StateLoaderBase(ABC):
 
     @ProfileEvent("execute_input")
     @ProfileFrequency("execs")
-    async def execute_input(self, input: InputBase, sman: StateManager, update: bool = True):
+    async def execute_input(self, input: InputBase, sman: StateManager, dryrun: bool=False):
         """
         Executes the sequence of interactions specified by the input.
 
@@ -56,7 +56,7 @@ class StateLoaderBase(ABC):
         :raises:    LoadedException: Forwards the exception that was raised
                     during execution, along with the input that caused it.
         """
-        if update:
+        if not dryrun:
             with sman.get_context(input) as ctx:
                 try:
                     idx = -1

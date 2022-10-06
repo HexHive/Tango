@@ -80,7 +80,7 @@ class ReplayStateLoader(StateLoaderBase):
     def channel(self):
         return self._channel
 
-    def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, update: bool = True) -> StateBase:
+    def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, dryrun: bool=False) -> StateBase:
         if state_or_path is None or sman is None:
             # special case where the state tracker wants an initial state
             path_gen = ((),)
@@ -109,9 +109,9 @@ class ReplayStateLoader(StateLoaderBase):
                 self._launch_target()
 
                 ## Send startup input
-                self.execute_input(self._generator.startup_input, None, update=False)
+                self.execute_input(self._generator.startup_input, None, dryrun=True)
 
-                if sman is not None and update:
+                if sman is not None and not dryrun:
                     # FIXME should this be done here? (see comment in StateManager.reset_state)
                     sman._last_state = sman._tracker.entry_state
 
@@ -127,7 +127,7 @@ class ReplayStateLoader(StateLoaderBase):
                                 f"source state ({source}) did not match current state ({sman.state_tracker.current_state})"
                             )
                         # perform the input
-                        self.execute_input(input, sman, update=update)
+                        self.execute_input(input, sman, dryrun=dryrun)
                         # check if destination matches the current state
                         if destination != sman.state_tracker.current_state:
                             faulty_state = destination
