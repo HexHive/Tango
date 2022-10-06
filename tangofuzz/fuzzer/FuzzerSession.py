@@ -116,12 +116,6 @@ class FuzzerSession:
                     except asyncio.CancelledError as ex:
                         # the input generator cancelled an execution
                         warning("Received interrupt, continuing!")
-                        if ex.args and ex.args[0] == "finished":
-                            warning("Level finished! Restarting :D")
-                            await asyncio.sleep(10)
-                            await self._sman._loader._launch_target()
-                            self._sman._strategy._seek.clear()
-                            self._sman._last_state = self._sman._tracker.entry_state
                         continue
                     except Exception as ex:
                         import ipdb; ipdb.set_trace()

@@ -4,13 +4,12 @@ from loader       import Environment
 from networkio    import (TCPChannelFactory,
                          TCPForkChannelFactory,
                          UDPChannelFactory,
-                         UDPForkChannelFactory,
-                         X11ChannelFactory)
-from loader       import ReplayStateLoader, ReplayForkStateLoader, ZoomStateLoader
-from statemanager import (CoverageStateTracker, ZoomStateTracker,
+                         UDPForkChannelFactory)
+from loader       import ReplayStateLoader, ReplayForkStateLoader
+from statemanager import (CoverageStateTracker,
                          StateManager,
-                         RandomStrategy, UniformStrategy, ZoomStrategy)
-from generator    import RandomInputGenerator, ZoomInputGenerator
+                         RandomStrategy, UniformStrategy)
+from generator    import RandomInputGenerator
 from random       import Random
 import json
 import os
@@ -54,20 +53,20 @@ class FuzzerConfig:
             ...
         },
         "loader": {
-            "type": "<replay | snapshot | zoom | ...>",
+            "type": "<replay | snapshot | ...>",
             "forkserver": <true | false>,
             "disable_aslr": <true | false>,
             ...
         },
         "input": {
-            "type": "<mutation | generation | zoom | ...>",
+            "type": "<mutation | generation | ...>",
             "spec": "/path/to/spec",
             "startup": "/path/to/pcap",
             ...
         },
         "statemanager": {
-            "type": "<coverage | grammar | hybrid | zoom | ...>",
-            "strategy": "<random | uniform | zoom | ...>",
+            "type": "<coverage | grammar | hybrid | ...>",
+            "strategy": "<random | uniform | ...>",
             "validate_transitions": <true | false>,
             "minimize_transitions": <true | false>,
             ...
@@ -140,10 +139,6 @@ class FuzzerConfig:
             elif _config["type"] == "udp":
                 return UDPChannelFactory(**_config["udp"], \
                     timescale=await self.timescale)
-            elif _config["type"] == "x11":
-                async def struct_fn():
-                    return (await self.state_tracker)._reader.struct
-                return X11ChannelFactory(struct_fn=struct_fn)
             else:
                 raise NotImplemented()
         else:
@@ -169,9 +164,6 @@ class FuzzerConfig:
             else:
                 return ReplayForkStateLoader(await self.exec_env, await self.ch_env,
                     await self.input_generator, await self.disable_aslr)
-        elif _config["type"] == "zoom":
-            return ZoomStateLoader(await self.exec_env, await self.ch_env,
-                    await self.input_generator, await self.disable_aslr)
         else:
             raise NotImplemented()
 
@@ -182,8 +174,6 @@ class FuzzerConfig:
         if state_type == "coverage":
             return await CoverageStateTracker.create(await self.input_generator, await self.loader,
                 bind_lib=self._bind_lib)
-        elif state_type == "zoom":
-            return await ZoomStateTracker.create(await self.input_generator, await self.loader)
         else:
             raise NotImplemented()
 
@@ -193,8 +183,6 @@ class FuzzerConfig:
         input_type = _config.get("type", "mutation")
         if input_type == "mutation":
             return RandomInputGenerator(await self.startup_pcap, await self.seed_dir, await self.protocol)
-        elif input_type == "zoom":
-            return ZoomInputGenerator(await self.startup_pcap, await self.seed_dir, await self.protocol)
         else:
             raise NotImplemented()
 
@@ -212,8 +200,6 @@ class FuzzerConfig:
             return lambda a, b: RandomStrategy(sm=a, entry_state=b, entropy=entropy)
         elif strategy_name == "uniform":
             return lambda a, b: UniformStrategy(sm=a, entry_state=b, entropy=entropy)
-        elif strategy_name == "zoom":
-            return lambda a, b: ZoomStrategy(sm=a, entry_state=b, entropy=entropy)
         else:
             raise NotImplemented()
 

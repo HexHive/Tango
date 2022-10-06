@@ -7,13 +7,3 @@ from .InteractionBase     import InteractionBase
 from .DelayInteraction    import DelayInteraction
 from .ReceiveInteraction  import ReceiveInteraction
 from .TransmitInteraction import TransmitInteraction
-from .MoveInteraction     import MoveInteraction
-from .ShootInteraction    import ShootInteraction
-from .ActivateInteraction import ActivateInteraction
-from .ResetKeysInteraction import ResetKeysInteraction
-from .RespawnInteraction  import RespawnInteraction
-
-from .RotateInteraction import RotateInteraction
-from .ReachInteraction  import ReachInteraction
-from .GoToInteraction   import GoToInteraction
-from .KillInteraction   import KillInteraction
