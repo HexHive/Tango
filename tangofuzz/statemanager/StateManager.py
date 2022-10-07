@@ -3,16 +3,13 @@ from . import debug, info, warning, critical
 
 from common import StabilityException, StateNotReproducibleException
 from typing import Callable
-from statemanager import (StateBase,
-                         StateMachine,
-                         StateTrackerBase,
-                         StrategyBase)
+from statemanager import StateMachine
+from statemanager.strategy import StrategyBase
+from tracker import StateBase, StateTrackerBase
 from input        import InputBase, MemoryCachingDecorator, FileCachingDecorator
-from loader       import StateLoaderBase
+from loader       import StateLoaderBase # FIXME there seems to be a cyclic dep
 from profiler     import ProfileValue, ProfileFrequency, ProfileCount
 import asyncio
-
-from interaction import ReachInteraction
 
 class StateManager:
     def __init__(self, loader: StateLoaderBase, tracker: StateTrackerBase,
@@ -67,10 +64,9 @@ class StateManager:
             # FIXME update==True is temporary; should not be considered for main
             # Switch to True to force web UI graph update
             if state_or_path is None:
-                current_state = await self._loader.load_state(self._tracker.entry_state, self, dryrun=True)
+                current_state = await self._loader.load_state(self._tracker.entry_state, self, dryrun=dryrun)
             else:
-                current_state = await self._loader.load_state(state_or_path, self, dryrun=True)
-            self._tracker.reset_state(current_state)
+                current_state = await self._loader.load_state(state_or_path, self, dryrun=dryrun)
             if not dryrun:
                 if self._tracker.current_state not in self.state_machine._graph:
                     import pdb; pdb.set_trace()
@@ -167,9 +163,6 @@ class StateManager:
 
         updated = False
 
-        # update the current state (e.g., if it needs to track interesting cov)
-        self._tracker.update(input_gen)
-
         # WARN the StateBase object returned by the state tracker may have the
         # same hash(), but may be a different object. This means, any
         # modifications made to the state (or new attributes stored) may not
@@ -189,12 +182,6 @@ class StateManager:
 
             if current_state != self._last_state:
                 debug(f"Possible transition from {self._last_state} to {current_state}")
-
-                if ReachInteraction.l2_distance(
-                    (self._last_state._struct.player_location.x, self._last_state._struct.player_location.y),
-                    (current_state._struct.player_location.x, current_state._struct.player_location.y)) > 2000000:
-                    # import ipdb; ipdb.set_trace()
-                    pass
 
                 if self._last_state.last_input is not None:
                     last_input = self._last_state.last_input + input_gen()
@@ -295,6 +282,7 @@ class StateManager:
 
     async def _minimize_transition(self, src: StateBase, dst: StateBase, input: InputBase):
         reduced = False
+        next_state = lambda s, d: self.state_tracker.update(s, d, None, dryrun=True)
 
         # Phase 1: perform exponential back-off to find effective tail of input
         ProfileValue('status')('minimize_exp_backoff')
@@ -311,7 +299,7 @@ class StateManager:
             except Exception:
                 success = False
 
-            success &= dst == self._tracker.current_state
+            success &= dst == next_state(src, dst)
             if success:
                 reduced = True
                 break
@@ -336,7 +324,7 @@ class StateManager:
                 except Exception:
                     success = False
 
-                success &= dst == self._tracker.current_state
+                success &= dst == next_state(src, dst)
                 if success:
                     reduced = True
                     lin_input = MemoryCachingDecorator()(tmp_lin_input, copy=False)
@@ -349,7 +337,7 @@ class StateManager:
         await self.reset_state(src, dryrun=True)
         await self._loader.execute_input(lin_input, self, dryrun=True)
         try:
-            assert dst == self._tracker.current_state
+            assert dst == next_state(src, dst)
         except AssertionError:
             raise StabilityException("destination state did not match current state")
 
@@ -386,9 +374,14 @@ class StateManagerContext:
             # the generator execution is suspended until next() is called so
             # the StateManager update is only called after the interaction
             # is executed by the loader
-            self._sman._tracker.update(self.input_gen)
-            if self._update and await self._sman.update(self.input_gen):
-                self._start = idx + 1
+
+            if not self._dryrun:
+                # update the current state (e.g., if it needs to track interesting cov)
+                self._sman._tracker.update(
+                    self._sman._tracker.current_state,
+                    None, self.input_gen)
+                if await self._sman.update(self.input_gen):
+                    self._start = idx + 1
             # FIXME The state manager interrupts the target to verify individual
             # transitions. To verify a transition, the last state is loaded, and
             # the last input which observed a new state is replayed. However,

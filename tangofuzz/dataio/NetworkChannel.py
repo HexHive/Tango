@@ -1,4 +1,4 @@
-from networkio import ChannelBase, ChannelFactoryBase
+from dataio import ChannelBase, ChannelFactoryBase
 from   subprocess  import Popen
 from   dataclasses import dataclass
 from pyroute2.netns import setns

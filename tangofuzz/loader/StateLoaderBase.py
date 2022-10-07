@@ -2,38 +2,30 @@ from . import critical, debug
 from abc          import ABC, abstractmethod
 from typing       import Union
 from common       import LoadedException, ChannelBrokenException, async_enumerate
-from loader       import Environment
-from networkio    import (ChannelFactoryBase,
-                         ChannelBase)
-from input        import (InputBase,
-                         PreparedInput)
+from dataio    import ChannelFactoryBase
+from input        import InputBase
 from generator    import InputGeneratorBase
-from statemanager import (StateBase,
-                         StateManager)
-from interaction  import ReceiveInteraction
+from statemanager import StateManager # FIXME there seems to be a cyclic dep
+from tracker import StateBase, StateTrackerBase
 from profiler import ProfileFrequency, ProfileValueMean, ProfileEvent, ProfileCount
-import ctypes
-import asyncio
-
-from ptrace import PtraceError
 
 class StateLoaderBase(ABC):
     """
     The state loader maintains a running process and provides the capability of
     switching program states.
     """
-    def __init__(self, exec_env: Environment, ch_env: ChannelFactoryBase,
-            input_generator: InputGeneratorBase, no_aslr: bool):
-        self._exec_env = exec_env
+    def __init__(self, ch_env: ChannelFactoryBase, input_generator: InputGeneratorBase):
         self._ch_env = ch_env
         self._generator = input_generator
+        self._tracker = None
 
-        if no_aslr:
-            ADDR_NO_RANDOMIZE = 0x0040000
-            personality = ctypes.CDLL(None).personality
-            personality.restype = ctypes.c_int
-            personality.argtypes = [ctypes.c_ulong]
-            personality(ADDR_NO_RANDOMIZE)
+    @property
+    def state_tracker(self):
+        return self._tracker
+
+    @state_tracker.setter
+    def state_tracker(self, value: StateTrackerBase):
+        self._tracker = value
 
     @abstractmethod
     async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, dryrun: bool) -> StateBase:
@@ -57,12 +49,11 @@ class StateLoaderBase(ABC):
                     during execution, along with the input that caused it.
         """
         if not dryrun:
-            with sman.get_context(input) as ctx:
+            with sman.get_context(input, dryrun=False) as ctx:
                 try:
                     idx = -1
                     async for idx, interaction in async_enumerate(ctx):
                         # FIXME figure out what other parameters this needs
-                        debug(interaction)
                         await interaction.perform(self.channel)
                         # TODO perform fault detection
                     else:
@@ -74,7 +65,6 @@ class StateLoaderBase(ABC):
             idx = -1
             for idx, interaction in enumerate(input):
                 try:
-                    debug(interaction)
                     await interaction.perform(self.channel)
                 except Exception as ex:
                     raise LoadedException(ex, input[:idx + 1])

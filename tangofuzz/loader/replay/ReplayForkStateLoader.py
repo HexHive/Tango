@@ -1,7 +1,9 @@
 from loader       import ReplayStateLoader
+from common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
 import subprocess
 
 class ReplayForkStateLoader(ReplayStateLoader):
+    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
     def _launch_target(self):
         if not self._pobj:
             ## Launch new process

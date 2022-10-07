@@ -20,4 +20,6 @@ from .AsyncIO import (async_property,
                      # wrappers:
                      sync_to_async,
                      async_suspendable,
-                     Suspendable)
+                     Suspendable,
+                     # singleton
+                     GLOBAL_ASYNC_EXECUTOR)

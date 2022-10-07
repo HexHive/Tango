@@ -1,4 +1,5 @@
-import os, sys
+import os
+import sys
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 
 from common import ColoredLogger
@@ -9,7 +10,7 @@ logging.setLoggerClass(ColoredLogger)
 root_logger = ColoredLogger()
 
 import common, fuzzer, generator, input, interaction, loader, mutator, \
-       networkio, profiler, ptrace, statemanager, tests
+       dataio, profiler, ptrace, statemanager, tests
 
 import atexit
 from profiler import ProfilingStoppedEvent

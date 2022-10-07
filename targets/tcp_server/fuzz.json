@@ -28,6 +28,6 @@
 	},
 	"fuzzer": {
 		"lib": "./lib",
-		"workdir": "./workdir",
+		"workdir": "./workdir"
 	}
 }

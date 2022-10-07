@@ -9,16 +9,16 @@ class ProfileValueMean(ProfileValue):
             self._maxlen = samples
             if self._maxlen > 0:
                 self._samples = deque(maxlen=self._maxlen)
-                self.___call___ = self.___call_lastn___
+                self.___call_internal___ = self.___call_lastn___
                 self._calculate = lambda: mean(self._samples) if self._samples else None
             else:
                 self._count = 0
                 self._sum = 0
-                self.___call___ = self.___call_total___
+                self.___call_internal___ = self.___call_total___
                 self._calculate = lambda: self._sum / self._count if self._count != 0 else None
 
-    def __call__(self, obj):
-        return self.___call___(obj)
+    def ___call___(self, obj):
+        return self.___call_internal___(obj)
 
     def ___call_total___(self, obj):
         self._sum += obj

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from interaction import InteractionBase
-from networkio   import ChannelBase
+from dataio   import ChannelBase
 from typing      import ByteString
 
 class ReceiveInteraction(InteractionBase):

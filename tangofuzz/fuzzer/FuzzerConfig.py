@@ -1,14 +1,14 @@
 # from functools    import cached_property
 from common       import async_cached_property as cached_property
 from loader       import Environment
-from networkio    import (TCPChannelFactory,
+from dataio    import (TCPChannelFactory,
                          TCPForkChannelFactory,
                          UDPChannelFactory,
                          UDPForkChannelFactory)
 from loader       import ReplayStateLoader, ReplayForkStateLoader
-from statemanager import (CoverageStateTracker,
-                         StateManager,
-                         RandomStrategy, UniformStrategy)
+from statemanager import StateManager
+from statemanager.strategy import RandomStrategy, UniformStrategy
+from tracker.coverage import CoverageStateTracker
 from generator    import RandomInputGenerator
 from random       import Random
 import json
@@ -159,11 +159,15 @@ class FuzzerConfig:
         _config = self._config["loader"]
         if _config["type"] == "replay":
             if not await self.use_forkserver:
-                return ReplayStateLoader(await self.exec_env, await self.ch_env,
-                    await self.input_generator, await self.disable_aslr)
+                kls = ReplayStateLoader
             else:
-                return ReplayForkStateLoader(await self.exec_env, await self.ch_env,
-                    await self.input_generator, await self.disable_aslr)
+                kls = ReplayForkStateLoader
+            return kls(
+                ch_env=await self.ch_env,
+                input_generator=await self.input_generator,
+                exec_env=await self.exec_env,
+                no_aslr=await self.disable_aslr
+            )
         else:
             raise NotImplemented()
 
@@ -171,11 +175,19 @@ class FuzzerConfig:
     async def state_tracker(self):
         _config = self._config["statemanager"]
         state_type = _config.get("type", "coverage")
+        loader = await self.loader
+
         if state_type == "coverage":
-            return await CoverageStateTracker.create(await self.input_generator, await self.loader,
-                bind_lib=self._bind_lib)
+            tracker = await CoverageStateTracker.create(
+                loader=loader,
+                bind_lib=self._bind_lib
+            )
         else:
             raise NotImplemented()
+
+        # IMPORTANT must set the loader's state_tracker property to the tracker
+        loader.state_tracker = tracker
+        return tracker
 
     @cached_property
     async def input_generator(self):

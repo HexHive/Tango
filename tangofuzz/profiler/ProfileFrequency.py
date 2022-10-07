@@ -8,8 +8,8 @@ class ProfileFrequency(PeriodicProfiler):
             self._counter = 0
             self._frequency = None
 
-    def __call__(self, obj):
-        obj = super().__call__(obj)
+    def ___call___(self, obj):
+        obj = super().___call___(obj)
         def func(*args, **kwargs):
             self._counter += 1
             return obj(*args, **kwargs)

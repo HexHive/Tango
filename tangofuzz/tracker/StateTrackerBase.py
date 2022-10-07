@@ -1,15 +1,10 @@
 from abc          import ABC, abstractmethod
 from typing       import Callable
-from statemanager import StateBase
+from tracker import StateBase
 from input        import InputBase
-from generator    import InputGeneratorBase
+from loader       import StateLoaderBase
 
 class StateTrackerBase(ABC):
-    def __init__(self, generator: InputGeneratorBase):
-        # a state tracker might need the generator for a training phase
-        # FIXME maybe make this specific to the state tracker that needs it?
-        self._generator = generator
-
     @abstractmethod
     async def create(self, *args, **kwargs):
         pass
@@ -31,7 +26,7 @@ class StateTrackerBase(ABC):
         pass
 
     @abstractmethod
-    def update(self, input_gen: Callable[..., InputBase]):
+    def update(self, source: StateBase, destination: StateBase, input_gen: Callable[..., InputBase], dryrun: bool=False) -> StateBase:
         pass
 
     def reset_state(self, state: StateBase):

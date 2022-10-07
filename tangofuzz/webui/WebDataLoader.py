@@ -33,10 +33,10 @@ class WebDataLoader:
         self._fade = last_update_fade_out
 
         self.tasks = []
-        # self.tasks.append(asyncio.create_task(
-        #         ProfiledObjects['update_state'].listener(period=0.1)(self.update_graph)
-        #     )
-        # )
+        self.tasks.append(asyncio.create_task(
+                ProfiledObjects['update_state'].listener(period=0.1)(self.update_graph)
+            )
+        )
         self.tasks.append(asyncio.create_task(
                 ProfiledObjects['perform_interaction'].listener(period=1)(self.update_stats)
             )

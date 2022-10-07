@@ -1,7 +1,7 @@
 from . import debug, info
 
 from typing import ByteString
-from networkio import ChannelBase, PtraceChannel, TransportChannelFactory
+from dataio import ChannelBase, PtraceChannel, TransportChannelFactory
 from   common      import (ChannelBrokenException,
                           ChannelSetupException)
 from subprocess import Popen
@@ -13,6 +13,7 @@ import threading
 from dataclasses import dataclass
 from functools import partial
 from ptrace import PtraceError
+from common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
 
 @dataclass
 class TCPChannelFactory(TransportChannelFactory):
@@ -106,6 +107,7 @@ class TCPChannel(PtraceChannel):
             break_on_entry=True, timeout=self._data_timeout)
         del self._poll_server_waiting
 
+    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
     def send(self, data: ByteString) -> int:
         sent = 0
         while sent < len(data):
@@ -133,6 +135,7 @@ class TCPChannel(PtraceChannel):
 
         return ret
 
+    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
     def receive(self) -> ByteString:
         chunks = []
         while True:
@@ -194,7 +197,7 @@ class TCPChannel(PtraceChannel):
         try:
             if syscall.name in ('accept', 'accept4'):
                 if syscall.arguments[0].value != listenfd \
-                        or syscall.result < 0:
+                        or (syscall.result is not None and syscall.result < 0):
                     return
             # poll, ppoll
             elif syscall.name in ('poll', 'ppoll'):

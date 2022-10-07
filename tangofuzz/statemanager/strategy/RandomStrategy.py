@@ -1,10 +1,12 @@
-from statemanager import StateBase, StrategyBase, StateMachine
+from statemanager import StateMachine
+from statemanager.strategy import StrategyBase
+from tracker import StateBase
 from random import Random
 from profiler import ProfileValue
 from input import InputBase
 
 class RandomStrategy(StrategyBase):
-    def __init__(self, entropy: Random, limit: int = 100, **kwargs):
+    def __init__(self, entropy: Random, limit: int=100, **kwargs):
         super().__init__(**kwargs)
         self._entropy = entropy
         self._counter = 0
@@ -37,7 +39,7 @@ class RandomStrategy(StrategyBase):
     def target(self) -> StateBase:
         return self._target_state
 
-    def update_state(self, state: StateBase, invalidate: bool = False, is_new: bool = False):
+    def update_state(self, state: StateBase, invalidate: bool=False, is_new: bool=False):
         if invalidate:
             self._invalid_states.add(state)
             if self._target_state == state:
@@ -45,5 +47,5 @@ class RandomStrategy(StrategyBase):
         else:
             self._invalid_states.discard(state)
 
-    def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, invalidate: bool = False):
+    def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, invalidate: bool=False):
         pass

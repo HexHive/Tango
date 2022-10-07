@@ -1,7 +1,7 @@
 from . import debug, info
 
 from typing import ByteString
-from networkio import ChannelBase, PtraceChannel, TransportChannelFactory
+from dataio import ChannelBase, PtraceChannel, TransportChannelFactory
 from   common      import (ChannelBrokenException,
                           ChannelSetupException)
 from subprocess import Popen
@@ -13,6 +13,7 @@ import threading
 from dataclasses import dataclass
 from functools import partial
 from ptrace import PtraceError
+from common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
 
 @dataclass
 class UDPChannelFactory(TransportChannelFactory):
@@ -96,6 +97,7 @@ class UDPChannel(PtraceChannel):
             break_on_entry=True, timeout=self._data_timeout)
         del self._poll_server_waiting
 
+    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
     def send(self, data: ByteString) -> int:
         sent = self._send_sync(data)
         self._poll_sync()
@@ -120,6 +122,7 @@ class UDPChannel(PtraceChannel):
 
         return ret
 
+    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
     def receive(self) -> ByteString:
         chunks = []
         while True:

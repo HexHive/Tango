@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Union
 from input import InputBase
-from statemanager import StateBase, StateMachine
+from statemanager import StateMachine
+from tracker import StateBase
 
 class StrategyBase(ABC):
     def __init__(self, sm: StateMachine, entry_state: StateBase):

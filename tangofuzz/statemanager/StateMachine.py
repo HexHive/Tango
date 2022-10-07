@@ -2,7 +2,7 @@ from . import debug
 
 from   itertools    import product as xproduct, tee
 from   functools    import partial
-from   statemanager import StateBase
+from   tracker import StateBase
 from   input        import InputBase, PreparedInput, MemoryCachingDecorator
 from   typing       import Generator, Tuple, List
 import networkx     as     nx

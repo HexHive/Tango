@@ -1,8 +1,8 @@
 from . import debug, info
 
-from networkio import (ChannelBase,
+from dataio import (ChannelBase,
                       PtraceForkChannel,
-                      TCPChannel,
+                      UDPChannel,
                       TransportChannelFactory)
 from subprocess import Popen
 from dataclasses import dataclass
@@ -10,13 +10,11 @@ from functools import cached_property
 from ptrace.syscall import SYSCALL_REGISTER
 
 @dataclass
-class TCPForkChannelFactory(TransportChannelFactory):
-    fork_before_accept: bool
-
+class UDPForkChannelFactory(TransportChannelFactory):
     connect_timeout: float = None # seconds
     data_timeout: float = None # seconds
 
-    protocol: str = "tcp"
+    protocol: str = "udp"
 
     def create(self, pobj: Popen, netns: str, *args, **kwargs) -> ChannelBase:
         self._pobj = pobj
@@ -27,42 +25,29 @@ class TCPForkChannelFactory(TransportChannelFactory):
 
     @cached_property
     def forkchannel(self):
-        if self.fork_before_accept:
-            return TCPForkBeforeAcceptChannel(pobj=self._pobj,
-                          netns=self._netns,
-                          endpoint=self.endpoint, port=self.port,
-                          timescale=self.timescale,
-                          connect_timeout=self.connect_timeout,
-                          data_timeout=self.data_timeout)
-        else:
-            return TCPForkAfterListenChannel(pobj=self._pobj,
+        return UDPForkChannel(pobj=self._pobj,
                           netns=self._netns,
                           endpoint=self.endpoint, port=self.port,
                           timescale=self.timescale,
                           connect_timeout=self.connect_timeout,
                           data_timeout=self.data_timeout)
 
-class TCPForkAfterListenChannel(TCPChannel, PtraceForkChannel):
+class UDPForkChannel(UDPChannel, PtraceForkChannel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def cb_socket_listening(self, process, syscall):
+    def cb_socket_bound(self, process, syscall):
         self._invoke_forkserver(process)
 
     @property
     def forked_child(self):
-        return self._accept_process
+        return self._bind_process
 
-
-class TCPForkBeforeAcceptChannel(TCPChannel, PtraceForkChannel):
+class UDPForkBeforeBindChannel(UDPChannel, PtraceForkChannel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def cb_socket_listening(self, process, syscall):
-        pass
-        # self._invoke_forkserver(process)
-
-    def cb_socket_accepting(self, process, syscall):
+    def cb_socket_binding(self, process, syscall):
         # The syscall instruction cannot be "cancelled". Instead we replace it
         # by a call to an invalid syscall so the kernel returns immediately, and
         # the forkserver is later invoked properly. Otherwise, the forkerser
@@ -87,4 +72,4 @@ class TCPForkBeforeAcceptChannel(TCPChannel, PtraceForkChannel):
 
     @property
     def forked_child(self):
-        return self._accept_process
+        return self._bind_process

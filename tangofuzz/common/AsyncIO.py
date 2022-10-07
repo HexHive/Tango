@@ -4,6 +4,15 @@ import asyncio
 import functools
 from async_property import async_property, async_cached_property
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
+
+# This is a single-threaded executor to be used for wrapping sync methods into
+# async coroutines. It is single-threaded because, for ptrace to work correctly,
+# the tracer must be the same thread that launched the process.
+# Since ProcessLoader uses sync_to_async for _launch_target, then the parent is
+# this single thread in the thread pool, and all following calls to ptrace also
+# use the same thread pool (see {TCP,UDP}Channel.{send,receive}).
+GLOBAL_ASYNC_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix='AsyncWrapper')
 
 async def async_enumerate(asequence, start=0):
     """Asynchronously enumerate an async iterator from a given start value"""
@@ -176,17 +185,18 @@ class async_suspendable(OwnerDecorator):
             self._resume_cb = getattr(owner, self._resume_cb)
 
 class sync_to_async(OwnerDecorator):
-    def __init__(self, *, get_future_cb=None, done_cb=None, **kwargs):
+    def __init__(self, *, get_future_cb=None, done_cb=None, executor=None, **kwargs):
         super().__init__(**kwargs)
         self._get_future_cb = get_future_cb
         self._done_cb = done_cb
+        self._executor = executor
 
     def wrap(self, fn):
         @functools.wraps(fn)
         async def run_in_executor(*args, **kwargs):
             loop = asyncio.get_running_loop()
             p_func = functools.partial(fn, *args, **kwargs)
-            future = loop.run_in_executor(None, p_func)
+            future = loop.run_in_executor(self._executor, p_func)
             if self._get_future_cb:
                 future_cb = lambda f: self._get_future_cb(*args, **kwargs, future=f)
                 future_cb(future)

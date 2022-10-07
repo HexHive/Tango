@@ -1,7 +1,7 @@
 from . import debug, warning, info, critical
 
 from typing import Callable
-from networkio import NetworkChannel
+from dataio import NetworkChannel
 from   common      import (ChannelTimeoutException,
                           ProcessCrashedException,
                           ProcessTerminatedException)

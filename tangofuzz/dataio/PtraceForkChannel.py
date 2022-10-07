@@ -1,7 +1,7 @@
 from . import debug, warning, info
 
 from abc import abstractmethod
-from networkio import PtraceChannel
+from dataio import PtraceChannel
 from   common      import ProcessCrashedException
 from profiler import ProfileCount
 from ptrace import PtraceError

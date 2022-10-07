@@ -1,7 +1,7 @@
 from profiler import ProfilerBase
 
 class ProfileValue(ProfilerBase):
-    def __call__(self, obj):
+    def ___call___(self, obj):
         self._value = obj
         return obj
 

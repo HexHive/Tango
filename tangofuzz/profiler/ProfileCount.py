@@ -6,7 +6,7 @@ class ProfileCount(ProfileValue):
         if not self._init_called:
             self._count = 0
 
-    def __call__(self, obj):
+    def ___call___(self, obj):
         self._count += obj
         return obj
 

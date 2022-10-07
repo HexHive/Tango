@@ -9,8 +9,8 @@ class ProfileLambdaMean(PeriodicProfiler):
             self._samples = deque(maxlen=samples)
             self._mean = None
 
-    def __call__(self, obj):
-        obj = super().__call__(obj)
+    def ___call___(self, obj):
+        obj = super().___call___(obj)
         self._obj = obj
         return self._obj()
 

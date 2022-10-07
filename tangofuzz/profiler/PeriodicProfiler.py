@@ -10,7 +10,7 @@ class PeriodicProfiler(ProfilerBase):
             self._thread = Thread(target=self._thread_worker)
             self._thread.daemon = True
 
-    def __call__(self, obj):
+    def ___call___(self, obj):
         if not self._init_called:
             self._thread.start()
         return obj

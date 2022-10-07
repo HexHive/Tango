@@ -1,7 +1,7 @@
 from profiler import ProfilerBase
 
 class ProfileLambda(ProfilerBase):
-    def __call__(self, obj):
+    def ___call___(self, obj):
         self._obj = obj
         return self._obj()
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from abc           import ABC, abstractmethod
-from networkio     import ChannelBase
+from dataio     import ChannelBase
 from typing        import Sequence
 from profiler      import ProfileFrequency, ProfileEvent
 

@@ -2,7 +2,7 @@ from interaction import (ReceiveInteraction as rx,
                         TransmitInteraction as tx,
                         DelayInteraction as sleep)
 from input import PCAPInput
-from networkio import TCPChannelFactory
+from dataio import TCPChannelFactory
 from io import BytesIO, SEEK_SET
 
 def main():

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from statemanager import StateBase
-from networkio   import ChannelFactoryBase
+from tracker import StateBase
+from dataio   import ChannelFactoryBase
 from input import InputBase, PCAPInput, PreparedInput
 import os
 

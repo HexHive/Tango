@@ -19,7 +19,7 @@ class ProfileEvent(ProfilerBase):
         for loop in self._listeners:
             run_coroutine_threadsafe(self._listener_notify(argt, ret), loop)
 
-    def __call__(self, obj):
+    def ___call___(self, obj):
         def func(*args, **kwargs):
             ret = obj(*args, **kwargs)
             argt = (args, kwargs)

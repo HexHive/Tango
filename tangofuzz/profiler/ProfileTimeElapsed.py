@@ -10,7 +10,7 @@ class ProfileTimeElapsed(ProfilerBase):
         self._running = True
         self._accum = datetime.timedelta()
 
-    def __call__(self, obj):
+    def ___call___(self, obj):
         raise NotImplemented
 
     def toggle(self):

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from profiler import ProfiledObjects as objects
+from profiler import ProfiledObjects as objects, ProfilingNOP
 from math import trunc
 
 class ProfilerBase(ABC):
@@ -18,8 +18,14 @@ class ProfilerBase(ABC):
         objects[self._name] = self
         self._init_called = False
 
-    @abstractmethod
     def __call__(self, obj):
+        if ProfilingNOP:
+            return obj
+        else:
+            return self.___call___(obj)
+
+    @abstractmethod
+    def ___call___(self, obj):
         pass
 
     @property

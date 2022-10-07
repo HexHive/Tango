@@ -8,6 +8,10 @@ from threading import Event
 ProfiledObjects = {}
 ProfilingStoppedEvent = Event()
 
+from sys import gettrace as sys_gettrace
+DEBUG = sys_gettrace() is not None
+ProfilingNOP = DEBUG
+
 from .ProfilerBase import ProfilerBase
 from .PeriodicProfiler import PeriodicProfiler
 from .ProfileLambda import ProfileLambda

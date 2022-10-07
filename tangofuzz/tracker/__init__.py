@@ -5,3 +5,4 @@ for func in ('debug', 'info', 'warning', 'error', 'critical'):
 
 from .StateBase                     import StateBase
 from .StateTrackerBase              import StateTrackerBase
+from .LoaderDependentTracker import LoaderDependentTracker
