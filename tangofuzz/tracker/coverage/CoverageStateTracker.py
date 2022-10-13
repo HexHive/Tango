@@ -60,10 +60,10 @@ class CoverageStateTracker(LoaderDependentTracker):
             glbl = self._global
 
         coverage_map = self._reader.array
-        set_list, clr_list = glbl.update(coverage_map)
+        set_map, clr_map, set_count, clr_count, map_hash = glbl.update(coverage_map)
         new = source
-        if set_list or clr_list:
-            new = CoverageState(parent, set_list, clr_list, glbl)
+        if set_count or clr_count:
+            new = CoverageState(parent, set_map, clr_map, set_count, clr_count, map_hash, glbl)
             if not dryrun:
                 self._current_state = new
 
