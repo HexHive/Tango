@@ -27,7 +27,7 @@ struct sockaddr_in* init_sockaddr_in(uint16_t port_number) {
 }
 
 char* process_operation(char *input) {
-    size_t n = strlen(input) * sizeof(char);
+    size_t n = (strlen(input) + 1) * sizeof(char);
     char *output = malloc(n);
     memcpy(output, input, n);
     return output;
@@ -38,22 +38,22 @@ int main( int argc, char *argv[] ) {
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
 
     struct sockaddr_in *server_sockaddr = init_sockaddr_in(port_number);
-    struct sockaddr_in *client_sockaddr = malloc(sizeof(struct sockaddr_in));
     socklen_t server_socklen = sizeof(*server_sockaddr);
-    socklen_t client_socklen = sizeof(*client_sockaddr);
 
 
     if (bind(server_fd, (const struct sockaddr *) server_sockaddr, server_socklen) < 0)
     {
+        free(server_sockaddr);
         printf("Error! Bind has failed\n");
         exit(0);
     }
     if (listen(server_fd, 3) < 0)
     {
+        free(server_sockaddr);
         printf("Error! Can't listen\n");
         exit(0);
     }
-
+    free(server_sockaddr);
 
     const size_t buffer_len = 256;
     char *buffer = malloc(buffer_len * sizeof(char));
@@ -61,7 +61,7 @@ int main( int argc, char *argv[] ) {
     __pid_t pid = -1;
 
     while (1) {
-        int client_fd = accept(server_fd, (struct sockaddr *) &client_sockaddr, &client_socklen);
+        int client_fd = accept(server_fd, NULL, 0);
 
         pid = fork();
 
@@ -75,7 +75,8 @@ int main( int argc, char *argv[] ) {
             printf("Connection with `%d` has been established and delegated to the process %d.\nWaiting for a query...\n", client_fd, getpid());
 
             while (1) {
-                int recv_len = recv(client_fd, buffer, buffer_len, 0);
+                int recv_len = recv(client_fd, buffer, buffer_len - 1, 0);
+                buffer[recv_len] = '\0';
 
                 if (strncmp(buffer, "close", 5) == 0) {
                     printf("Process %d: ", getpid());
@@ -98,10 +99,13 @@ int main( int argc, char *argv[] ) {
                 send(client_fd, response, strlen(response), 0);
                 printf("Responded with `%s`. Waiting for a new query...\n", response);
             }
+            free(buffer);
+            free(response);
             exit(0);
         }
         else {
             close(client_fd);
         }
     }
+    free(buffer);
 }
