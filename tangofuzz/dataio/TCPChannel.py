@@ -177,7 +177,8 @@ class TCPChannel(PtraceChannel):
             fd = syscall.arguments[0].value
             if fd not in fds:
                 return
-            result = fds[fd].event(process, syscall)
+            entry = syscall.result is None
+            result = fds[fd].event(process, syscall, entry=entry)
             if result is not None:
                 listeners[fd] = result
                 candidates = [x[0] for x in listeners.items() if x[1][2] == address[1]]
@@ -377,19 +378,24 @@ class ListenerSocketState:
     def __init__(self):
         self._state = self.SOCKET_UNBOUND
 
-    def event(self, process, syscall):
+    def event(self, process, syscall, entry=False):
         assert (syscall.result != -1), f"Syscall failed, {errno.error_code(-syscall.result)}"
         if self._state == self.SOCKET_UNBOUND and syscall.name == 'bind':
             sockaddr = syscall.arguments[1].value
             # FIXME apparently, family is 2 bytes, not 4?
             # maybe use the parser that comes with python-ptrace
-            self._sa_family,  = struct.unpack('@H', process.readBytes(sockaddr, 2))
-            assert (self._sa_family  == socket.AF_INET), "Only IPv4 is supported."
-            self._sin_port, = struct.unpack('!H', process.readBytes(sockaddr + 2, 2))
-            self._sin_addr = socket.inet_ntop(self._sa_family, process.readBytes(sockaddr + 4, 4))
-            self._state = self.SOCKET_BOUND
-            debug(f"Socket bound to port {self._sin_port}")
+            _sa_family,  = struct.unpack('@H', process.readBytes(sockaddr, 2))
+            assert (_sa_family  == socket.AF_INET), "Only IPv4 is supported."
+            _sin_port, = struct.unpack('!H', process.readBytes(sockaddr + 2, 2))
+            _sin_addr = socket.inet_ntop(_sa_family, process.readBytes(sockaddr + 4, 4))
+            if not entry:
+                self._state = self.SOCKET_BOUND
+                self._sa_family = _sa_family
+                self._sin_port = _sin_port
+                self._sin_addr = _sin_addr
+                debug(f"Socket bound to port {self._sin_port}")
         elif self._state == self.SOCKET_BOUND and syscall.name == 'listen':
-            self._state = self.SOCKET_LISTENING
-            debug(f"Server listening on port {self._sin_port}")
+            if not entry:
+                self._state = self.SOCKET_LISTENING
+                debug(f"Server listening on port {self._sin_port}")
             return (self._sa_family, self._sin_addr, self._sin_port)
