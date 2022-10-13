@@ -39,9 +39,6 @@ class UDPForkChannel(UDPChannel, PtraceForkChannel):
     def cb_socket_bound(self, process, syscall):
         self._invoke_forkserver(process)
 
-    @property
-    def forked_child(self):
-        return self._bind_process
 
 class UDPForkBeforeBindChannel(UDPChannel, PtraceForkChannel):
     def __init__(self, **kwargs):
@@ -69,7 +66,3 @@ class UDPForkBeforeBindChannel(UDPChannel, PtraceForkChannel):
         # 'rax' in this context.
         process.setreg('rax', self._syscall_num)
         super()._cleanup_forkserver(process)
-
-    @property
-    def forked_child(self):
-        return self._bind_process

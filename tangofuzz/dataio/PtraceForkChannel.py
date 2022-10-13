@@ -1,4 +1,4 @@
-from . import debug, warning, info
+from . import debug, warning, info, error
 
 from abc import abstractmethod
 from dataio import PtraceChannel
@@ -23,6 +23,7 @@ class PtraceForkChannel(PtraceChannel):
         self._proc_untrap = False
         self._wait_for_proc = False
         self._event_queue = []
+        self._forked_child = None
 
         # extract forkserver location
         with open(self._pobj.args[0], 'rb') as f:
@@ -59,15 +60,13 @@ class PtraceForkChannel(PtraceChannel):
     def process_exit(self, event):
         try:
             super().process_exit(event)
-        except ProcessCrashedException:
-            # FIXME what if the forked_child itself has forked and the process
-            # we're actually fuzzing is the grandchild?
-            if self.forked_child and event.process == self.forked_child:
-                raise
         finally:
             # if the current target exits unexpectedly, we also report it to the forkserver
-            if event.process == self.forked_child:
+            if event.process == self._forked_child:
                 self._wakeup_forkserver()
+            elif event.process == self._proc:
+                error("Forkserver crashed! Launching interactive debugger")
+                import ipdb; ipdb.set_trace()
 
     def process_signal(self, event):
         if event.signum == signal.SIGTRAP:
@@ -75,6 +74,7 @@ class PtraceForkChannel(PtraceChannel):
             # die. We will wake it up when we kill the forked_child.
             # Otherwise, the child trapped and we resume its execution
             if event.process != self._proc:
+                self._forked_child = event.process
                 # restore correct trap byte and registers
                 self._cleanup_forkserver(event.process)
                 # resume execution of the child process
@@ -192,16 +192,11 @@ class PtraceForkChannel(PtraceChannel):
             self._proc_trapped = False
 
     def close(self, terminate, **kwargs):
-        if self.forked_child:
+        if self._forked_child:
             if terminate:
-                self.terminator(self.forked_child)
+                self.terminator(self._forked_child)
             # when we kill the forked_child, we wake up the forkserver from the trap
             self._wakeup_forkserver()
-
-    @property
-    @abstractmethod
-    def forked_child(self):
-        pass
 
     ### Callbacks ###
     def _wakeup_forkserver_ignore_callback(self, syscall):

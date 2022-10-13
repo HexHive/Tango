@@ -49,11 +49,6 @@ class TCPForkAfterListenChannel(TCPChannel, PtraceForkChannel):
     def cb_socket_listening(self, process, syscall):
         self._invoke_forkserver(process)
 
-    @property
-    def forked_child(self):
-        return self._accept_process
-
-
 class TCPForkBeforeAcceptChannel(TCPChannel, PtraceForkChannel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -84,7 +79,3 @@ class TCPForkBeforeAcceptChannel(TCPChannel, PtraceForkChannel):
         # 'rax' in this context.
         process.setreg('rax', self._syscall_num)
         super()._cleanup_forkserver(process)
-
-    @property
-    def forked_child(self):
-        return self._accept_process
