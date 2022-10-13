@@ -112,7 +112,8 @@ class PtraceDebugger(object):
             error(f"Process PID {process.pid} died on creation! Reason: {event}")
             # This is probably not needed anymore after the fix to waitExit,
             # which was likely leaving SIGKILL signals in the process struct for
-            # the same PID.
+            # the same PID. <- Lol, no? Probably just a pending signal sent
+            # again by us when the PID was reused
             raise ForkChildKilledEvent(event.process)
         except Exception:   # noqa: E722
             process.is_attached = False
@@ -246,10 +247,7 @@ class PtraceDebugger(object):
                 process = self.dict[pid]
             except KeyError:
                 return
-        try:
-            del self.dict[process.pid]
-        except KeyError:
-            pass
+        self.dict.pop(process.pid, None)
         try:
             self.list.remove(process)
         except ValueError:
