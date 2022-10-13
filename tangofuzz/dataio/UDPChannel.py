@@ -33,7 +33,7 @@ class UDPChannelFactory(TransportChannelFactory):
         return ch
 
 class UDPChannel(PtraceChannel):
-    RECV_CHUNK_SIZE = 4096
+    MAX_DATAGRAM_SIZE = 65507
 
     def __init__(self, endpoint: str, port: int,
                     connect_timeout: float, data_timeout: float, **kwargs):
@@ -99,8 +99,11 @@ class UDPChannel(PtraceChannel):
 
     @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
     def send(self, data: ByteString) -> int:
-        sent = self._send_sync(data)
-        self._poll_sync()
+        if len(data):
+            sent = self._send_sync(data)
+            self._poll_sync()
+        else:
+            sent = 0
         debug(f"Sent data to server: {data[:sent]}")
         return sent
 
@@ -124,26 +127,20 @@ class UDPChannel(PtraceChannel):
 
     @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
     def receive(self) -> ByteString:
-        chunks = []
-        while True:
-            try:
-                poll, _, _ = select.select([self._socket], [], [], 0)
-                if self._socket not in poll:
-                    data = b''.join(chunks)
-                    debug(f"Received data from server: {data}")
-                    return data
-            except ValueError:
-                raise ChannelBrokenException("socket fd is negative, socket is closed")
+        try:
+            poll, _, _ = select.select([self._socket], [], [], 0)
+            if self._socket not in poll:
+                debug(f"Received nothing from the server!")
+                return b''
+        except ValueError:
+            raise ChannelBrokenException("socket fd is negative, socket is closed")
 
-            ret = self._socket.recv(self.RECV_CHUNK_SIZE)
-            if ret == b'' and len(chunks) == 0:
-                raise ChannelBrokenException("recv returned 0, socket shutdown")
-            elif ret == b'':
-                data = b''.join(chunks)
-                debug(f"Received data from server: {data}")
-                return data
-
-            chunks.append(ret)
+        data = self._socket.recv(self.MAX_DATAGRAM_SIZE)
+        if data == b'':
+            raise ChannelBrokenException("recv returned 0, socket shutdown")
+        else:
+            debug(f"Received data from server: {data}")
+            return data
 
     def close(self, **kwargs):
         if self._socket is not None:
@@ -262,7 +259,7 @@ class UDPChannel(PtraceChannel):
                 and syscall.arguments[0].value == self._sockfd:
             if syscall.result == 0:
                 raise ChannelBrokenException("Server failed to read data off socket")
-            self._send_server_received += syscall.result
+            self._send_server_received = syscall.result
         elif syscall.name == 'shutdown' and syscall.arguments[0].value == self._sockfd:
             raise ChannelBrokenException("Channel closed while waiting for server to read")
         elif syscall.name == 'close' and syscall.arguments[0].value == self._sockfd:
@@ -279,11 +276,10 @@ class UDPChannel(PtraceChannel):
             self._send_barrier.wait()
             self._send_barrier.abort()
         debug(f"{self._send_client_sent=}; {self._send_server_received=}")
-        # FIXME is there a case where client_sent == 0?
         assert (self._send_client_sent > 0 \
                     and self._send_server_received <= self._send_client_sent), \
             "Client sent no bytes, or server received too many bytes!"
-        return self._send_server_received == self._send_client_sent
+        return self._send_server_received > 0
 
     def _send_send_monitor(self):
         ret = self._socket.send(self._send_data)
