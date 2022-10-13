@@ -1,4 +1,5 @@
 # from functools    import cached_property
+from . import debug, info
 from common       import async_cached_property as cached_property
 from loader       import Environment
 from dataio    import (TCPChannelFactory,
@@ -73,6 +74,7 @@ class FuzzerConfig:
             ...
         },
         "fuzzer": {
+            "cwd": "/path/to/cwd",
             "workdir": "/path/to/workdir",
             "resume": <true | false>,
             "seeds": "/path/to/pcap/dir",
@@ -99,11 +101,20 @@ class FuzzerConfig:
         else:
             self._bind_lib = None
 
+        os.chdir(self.cwd)
+        info(f'Changed current working directory to {self.cwd}')
+
     @property
     def lib_dir(self):
         if (path := self._config["fuzzer"].get("lib")):
             return os.path.realpath(path)
         return None
+
+    @property
+    def cwd(self):
+        cwd = self._config["fuzzer"].get("cwd", ".")
+        return cwd
+
 
     @cached_property
     async def exec_env(self):
