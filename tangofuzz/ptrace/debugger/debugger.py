@@ -14,6 +14,7 @@ if HAS_PTRACE_EVENTS:
         PTRACE_O_TRACEEXEC, PTRACE_O_TRACESYSGOOD,
         PTRACE_O_TRACECLONE, THREAD_TRACE_FLAGS)
 from ptrace.binding import ptrace_detach
+from lru import LRU
 
 class DebuggerError(PtraceError):
     pass
@@ -71,7 +72,16 @@ class PtraceDebugger(object):
         self.trace_exec = False
         self.trace_clone = False
         self.use_sysgood = False
-        self.sig_queue = defaultdict(list)
+
+        # WARN sometimes, when a traced process forks, the SIGSTOP from the
+        # child arrives before the PTRACE_EVENT_CLONE, and this brings the
+        # ptrace channel out of sync and it gets stuck. So we enqueue events for
+        # unknown PIDs. However, we don't enqueue them forever, because the
+        # tracer may also receive signals for its own child processes (see
+        # WebDataLoader, create_svg launches a process). If we enqueue these
+        # signals and deliver them later to traced processes, there will be
+        # undefined behavior.
+        self.sig_queue = LRU(10)
         self.enableSysgood()
 
     def addProcess(self, pid, is_attached, parent=None, is_thread=False):
@@ -181,6 +191,8 @@ class PtraceDebugger(object):
                 process = self.dict[pid]
             except KeyError:
                 warning("waitpid(): Unknown PID %r, placing event in queue" % pid)
+                if pid not in self.sig_queue:
+                    self.sig_queue[pid] = list()
                 self.sig_queue[pid].append(status)
                 continue
 

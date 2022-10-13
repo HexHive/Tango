@@ -14,3 +14,4 @@ python3-xlib==0.15
 #libncurses-dev (from apt)
 async-property==0.2.1
 scipy==1.7.3
+lru-dict==1.1.8
