@@ -1,4 +1,4 @@
-from .. import info, warning, error
+from .. import debug, info, warning, error
 from ptrace import PtraceError
 from os import waitpid, WNOHANG, WUNTRACED
 from signal import SIGTRAP, SIGSTOP, SIGCHLD, SIGKILL
@@ -94,7 +94,7 @@ class PtraceDebugger(object):
             raise KeyError("The process %s is already registered!" % pid)
         process = PtraceProcess(self, pid, is_attached,
                                 parent=parent, is_thread=is_thread)
-        info("Attach %s to debugger" % process)
+        debug("Attach %s to debugger" % process)
         self.dict[pid] = process
         self.list.append(process)
         try:

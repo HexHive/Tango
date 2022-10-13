@@ -1,4 +1,4 @@
-from .. import info, warning, error
+from .. import debug, info, warning, error
 from ptrace.binding import (
     HAS_PTRACE_SINGLESTEP, HAS_PTRACE_EVENTS,
     HAS_PTRACE_SIGINFO, HAS_PTRACE_IO, HAS_PTRACE_GETREGS,
@@ -186,7 +186,7 @@ class PtraceProcess(object):
     def attach(self):
         if self.is_attached:
             return
-        info("Attach process %s" % self.pid)
+        debug("Attach process %s" % self.pid)
         ptrace_attach(self.pid)
         self.is_attached = True
 
@@ -294,7 +294,7 @@ class PtraceProcess(object):
             return
         self.is_attached = False
         if self.running:
-            info("Detach %s" % self)
+            debug("Detach %s" % self)
             ptrace_detach(self.pid)
         self.debugger.deleteProcess(process=self)
 
@@ -318,7 +318,7 @@ class PtraceProcess(object):
     def terminate(self, wait_exit=True):
         if not self.running or not self.was_attached:
             return True
-        warning("Terminate %s" % self)
+        debug("Terminate %s" % self)
         done = False
         try:
             if self.is_stopped:
@@ -574,7 +574,7 @@ class PtraceProcess(object):
                     if err.errno != EACCES:
                         error(message)
                     else:
-                        info(message)
+                        warn(message)
                     self.readBytes = self._readBytes
                     return self.readBytes(address, size)
 
@@ -739,7 +739,7 @@ class PtraceProcess(object):
     def setoptions(self, options):
         if not HAS_PTRACE_EVENTS:
             self.notImplementedError()
-        info("Set %s options to %s" % (self, options))
+        debug("Set %s options to %s" % (self, options))
         ptrace_setoptions(self.pid, options)
 
     def waitEvent(self, blocking=True):
