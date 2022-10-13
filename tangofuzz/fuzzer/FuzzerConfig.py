@@ -44,11 +44,12 @@ class FuzzerConfig:
                 "port": number,
                 "connect_timeout": seconds,
                 "data_timeout": seconds,
-                "fork_location": "<listen | accept>"
+                "fork_location": "<listen | accepting>"
             },
             "udp": {
                 "endpoint": "address",
-                "port": number
+                "port": number,
+                "fork_location": "<bind | binding>"
             },
             ...
         },
@@ -143,14 +144,17 @@ class FuzzerConfig:
                 raise NotImplemented()
         else:
             if _config["type"] == "tcp":
-                fork_location = _config["tcp"].pop("fork_location", "accept")
-                fork_before_accept = fork_location == "accept"
+                fork_location = _config["tcp"].pop("fork_location", "accepting")
+                fork_before_accept = fork_location == "accepting"
                 return TCPForkChannelFactory(**_config["tcp"], \
                     timescale=await self.timescale, \
                     fork_before_accept=fork_before_accept)
             elif _config["type"] == "udp":
+                fork_location = _config["udp"].pop("fork_location", "bind")
+                fork_before_bind = fork_location == "binding"
                 return UDPForkChannelFactory(**_config["udp"], \
-                    timescale=await self.timescale)
+                    timescale=await self.timescale, \
+                    fork_before_bind=fork_before_bind)
             else:
                 raise NotImplemented()
 

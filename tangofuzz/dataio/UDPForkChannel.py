@@ -8,9 +8,12 @@ from subprocess import Popen
 from dataclasses import dataclass
 from functools import cached_property
 from ptrace.syscall import SYSCALL_REGISTER
+import socket
 
 @dataclass
 class UDPForkChannelFactory(TransportChannelFactory):
+    fork_before_bind: bool
+
     connect_timeout: float = None # seconds
     data_timeout: float = None # seconds
 
@@ -25,12 +28,20 @@ class UDPForkChannelFactory(TransportChannelFactory):
 
     @cached_property
     def forkchannel(self):
-        return UDPForkChannel(pobj=self._pobj,
-                          netns=self._netns,
-                          endpoint=self.endpoint, port=self.port,
-                          timescale=self.timescale,
-                          connect_timeout=self.connect_timeout,
-                          data_timeout=self.data_timeout)
+        if self.fork_before_bind:
+            return UDPForkBeforeBindChannel(pobj=self._pobj,
+                              netns=self._netns,
+                              endpoint=self.endpoint, port=self.port,
+                              timescale=self.timescale,
+                              connect_timeout=self.connect_timeout,
+                              data_timeout=self.data_timeout)
+        else:
+            return UDPForkChannel(pobj=self._pobj,
+                              netns=self._netns,
+                              endpoint=self.endpoint, port=self.port,
+                              timescale=self.timescale,
+                              connect_timeout=self.connect_timeout,
+                              data_timeout=self.data_timeout)
 
 class UDPForkChannel(UDPChannel, PtraceForkChannel):
     def __init__(self, **kwargs):
@@ -48,6 +59,10 @@ class UDPForkChannel(UDPChannel, PtraceForkChannel):
             self._poll_sync()
 
 class UDPForkBeforeBindChannel(UDPChannel, PtraceForkChannel):
+    # Forking just before a bind will result in the same socket being bound in
+    # multiple child processes (because they all copy a reference of the
+    # parent's sockfd), and this is not allowed behavior by Linux's TCP/IP
+    # stack. It will result in EINVAL (errno 22: Invalid argument)
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
