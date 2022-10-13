@@ -19,13 +19,12 @@
 #include <sys/socket.h>
 #include <sys/prctl.h>
 
-#define COVERAGE_SIZE_TAG "/refuzz_size"
-
 static uint8_t *edge_cnt;
 static size_t edge_sz;
 
 void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
     const char *name = getenv("REFUZZ_COVERAGE");
+    const char *szname = getenv("REFUZZ_SIZE");
     if (!name) {
         for (uint32_t *x = start; x < stop; x++)
             *x = 0;  // disable all guards
@@ -46,7 +45,6 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
     close(fd);
     if (!edge_cnt) return;
 
-    const char *szname = COVERAGE_SIZE_TAG;
     fd = shm_open(szname, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd == -1) return;
     if (ftruncate(fd, sizeof(uint32_t)) == -1) return;

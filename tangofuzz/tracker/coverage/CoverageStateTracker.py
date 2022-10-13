@@ -10,18 +10,21 @@ class CoverageStateTracker(LoaderDependentTracker):
         self._bind_lib = bind_lib
 
         # session-unique shm file
-        self._shm_name = f'/refuzz_cov_{uuid4()}'
+        self._shm_uuid = uuid4()
+        self._shm_name = f'/refuzz_cov_{self._shm_uuid}'
+        self._shm_size_name = f'/refuzz_size_{self._shm_uuid}'
 
         # set environment variables and load program with loader
         self._loader._exec_env.env.update({
-            'REFUZZ_COVERAGE': self._shm_name
+            'REFUZZ_COVERAGE': self._shm_name,
+            'REFUZZ_SIZE': self._shm_size_name
         })
 
     @classmethod
     async def create(cls, *args, **kwargs):
         self = cls(*args, **kwargs)
         await self._loader.load_state(None, None)
-        self._reader = CoverageReader(self._shm_name)
+        self._reader = CoverageReader(self._shm_name, self._shm_size_name)
 
         # initialize a global coverage map
         self._global = GlobalCoverage(self._reader.length)
