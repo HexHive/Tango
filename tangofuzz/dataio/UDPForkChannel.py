@@ -39,6 +39,13 @@ class UDPForkChannel(UDPChannel, PtraceForkChannel):
     def cb_socket_bound(self, process, syscall):
         self._invoke_forkserver(process)
 
+    def connect(self, address: tuple):
+        if not self._sockconnected:
+            super().connect(address)
+        else:
+            self._socket = self.nssocket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._socket.connect(address)
+            self._poll_sync()
 
 class UDPForkBeforeBindChannel(UDPChannel, PtraceForkChannel):
     def __init__(self, **kwargs):

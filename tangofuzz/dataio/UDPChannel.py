@@ -43,6 +43,7 @@ class UDPChannel(PtraceChannel):
         self._socket = None
         self._bind_process = None
         self._refcounter = 0
+        self._sockconnected = False
         self._sockfd = -1
         self.setup((endpoint, port))
 
@@ -77,6 +78,7 @@ class UDPChannel(PtraceChannel):
     def connect(self, address: tuple):
         self._socket = self.nssocket(socket.AF_INET, socket.SOCK_DGRAM)
         self._refcounter = 0
+        self._sockconnected = False
         self._connect_address = address
         self._bind_process, _ = self.monitor_syscalls( \
             self._connect_monitor_target, self._connect_ignore_callback, \
@@ -243,13 +245,14 @@ class UDPChannel(PtraceChannel):
                 and syscall.arguments[0].value == self._sockfd \
                 and syscall.result == 0:
             self._refcounter = 1
+            self._sockconnected = True
             self.cb_socket_bound(process, syscall)
 
     def _connect_ignore_callback(self, syscall):
         return syscall.name not in ('bind',)
 
     def _connect_break_callback(self):
-        return self._refcounter > 0
+        return self._sockconnected
 
     def _connect_monitor_target(self):
         return self._socket.connect(self._connect_address)
