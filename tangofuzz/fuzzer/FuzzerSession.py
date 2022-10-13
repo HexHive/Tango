@@ -45,6 +45,7 @@ class FuzzerSession:
         :type       config: FuzzerConfig
         """
         self._config = config
+        self._repl = InteractiveConsole(locals=locals())
 
     async def initialize(self):
         self._input_gen = await self._config.input_generator
@@ -157,9 +158,8 @@ class FuzzerSession:
     def sigint_handler(self, sig, frame):
         main_task = asyncio.get_running_loop().main_task
         main_task.coro.suspend()
-        repl = InteractiveConsole(locals=locals())
         ProfiledObjects['elapsed'].toggle()
-        repl.interact(banner="Fuzzing paused (type exit() to quit)",
+        self._repl.interact(banner="Fuzzing paused (type exit() to quit)",
             exitmsg="Fuzzing resumed")
         ProfiledObjects['elapsed'].toggle()
         main_task.coro.resume()
