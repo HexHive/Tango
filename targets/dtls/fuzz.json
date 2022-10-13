@@ -1,20 +1,20 @@
 {
 	"exec": {
-		"path": "./forkexec_server",
-		"args": ["./forkexec_server"],
-		"stdout": "./stdout",
-		"stderr": "./stderr"
+		"path": "./dtls",
+		"args": ["./dtls"],
+		"cwd": "./",
+		"env": {"ASAN_OPTIONS": "detect_leaks=0"}
 	},
 	"channel": {
-		"type": "tcp",
-		"tcp": {
+		"type": "udp",
+		"udp": {
 			"endpoint": "127.0.0.1",
-			"port": 5001
+			"port": 20220
 		}
 	},
 	"loader": {
 		"type": "replay",
-		"forkserver": false,
+		"forkserver": true,
 		"disable_aslr": true
 	},
 	"input": {
@@ -25,8 +25,8 @@
 		"strategy": "uniform"
 	},
 	"fuzzer": {
-		"cwd": "./targets/forkexec_server/",
 		"lib": "./lib/",
+		"cwd": "./targets/dtls/",
 		"workdir": "./workdir/"
 	}
 }

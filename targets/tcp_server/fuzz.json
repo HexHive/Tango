@@ -1,7 +1,7 @@
 {
 	"exec": {
-		"path": "./targets/tcp_server/tcp_server",
-		"args": ["./targets/tcp_server/tcp_server"],
+		"path": "./tcp_server",
+		"args": ["./tcp_server"],
 		"env": {
 			"ASAN_OPTIONS": "detect_leaks=0"
 		},
@@ -27,7 +27,8 @@
 		"type": "coverage"
 	},
 	"fuzzer": {
-		"lib": "./lib",
-		"workdir": "./workdir"
+		"cwd": "./targets/tcp_server/",
+		"lib": "./lib/",
+		"workdir": "./workdir/"
 	}
 }

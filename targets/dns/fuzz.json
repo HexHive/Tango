@@ -1,20 +1,21 @@
 {
 	"exec": {
-		"path": "./forkexec_server",
-		"args": ["./forkexec_server"],
+		"path": "./dnsmasq",
+		"args": ["./dnsmasq", "-C", "dnsmasq.conf"],
+		"cwd": "./",
 		"stdout": "./stdout",
 		"stderr": "./stderr"
 	},
 	"channel": {
-		"type": "tcp",
-		"tcp": {
+		"type": "udp",
+		"udp": {
 			"endpoint": "127.0.0.1",
-			"port": 5001
+			"port": 5353
 		}
 	},
 	"loader": {
 		"type": "replay",
-		"forkserver": false,
+		"forkserver": true,
 		"disable_aslr": true
 	},
 	"input": {
@@ -25,8 +26,9 @@
 		"strategy": "uniform"
 	},
 	"fuzzer": {
-		"cwd": "./targets/forkexec_server/",
 		"lib": "./lib/",
-		"workdir": "./workdir/"
+		"cwd": "./targets/dns/",
+		"workdir": "./workdir/",
+		"resume": true
 	}
 }

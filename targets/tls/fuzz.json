@@ -1,8 +1,8 @@
 {
 	"exec": {
-		"path": "./targets/tls/openssl",
-		"args": ["./targets/tls/openssl", "s_server", "-key", "key.pem", "-cert", "cert.pem", "-4", "-naccept", "1", "-no_anti_replay"],
-		"cwd": "./targets/tls",
+		"path": "./openssl",
+		"args": ["./openssl", "s_server", "-key", "key.pem", "-cert", "cert.pem", "-4", "-naccept", "1", "-no_anti_replay"],
+		"cwd": "./",
 		"env": {"ASAN_OPTIONS": "detect_leaks=0"}
 	},
 	"channel": {
@@ -25,8 +25,10 @@
 		"strategy": "uniform"
 	},
 	"fuzzer": {
-		"lib": "./lib",
-		"workdir": "./workdir",
+		"lib": "./lib/",
+		"cwd": "./targets/tls/",
+		"workdir": "./workdir/",
+		"seeds": "./seeds/",
 		"resume": true
 	}
 }

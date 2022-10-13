@@ -1,7 +1,7 @@
 {
 	"exec": {
-		"path": "./targets/udp_server/udp_server",
-		"args": ["./targets/udp_server/udp_server"],
+		"path": "./udp_server",
+		"args": ["./udp_server"],
 		"env": {
 			"ASAN_OPTIONS": "detect_leaks=0"
 		},
@@ -12,7 +12,8 @@
 		"type": "udp",
 		"udp": {
 			"endpoint": "127.0.0.1",
-			"port": 5001
+			"port": 5001,
+			"fork_location": "bind"
 		}
 	},
 	"loader": {
@@ -27,8 +28,9 @@
 		"type": "coverage"
 	},
 	"fuzzer": {
-		"lib": "./lib",
-		"workdir": "./workdir",
+		"cwd": "./targets/udp_server/",
+		"lib": "./lib/",
+		"workdir": "./workdir/",
 		"resume": true
 	}
 }
