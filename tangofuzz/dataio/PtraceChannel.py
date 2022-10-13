@@ -43,6 +43,7 @@ class PtraceChannel(NetworkChannel):
 
         self._debugger = PtraceDebugger()
         self._debugger.traceFork()
+        self._debugger.traceExec()
         self._proc = self._debugger.addProcess(self._pobj.pid, is_attached=True)
         self._syscall_signum = signal.SIGTRAP
         if self._debugger.use_sysgood:
@@ -122,7 +123,7 @@ class PtraceChannel(NetworkChannel):
 
     def process_exec(self, event):
         debug(f"Target process with {event.process.pid=} called exec; removing from debugger")
-        self._debugger.deleteProcess(event.process)
+        event.process.detach()
 
     def process_auxiliary_event(self, event, ignore_callback):
         try:
@@ -134,7 +135,7 @@ class PtraceChannel(NetworkChannel):
         except NewProcessEvent as event:
             self.process_new(event, ignore_callback)
         except ProcessExecution as event:
-            self.process_exec()
+            self.process_exec(event)
 
     def is_event_syscall(self, event):
         return isinstance(event, ProcessSignal) and event.signum == self._syscall_signum
