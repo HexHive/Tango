@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <time.h>
+#include <errno.h>
 
 void bzero(void *a, size_t n) {
     memset(a, 0, n);
@@ -41,12 +42,10 @@ int main( int argc, char *argv[] ) {
     struct sockaddr_in *server_sockaddr = init_sockaddr_in(port_number);
     socklen_t server_socklen = sizeof(*server_sockaddr);
 
-
-    if (bind(server_fd, (const struct sockaddr *) server_sockaddr, server_socklen) < 0)
-    {
-        printf("Error! Bind has failed\n");
+    if (bind(server_fd, (const struct sockaddr *) server_sockaddr, server_socklen) < 0) {
+        printf("Error! Bind has failed: %s\n", strerror(errno));
         free(server_sockaddr);
-        exit(0);
+        exit(-1);
     }
 
     free(server_sockaddr);
