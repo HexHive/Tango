@@ -23,7 +23,11 @@ class InputBase(ABC):
     def ___len___(self):
         return None
 
-    def __eq__(self, other):
+    async def ___aiter___(self):
+        for e in iter(self):
+            yield e
+
+    def ___eq___(self, other):
         diff = False
 
         def zip_strict(*iterators):
@@ -47,14 +51,14 @@ class InputBase(ABC):
                     for x, y in eq(iter(self), iter(other))) and \
                not diff
 
+    def ___getitem___(self, idx: Union[int, slice]):
+        return SlicingDecorator(idx)(self)
+
     def __add__(self, other: InputBase):
         return JoiningDecorator(other)(self)
 
     def __iadd__(self, other: InputBase):
         return JoiningDecorator(other)(self, copy=False)
-
-    def __getitem__(self, idx: Union[int, slice]):
-        return SlicingDecorator(idx)(self)
 
     @classmethod
     @property
@@ -76,8 +80,17 @@ class InputBase(ABC):
     def __len__(self):
         return self.___len___()
 
+    def __aiter__(self):
+        return self.___aiter___()
+
+    def __eq__(self, other):
+        return self.___eq___(other)
+
+    def __getitem__(self, idx: Union[int, slice]):
+        return self.___getitem___(idx)
+
 class DecoratorBase(ABC):
-    DECORATED_METHODS = ('___iter___', '___eq___', '___add___',
+    DECORATED_METHODS = ('___iter___', '___aiter___', '___eq___', '___add___',
                          '___getitem___', '___repr___', '___len___')
     DECORATOR_MAX_DEPTH = 10
 
