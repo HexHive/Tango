@@ -289,16 +289,17 @@ class StateManager:
             begin = 0 if (diff := end - (end - begin) * 2) < 0 else diff
 
         # Phase 2: prune out dead interactions
-        ProfileValue('status')('minimize_bin_search')
         if reduced:
             lin_input = input[begin:]
         else:
             lin_input = input
         end = len(input) - begin
         step = (end - 1) // 2
+        i = 0
         while step > 0:
             cur = 0
             while cur + step < end:
+                ProfileValue('status')(f'minimize_bin_search ({100*i/(2 * (len(input) - begin)):.1f}%)')
                 success = True
                 await self.reset_state(src, dryrun=True)
                 tmp_lin_input = lin_input[:cur] + lin_input[cur + step:]
@@ -314,6 +315,7 @@ class StateManager:
                     end -= step
                 else:
                     cur += step
+                i += 1
             step //= 2
 
         # Phase 3: make sure the reduced transition is correct
