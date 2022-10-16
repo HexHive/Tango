@@ -18,6 +18,7 @@ import logging
 import ctypes
 from pathlib import Path
 from subprocess import DEVNULL, PIPE
+from profiler import ProfileValue
 
 class FuzzerConfig:
     """
@@ -119,6 +120,7 @@ class FuzzerConfig:
     @cached_property
     async def exec_env(self):
         _config = self._config["exec"]
+        ProfileValue('target_name')(_config["path"])
         for stdf in ["stdin", "stdout", "stderr"]:
             if stdf in _config:
                 _config[stdf] = open(_config[stdf], "wt")
