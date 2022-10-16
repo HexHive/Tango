@@ -157,11 +157,11 @@ class OwnerDecorator(ABC):
 
     @abstractmethod
     def wrap(self, fn):
-        raise NotImplemented
+        raise NotImplementedError()
 
     @abstractmethod
     def set_name(self, owner, name):
-        raise NotImplemented
+        raise NotImplementedError()
 
 class async_suspendable(OwnerDecorator):
     def __init__(self, *, suspend_cb=None, resume_cb=None, **kwargs):

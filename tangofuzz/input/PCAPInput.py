@@ -109,7 +109,7 @@ class PCAPInput(PreparedInput):
             srv = random.randint(cli + 1, 65535)
         else:
             return
-            raise NotImplemented
+            raise NotImplementedError()
 
         cur_time = time.time()
         writer = PcapWriter(self._pcap)

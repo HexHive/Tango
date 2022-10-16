@@ -38,7 +38,7 @@ class ProfileEvent(ProfilerBase):
 
     @property
     def value(self):
-        raise NotImplemented
+        raise NotImplementedError()
 
     @property
     def args(self):

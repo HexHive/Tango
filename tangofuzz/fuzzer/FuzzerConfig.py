@@ -152,7 +152,7 @@ class FuzzerConfig:
                 return UDPChannelFactory(**_config["udp"], \
                     timescale=await self.timescale)
             else:
-                raise NotImplemented()
+                raise NotImplementedError()
         else:
             if _config["type"] == "tcp":
                 fork_location = _config["tcp"].pop("fork_location", "accepting")
@@ -167,7 +167,7 @@ class FuzzerConfig:
                     timescale=await self.timescale, \
                     fork_before_bind=fork_before_bind)
             else:
-                raise NotImplemented()
+                raise NotImplementedError()
 
     @cached_property
     async def loader(self):
@@ -184,7 +184,7 @@ class FuzzerConfig:
                 no_aslr=await self.disable_aslr
             )
         else:
-            raise NotImplemented()
+            raise NotImplementedError()
 
     @cached_property
     async def state_tracker(self):
@@ -198,7 +198,7 @@ class FuzzerConfig:
                 bind_lib=self._bind_lib
             )
         else:
-            raise NotImplemented()
+            raise NotImplementedError()
 
         # IMPORTANT must set the loader's state_tracker property to the tracker
         loader.state_tracker = tracker
@@ -211,7 +211,7 @@ class FuzzerConfig:
         if input_type == "mutation":
             return RandomInputGenerator(await self.startup_pcap, await self.seed_dir, await self.protocol)
         else:
-            raise NotImplemented()
+            raise NotImplementedError()
 
     @cached_property
     async def entropy(self):
@@ -228,7 +228,7 @@ class FuzzerConfig:
         elif strategy_name == "uniform":
             return lambda a, b: UniformStrategy(sm=a, entry_state=b, entropy=entropy)
         else:
-            raise NotImplemented()
+            raise NotImplementedError()
 
     @cached_property
     async def state_manager(self):
