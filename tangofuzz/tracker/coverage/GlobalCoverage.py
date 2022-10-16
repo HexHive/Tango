@@ -5,8 +5,6 @@ from functools    import cache
 from ctypes       import POINTER as P, c_ubyte as B, c_size_t as S, cast as C
 import numpy as np
 
-from profilehooks import profile
-
 HAMMING_LUT = np.zeros(256, dtype=np.uint8)
 HAMMING_LUT[1] = 1
 for i in range(1, 8):
