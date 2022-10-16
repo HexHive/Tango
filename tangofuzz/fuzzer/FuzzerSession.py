@@ -67,7 +67,8 @@ class FuzzerSession:
             try:
                 await self._sman.reset_state()
                 # feed input to target and populate state machine
-                await self._loader.execute_input(input, self._sman)
+                context_input = self._sman.get_context_input(input)
+                await self._loader.execute_input(context_input)
                 info(f"Loaded seed file: {input}")
             except LoadedException as ex:
                 warning(f"Failed to load {input}: {ex.exception}")

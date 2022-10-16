@@ -6,10 +6,11 @@ from typing import Callable
 from statemanager import StateMachine
 from statemanager.strategy import StrategyBase
 from tracker import StateBase, StateTrackerBase
-from input        import InputBase, MemoryCachingDecorator, FileCachingDecorator
+from input        import InputBase, DecoratorBase, MemoryCachingDecorator, FileCachingDecorator
 from loader       import StateLoaderBase # FIXME there seems to be a cyclic dep
 from profiler     import ProfileValue, ProfileFrequency, ProfileCount
 import asyncio
+from common import async_enumerate
 
 class StateManager:
     def __init__(self, loader: StateLoaderBase, tracker: StateTrackerBase,
@@ -24,7 +25,7 @@ class StateManager:
         self._validate = validate_transitions
         self._minimize = minimize_transitions
 
-        self._last_state = self._tracker.entry_state
+        self._last_state = self.state_tracker.entry_state
         self._last_state.state_manager = self
         self._sm = StateMachine(self._last_state)
         self._strategy = strategy_ctor(self._sm, self._last_state)
@@ -64,13 +65,15 @@ class StateManager:
             # FIXME update==True is temporary; should not be considered for main
             # Switch to True to force web UI graph update
             if state_or_path is None:
-                current_state = await self._loader.load_state(self._tracker.entry_state, self, dryrun=dryrun)
+                current_state = await self._loader.load_state(self.state_tracker.entry_state, self)
             else:
-                current_state = await self._loader.load_state(state_or_path, self, dryrun=dryrun)
+                current_state = await self._loader.load_state(state_or_path, self)
             if not dryrun:
-                if self._tracker.current_state not in self.state_machine._graph:
-                    import pdb; pdb.set_trace()
-                self._last_state = self._tracker.current_state
+                self.state_tracker.reset_state(current_state)
+                if (current_state := self.state_tracker.current_state) not in self.state_machine._graph:
+                    critical("Current state is not in state graph! Launching interactive debugger...")
+                    import ipdb; ipdb.set_trace()
+                self._last_state = current_state
                 self._strategy.update_state(self._last_state, is_new=False)
         except asyncio.CancelledError:
             # if an interrupt is received while loading a state (e.g. death),
@@ -79,14 +82,15 @@ class StateManager:
             # "discovered" between the last state and the new state, which is
             # wrong
             if not dryrun:
-                if self._tracker.current_state not in self.state_machine._graph:
-                    import pdb; pdb.set_trace()
-                self._last_state = self._tracker.current_state
+                if (current_state := self.state_tracker.current_state) not in self.state_machine._graph:
+                    critical("Current state is not in state graph! Launching interactive debugger...")
+                    import ipdb; ipdb.set_trace()
+                self._last_state = current_state
             raise
         except StateNotReproducibleException as ex:
             if not dryrun:
                 faulty_state = ex._faulty_state
-                if faulty_state != self._tracker.entry_state:
+                if faulty_state != self.state_tracker.entry_state:
                     try:
                         debug(f"Dissolving irreproducible {faulty_state = }")
                         self._sm.dissolve_state(faulty_state, stitch=False)
@@ -101,8 +105,8 @@ class StateManager:
         debug(f"Reloading target state {strategy_target}")
         await self.reset_state(strategy_target)
 
-    def get_context(self, input: InputBase, dryrun: bool) -> StateManagerContext:
-        return StateManagerContext(self, input, dryrun)
+    def get_context_input(self, input: InputBase) -> StateManagerContext:
+        return StateManagerContext(self)(input)
 
     async def step(self, input: InputBase):
         """
@@ -147,7 +151,8 @@ class StateManager:
                 self._strategy.update_state(self._strategy.target_state, invalidate=True)
                 raise
 
-        await self._loader.execute_input(input, self, dryrun=False)
+        context_input = self.get_context_input(input)
+        await self._loader.execute_input(context_input)
 
     async def update(self, input_gen: Callable[..., InputBase]) -> bool:
         """
@@ -198,7 +203,7 @@ class StateManager:
                         # using that path
                         self._last_path = self._current_path.copy()
                         await self.reset_state(self._last_state, dryrun=True)
-                        await self._loader.execute_input(last_input, self, dryrun=True)
+                        await self._loader.execute_input(last_input)
                         assert current_state == self._tracker.current_state
                         debug(f"{current_state} is reproducible")
                     except AssertionError:
@@ -295,7 +300,7 @@ class StateManager:
             await self.reset_state(src, dryrun=True)
             exp_input = input[begin:]
             try:
-                await self._loader.execute_input(exp_input, self, dryrun=True)
+                await self._loader.execute_input(exp_input)
             except Exception:
                 success = False
 
@@ -320,7 +325,7 @@ class StateManager:
                 await self.reset_state(src, dryrun=True)
                 tmp_lin_input = lin_input[:cur] + lin_input[cur + step:]
                 try:
-                    await self._loader.execute_input(tmp_lin_input, self, dryrun=True)
+                    await self._loader.execute_input(tmp_lin_input)
                 except Exception:
                     success = False
 
@@ -335,7 +340,7 @@ class StateManager:
 
         # Phase 3: make sure the reduced transition is correct
         await self.reset_state(src, dryrun=True)
-        await self._loader.execute_input(lin_input, self, dryrun=True)
+        await self._loader.execute_input(lin_input)
         try:
             assert dst == next_state(src, dst)
         except AssertionError:
@@ -346,7 +351,7 @@ class StateManager:
         else:
             return input
 
-class StateManagerContext:
+class StateManagerContext(DecoratorBase):
     """
     This context object provides a wrapper around the input to be sent to the
     target. By wrapping the iterator method, the state manager is updated after
@@ -355,19 +360,17 @@ class StateManagerContext:
     and the second part continues to build up state for any following
     transition.
     """
-    def __init__(self, sman: StateManager, input: InputBase, dryrun: bool):
+    def __init__(self, sman: StateManager):
         self._sman = sman
-        self._input = input
         self._start = self._stop = None
-        self._dryrun = dryrun
 
     def input_gen(self):
         # we delay the call to the slicing decorator until needed
         return self._input[self._start:self._stop]
 
-    async def __aiter__(self):
+    async def ___aiter___(self, orig):
         self._start = self._stop = 0
-        for idx, interaction in enumerate(self._input):
+        async for idx, interaction in async_enumerate(orig()):
             ProfileValue('status')('fuzz')
             self._stop = idx + 1
             yield interaction
@@ -400,8 +403,4 @@ class StateManagerContext:
         else:
             self._sman._last_state.last_input = self.input_gen()
 
-    def __enter__(self):
-        return self
 
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        pass

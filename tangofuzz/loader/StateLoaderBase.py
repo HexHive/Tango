@@ -1,13 +1,14 @@
 from . import critical, debug
 from abc          import ABC, abstractmethod
 from typing       import Union
-from common       import LoadedException, ChannelBrokenException, async_enumerate
+from common       import LoadedException, ChannelBrokenException
 from dataio    import ChannelFactoryBase
 from input        import InputBase
 from generator    import InputGeneratorBase
 from statemanager import StateManager # FIXME there seems to be a cyclic dep
 from tracker import StateBase, StateTrackerBase
 from profiler import ProfileFrequency, ProfileValueMean, ProfileEvent, ProfileCount
+from common import async_enumerate
 
 class StateLoaderBase(ABC):
     """
@@ -28,7 +29,7 @@ class StateLoaderBase(ABC):
         self._tracker = value
 
     @abstractmethod
-    async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, dryrun: bool) -> StateBase:
+    async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager) -> StateBase:
         pass
 
     @property
@@ -38,7 +39,7 @@ class StateLoaderBase(ABC):
 
     @ProfileEvent("execute_input")
     @ProfileFrequency("execs")
-    async def execute_input(self, input: InputBase, sman: StateManager, dryrun: bool=False):
+    async def execute_input(self, input: InputBase):
         """
         Executes the sequence of interactions specified by the input.
 
@@ -48,28 +49,15 @@ class StateLoaderBase(ABC):
         :raises:    LoadedException: Forwards the exception that was raised
                     during execution, along with the input that caused it.
         """
-        if not dryrun:
-            with sman.get_context(input, dryrun=False) as ctx:
-                try:
-                    idx = -1
-                    async for idx, interaction in async_enumerate(ctx):
-                        # FIXME figure out what other parameters this needs
-                        await interaction.perform(self.channel)
-                        # TODO perform fault detection
-                    else:
-                        ProfileValueMean("input_len", samples=100)(idx + 1)
-                        ProfileCount("total_interactions")(idx + 1)
-                except Exception as ex:
-                    raise LoadedException(ex, ctx.input_gen())
-        else:
+        try:
             idx = -1
-            for idx, interaction in enumerate(input):
-                try:
-                    await interaction.perform(self.channel)
-                except Exception as ex:
-                    raise LoadedException(ex, input[:idx + 1])
+            async for idx, interaction in async_enumerate(input):
+                await interaction.perform(self.channel)
             else:
+                ProfileValueMean("input_len", samples=100)(idx + 1)
                 ProfileCount("total_interactions")(idx + 1)
+        except Exception as ex:
+            raise LoadedException(ex, input[:idx + 1])
 
         # poll channel for incoming data
         # FIXME what to do with this data? if input did not request it, it was

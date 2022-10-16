@@ -17,7 +17,7 @@ class ReplayStateLoader(ProcessLoader):
     def channel(self):
         return self._channel
 
-    async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager, dryrun: bool=False) -> StateBase:
+    async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager) -> StateBase:
         if self.state_tracker is None:
             # special case where the state tracker wants an initial state
             path_gen = ((),)
@@ -46,11 +46,7 @@ class ReplayStateLoader(ProcessLoader):
                 await self._launch_target()
 
                 ## Send startup input
-                await self.execute_input(self._generator.startup_input, None, dryrun=True)
-
-                if sman is not None and not dryrun:
-                    # FIXME should this be done here? (see comment in StateManager.reset_state)
-                    sman._last_state = self.state_tracker.entry_state
+                await self.execute_input(self._generator.startup_input)
 
                 paths_tried += 1
                 try:
@@ -67,8 +63,8 @@ class ReplayStateLoader(ProcessLoader):
                                 f"source state ({source}) did not match current state ({current_state})"
                             )
                         # perform the input
-                        await self.execute_input(input, sman, dryrun=True)
                         current_state = next_state(source, destination)
+                        await self.execute_input(input)
                         # check if destination matches the current state
                         if destination != current_state:
                             faulty_state = destination
@@ -86,8 +82,6 @@ class ReplayStateLoader(ProcessLoader):
                     if self.state_tracker is not None:
                         if not cached_path:
                             destination = self.state_tracker.entry_state
-                        if not dryrun:
-                            self.state_tracker.reset_state(destination)
                     else:
                         destination = None
                     return destination
