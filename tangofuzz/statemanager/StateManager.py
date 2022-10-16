@@ -401,3 +401,5 @@ class StateManagerContext(DecoratorBase):
         # commit the rest of the input
         self._sman._last_state.last_input = self.input_gen()
 
+    def ___iter___(self, orig):
+        return orig()
