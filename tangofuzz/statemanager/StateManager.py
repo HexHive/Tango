@@ -44,26 +44,12 @@ class StateManager:
         self._current_path.clear()
 
     @ProfileFrequency('resets')
-    async def reset_state(self, state_or_path=None, dryrun=False):
+    async def reset_state(self, state_or_path=None, dryrun=False) -> StateBase:
         if not dryrun:
             ProfileValue('status')('reset_state')
             self._reset_current_path()
-        if self._last_state and not dryrun:
-            # must clear last state's input whenever a new state is loaded
-            # WARN if using SnapshotStateLoader, the snapshot must be taken when
-            # the state is first reached, not when a transition is about to
-            # happen. Otherwise, last_input may be None, but the snapshot may
-            # have residual effect from previous inputs before the state change.
-            self._last_state.last_input = None
-            # we also set _last_state to the entry state in case the loader
-            # needs to execute inputs to reach the target state (e.g. ReplayStateLoader)
-            # so that no new edges are added between the last state and the entry state
-            # FIXME should this be done by the loader instead?
-            # self._last_state = self._tracker.entry_state
 
         try:
-            # FIXME update==True is temporary; should not be considered for main
-            # Switch to True to force web UI graph update
             if state_or_path is None:
                 current_state = await self._loader.load_state(self.state_tracker.entry_state, self)
             else:
@@ -99,6 +85,7 @@ class StateManager:
                         warning(f"Faulty state was not even valid")
                     self._strategy.update_state(faulty_state, invalidate=True)
             raise
+        return current_state
 
     async def reload_target(self):
         strategy_target = self._strategy.target
@@ -118,11 +105,8 @@ class StateManager:
         while True:
             try:
                 if should_reset:
-                    strategy_target = self._strategy.target
-                    debug(f'Stepping to new {strategy_target = }')
-                    await self.reset_state(strategy_target)
-                    target_state = self._tracker.current_state
-                    debug(f'Stepped to new {target_state = }')
+                    await self.reload_target()
+                    debug(f'Stepped to new {self._strategy.target = }')
                 break
             except StateNotReproducibleException as ex:
                 if isinstance(strategy_target, StateBase):
@@ -172,7 +156,8 @@ class StateManager:
         # same hash(), but may be a different object. This means, any
         # modifications made to the state (or new attributes stored) may not
         # persist.
-        current_state = self._tracker.current_state
+        current_state = self.state_tracker.current_state
+        input = None
 
         # the tracker may return None as current_state, in case it has not yet
         # finished the training phase (preprocessing seeds)
@@ -188,13 +173,7 @@ class StateManager:
             if current_state != self._last_state:
                 debug(f"Possible transition from {self._last_state} to {current_state}")
 
-                if self._last_state.last_input is not None:
-                    last_input = self._last_state.last_input + input_gen()
-                else:
-                    last_input = input_gen()
-
-                stable = True
-
+                input = input_gen()
                 if self._validate:
                     try:
                         debug("Attempting to reproduce transition")
@@ -203,7 +182,7 @@ class StateManager:
                         # using that path
                         self._last_path = self._current_path.copy()
                         await self.reset_state(self._last_state, dryrun=True)
-                        await self._loader.execute_input(last_input)
+                        await self._loader.execute_input(input)
                         assert current_state == self.state_tracker.peek(self._last_state, current_state)
                         debug(f"{current_state} is reproducible")
                     except AssertionError:
@@ -220,7 +199,7 @@ class StateManager:
                             self._strategy.update_state(current_state, invalidate=True)
 
                             # we save the input for later coverage measurements
-                            FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=False, path=self._last_path)
+                            FileCachingDecorator(self._workdir, "queue", self._protocol)(input, self, copy=False, path=self._last_path)
                         stable = False
 
                         debug(f"Reloading last state ({self._last_state})")
@@ -254,32 +233,30 @@ class StateManager:
                         raise
 
                 if stable:
-                    last_input = MemoryCachingDecorator()(last_input, copy=False)
                     new_edge = current_state not in self._sm._graph.successors(self._last_state)
+                    input = MemoryCachingDecorator()(input, copy=False)
                     if (new_state or new_edge) and self._minimize:
                         # call the transition pruning routine to shorten the last input
                         debug("Attempting to minimize transition")
                         try:
-                            last_input = await self._minimize_transition(
+                            input = await self._minimize_transition(
                                 # FIXME self._current_path is not StateBase, as
                                 # is required by _minimize_transition, but it
                                 # should work, for now
-                                self._current_path, current_state, last_input)
-                            last_input = FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=False)
+                                self._current_path, current_state, input)
+                            input = FileCachingDecorator(self._workdir, "queue", self._protocol)(input, self, copy=False)
                         except Exception as ex:
                             # Minimization failed, again probably due to an
                             # indeterministic target
                             warning(f"Minimization failed, using original input {ex=}")
-                            FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=True)
+                            FileCachingDecorator(self._workdir, "queue", self._protocol)(input, self, copy=True)
 
                     self._sm.update_transition(self._last_state, current_state,
-                        last_input)
+                        input)
                     self._strategy.update_transition(self._last_state, current_state,
-                        last_input)
+                        input)
+                    self._current_path.append((self._last_state, current_state, input))
                     assert current_state == self.state_tracker.update(self._last_state, input)
-                    self._current_path.append((self._last_state, current_state, last_input))
-                    # reset last state's accumulated input
-                    self._last_state.last_input = None
                     self._last_state = current_state
                     info(f'Transitioned to {current_state=}')
                     updated = True
@@ -366,7 +343,15 @@ class StateManagerContext(DecoratorBase):
 
     def input_gen(self):
         # we delay the call to the slicing decorator until needed
-        return self._input[self._start:self._stop]
+        head = self._sman._last_state.last_input
+        tail = self._input[self._start:self._stop]
+        if head is None:
+            if self._start >= self._stop:
+                return None
+            else:
+                return tail
+        else:
+            return head + tail
 
     async def ___aiter___(self, orig):
         self._start = self._stop = 0
@@ -378,13 +363,26 @@ class StateManagerContext(DecoratorBase):
             # the StateManager update is only called after the interaction
             # is executed by the loader
 
-            if not self._dryrun:
-                # update the current state (e.g., if it needs to track interesting cov)
-                self._sman._tracker.update(
-                    self._sman._tracker.current_state,
-                    None, self.input_gen)
+            try:
+                last_state = self._sman._last_state
                 if await self._sman.update(self.input_gen):
                     self._start = idx + 1
+
+                    # must clear last state's input whenever a new state is
+                    # loaded
+                    #
+                    # WARN if using SnapshotStateLoader, the snapshot must be
+                    # taken when the state is first reached, not when a
+                    # transition is about to happen. Otherwise, last_input may
+                    # be None, but the snapshot may have residual effect from
+                    # previous inputs before the state change.
+                    last_state.last_input = None
+            except Exception:
+                # we also clear the last input on an exception, because the next
+                # course of action will involve a reset_state
+                last_state.last_input = None
+                raise
+
             # FIXME The state manager interrupts the target to verify individual
             # transitions. To verify a transition, the last state is loaded, and
             # the last input which observed a new state is replayed. However,
@@ -398,9 +396,5 @@ class StateManagerContext(DecoratorBase):
             # the end to make sure no interesting states are lost.
 
         # commit the rest of the input
-        if self._sman._last_state.last_input is not None:
-            self._sman._last_state.last_input += self.input_gen()
-        else:
-            self._sman._last_state.last_input = self.input_gen()
-
+        self._sman._last_state.last_input = self.input_gen()
 
