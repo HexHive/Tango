@@ -151,6 +151,7 @@ class StateManager:
         """
 
         updated = False
+        stable = True
 
         # WARN the StateBase object returned by the state tracker may have the
         # same hash(), but may be a different object. This means, any
