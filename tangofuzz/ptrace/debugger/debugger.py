@@ -6,6 +6,7 @@ from errno import ECHILD
 from ptrace.debugger import (PtraceProcess, ProcessSignal, ProcessExit,
                             ForkChildKilledEvent)
 from ptrace.binding import HAS_PTRACE_EVENTS
+from ptrace.os_tools import HAS_PROC
 from time import sleep
 from collections import defaultdict
 if HAS_PTRACE_EVENTS:
@@ -15,6 +16,8 @@ if HAS_PTRACE_EVENTS:
         PTRACE_O_TRACECLONE, THREAD_TRACE_FLAGS)
 from ptrace.binding import ptrace_detach
 from lru import LRU
+if HAS_PROC:
+    from ptrace.linux_proc import readProcessStat, ProcError
 
 class DebuggerError(PtraceError):
     pass
@@ -191,10 +194,24 @@ class PtraceDebugger(object):
             try:
                 process = self.dict[pid]
             except KeyError:
-                warning("waitpid(): Unknown PID %r, placing event in queue" % pid)
-                if pid not in self.sig_queue:
-                    self.sig_queue[pid] = list()
-                self.sig_queue[pid].append(status)
+                enq = True
+                if HAS_PROC:
+                    try:
+                        stat = readProcessStat(pid)
+                        if stat.ppid in self.dict:
+                            warning(f"Received premature signal for a child ({pid=}) of a traced process")
+                        else:
+                            enq = False
+                            debug(f"Received signal for unknown {pid=}, ignoring")
+                    except ProcError:
+                        debug(f"Process ({pid=}) died before its signal could be processed")
+                        enq = False
+                else:
+                    warning(f"Received signal for unknown {pid=}, placing event in queue")
+                if enq:
+                    if pid not in self.sig_queue:
+                        self.sig_queue[pid] = list()
+                    self.sig_queue[pid].append(status)
                 continue
 
         return process.processStatus(status)
