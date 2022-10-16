@@ -31,7 +31,7 @@ class CoverageStateTracker(LoaderDependentTracker):
         self._scratch = GlobalCoverage(self._reader.length)
 
         self._current_state = None
-        self.update(None, None, None)
+        self.update(None, None)
         self._entry_state = self._current_state
 
         return self
@@ -42,38 +42,49 @@ class CoverageStateTracker(LoaderDependentTracker):
 
     @property
     def current_state(self) -> CoverageState:
-        return self._current_state
+        return self.peek(self._current_state)
 
-    def update(self, source: StateBase, destination: StateBase, input_gen: Callable[..., InputBase], dryrun: bool=False) -> StateBase:
-        # assuming the destination is not None, we use its `context_map` as a
-        # basis for calculating the coverage delta
-        parent = source
-        if destination:
-            assert dryrun, "destination is not None while dryrun == False"
-            glbl = self._scratch
-            glbl.copy_from(destination._context)
-            parent = destination._parent
-        elif dryrun:
-            glbl = self._scratch
-            glbl.copy_from(self._global)
-        else:
-            glbl = self._global
-
+    def _diff_global_to_state(self, global_map: GlobalCoverage, parent_state: StateBase) -> StateBase:
         coverage_map = self._reader.array
-        set_map, clr_map, set_count, clr_count, map_hash = glbl.update(coverage_map)
-        new = source
+        set_map, clr_map, set_count, clr_count, map_hash = global_map.update(coverage_map)
         if set_count or clr_count:
-            new = CoverageState(parent, set_map, clr_map, set_count, clr_count, map_hash, glbl)
-            if not dryrun:
-                self._current_state = new
+            return CoverageState(parent_state, set_map, clr_map, set_count, clr_count, map_hash, global_map)
+        else:
+            return None
+
+    def update(self, source: StateBase, input: InputBase) -> StateBase:
+        parent = source
+        glbl = self._global
+
+        next_state = self._diff_global_to_state(glbl, parent)
+        if not next_state:
+            next_state = source
+        else:
+            self._current_state = next_state
 
         # we maintain _a_ path to each new state we encounter so that
         # reproducing the state is more path-aware and does not invoke a graph
         # search every time
-        if not dryrun and input_gen and source != new and new.predecessor_transition is None:
-            new.predecessor_transition = (source, input_gen())
+        if input is not None and source != next_state and next_state.predecessor_transition is None:
+            next_state.predecessor_transition = (source, input)
 
-        return new
+        return next_state
+
+    def peek(self, default_source: StateBase=None, expected_destination: StateBase=None) -> StateBase:
+        glbl = self._scratch
+        if expected_destination:
+            # when the destination is not None, we use its `context_map` as a
+            # basis for calculating the coverage delta
+            glbl.copy_from(expected_destination._context)
+            parent = expected_destination._parent
+        else:
+            glbl.copy_from(self._global)
+            parent = default_source
+
+        next_state = self._diff_global_to_state(glbl, parent)
+        if not next_state:
+            next_state = default_source
+        return next_state
 
     def reset_state(self, state: StateBase):
         self._current_state = state

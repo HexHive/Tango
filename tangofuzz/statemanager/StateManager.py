@@ -204,7 +204,7 @@ class StateManager:
                         self._last_path = self._current_path.copy()
                         await self.reset_state(self._last_state, dryrun=True)
                         await self._loader.execute_input(last_input)
-                        assert current_state == self._tracker.current_state
+                        assert current_state == self.state_tracker.peek(self._last_state, current_state)
                         debug(f"{current_state} is reproducible")
                     except AssertionError:
                         # This occurs when the predecessor state was reached through
@@ -276,6 +276,7 @@ class StateManager:
                         last_input)
                     self._strategy.update_transition(self._last_state, current_state,
                         last_input)
+                    assert current_state == self.state_tracker.update(self._last_state, input)
                     self._current_path.append((self._last_state, current_state, last_input))
                     # reset last state's accumulated input
                     self._last_state.last_input = None
@@ -287,7 +288,6 @@ class StateManager:
 
     async def _minimize_transition(self, src: StateBase, dst: StateBase, input: InputBase):
         reduced = False
-        next_state = lambda s, d: self.state_tracker.update(s, d, None, dryrun=True)
 
         # Phase 1: perform exponential back-off to find effective tail of input
         ProfileValue('status')('minimize_exp_backoff')
@@ -304,7 +304,7 @@ class StateManager:
             except Exception:
                 success = False
 
-            success &= dst == next_state(src, dst)
+            success &= dst == self.state_tracker.peek(src, dst)
             if success:
                 reduced = True
                 break
@@ -329,7 +329,7 @@ class StateManager:
                 except Exception:
                     success = False
 
-                success &= dst == next_state(src, dst)
+                success &= dst == self.state_tracker.peek(src, dst)
                 if success:
                     reduced = True
                     lin_input = MemoryCachingDecorator()(tmp_lin_input, copy=False)
@@ -342,7 +342,7 @@ class StateManager:
         await self.reset_state(src, dryrun=True)
         await self._loader.execute_input(lin_input)
         try:
-            assert dst == next_state(src, dst)
+            assert dst == self.state_tracker.peek(src, dst)
         except AssertionError:
             raise StabilityException("destination state did not match current state")
 

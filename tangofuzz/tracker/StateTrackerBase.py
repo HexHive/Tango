@@ -26,7 +26,11 @@ class StateTrackerBase(ABC):
         pass
 
     @abstractmethod
-    def update(self, source: StateBase, destination: StateBase, input_gen: Callable[..., InputBase], dryrun: bool=False) -> StateBase:
+    def update(self, source: StateBase, input: InputBase) -> StateBase:
+        pass
+
+    @abstractmethod
+    def peek(self, default_source: StateBase=None, expected_destination: StateBase=None) -> StateBase:
         pass
 
     def reset_state(self, state: StateBase):

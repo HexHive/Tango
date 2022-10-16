@@ -51,11 +51,10 @@ class ReplayStateLoader(ProcessLoader):
                 paths_tried += 1
                 try:
                     # reconstruct target state by replaying inputs
-                    next_state = lambda s, d: self.state_tracker.update(s, d, None, dryrun=True)
                     cached_path = list(path)
                     last_state = None
                     for source, destination, input in cached_path:
-                        current_state = next_state(last_state, source)
+                        current_state = self.state_tracker.peek(last_state, source)
                         # check if source matches the current state
                         if source != current_state:
                             faulty_state = source
@@ -63,8 +62,8 @@ class ReplayStateLoader(ProcessLoader):
                                 f"source state ({source}) did not match current state ({current_state})"
                             )
                         # perform the input
-                        current_state = next_state(source, destination)
                         await self.execute_input(input)
+                        current_state = self.state_tracker.peek(source, destination)
                         # check if destination matches the current state
                         if destination != current_state:
                             faulty_state = destination
