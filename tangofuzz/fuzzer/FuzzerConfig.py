@@ -122,12 +122,14 @@ class FuzzerConfig:
         _config = self._config["exec"]
         ProfileValue('target_name')(_config["path"])
         for stdf in ["stdin", "stdout", "stderr"]:
-            if stdf in _config:
+            if _config.get(stdf) == "inherit":
+                _config[stdf] = None
+            elif _config.get(stdf) is not None:
                 _config[stdf] = open(_config[stdf], "wt")
-            elif stdf != "stdin":
-                _config[stdf] = DEVNULL
-            else:
+            elif stdf == "stdin":
                 _config[stdf] = PIPE
+            else:
+                _config[stdf] = DEVNULL
         if not _config.get("env"):
             _config["env"] = dict(os.environ)
         _config["args"][0] = os.path.realpath(_config["args"][0])
