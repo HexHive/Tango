@@ -3,14 +3,16 @@ logger = logging.getLogger("profiler")
 for func in ('debug', 'info', 'warning', 'error', 'critical'):
     setattr(sys.modules[__name__], func, getattr(logger, func))
 
-from threading import Event
+from asyncio import Event, create_task
 
 ProfiledObjects = {}
-ProfilingStoppedEvent = Event()
+ProfilingTasks = []
 
 async def initialize():
     global ProfilingStoppedEvent
     ProfilingStoppedEvent = Event()
+    for idx, coro in enumerate(ProfilingTasks):
+        ProfilingTasks[idx] = create_task(coro)
 
 from sys import gettrace as sys_gettrace
 DEBUG = sys_gettrace() is not None

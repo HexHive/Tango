@@ -20,7 +20,8 @@ import profiler
 from profiler import (ProfileLambda,
                      ProfileCount,
                      ProfiledObjects,
-                     ProfileTimeElapsed)
+                     ProfileTimeElapsed,
+                     ProfilingTasks)
 
 from webui import WebRenderer
 import asyncio
@@ -154,8 +155,9 @@ class FuzzerSession:
         main_task.coro = Suspendable(self._start())
 
         await self.initialize()
-        await main_task.coro
         await profiler.initialize()
+
+        await asyncio.gather(main_task.coro, *ProfilingTasks)
 
     def sigint_handler(self, sig, frame):
         main_task = asyncio.get_running_loop().main_task
