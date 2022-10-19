@@ -242,9 +242,6 @@ class StateManager:
                         debug("Attempting to minimize transition")
                         try:
                             input = await self._minimize_transition(
-                                # FIXME self._current_path is not StateBase, as
-                                # is required by _minimize_transition, but it
-                                # should work, for now
                                 self._current_path, current_state, input)
                             input = FileCachingDecorator(self._workdir, "queue", self._protocol)(input, self, copy=False)
                         except Exception as ex:
@@ -265,7 +262,10 @@ class StateManager:
 
         return updated
 
-    async def _minimize_transition(self, src: StateBase, dst: StateBase, input: InputBase):
+    async def _minimize_transition(self, src: Union[list, StateBase], dst: StateBase, input: InputBase):
+        if isinstance(src, list):
+            src = src[-1][1]
+
         reduced = False
 
         # Phase 1: perform exponential back-off to find effective tail of input
