@@ -1,7 +1,6 @@
 from . import info, debug
 
 from webui import WebDataLoader
-from profiler import ProfilingStoppedEvent as stopped
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from functools import partial
 from threading import Thread
@@ -30,7 +29,7 @@ class WebRenderer:
 
     def start(self):
         self._start_httpd()
-        self._start_watchdog()
+        # self._start_watchdog()
         self._start_websockets()
 
     def _start_httpd(self):
@@ -40,6 +39,8 @@ class WebRenderer:
 
     def _start_watchdog(self):
         def shutdown_thread():
+            # FIXME this is now an asyncio.Event which needs to be handled
+            # differently, possibly through a callback?
             stopped.wait()
             self._httpd.shutdown()
         th = Thread(target=shutdown_thread)
