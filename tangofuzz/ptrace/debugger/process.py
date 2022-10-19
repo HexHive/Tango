@@ -12,7 +12,7 @@ from ptrace.os_tools import HAS_PROC, RUNNING_BSD, RUNNING_PYTHON3
 from ptrace.tools import dumpRegs
 from ptrace.cpu_info import CPU_WORD_SIZE
 from ptrace.ctypes_tools import bytes2word, word2bytes, bytes2type, bytes2array
-from signal import SIGTRAP, SIGSTOP, SIGKILL
+from signal import SIGTRAP, SIGSTOP, SIGKILL, SIGTERM
 from ptrace.ctypes_tools import formatAddress, formatWordHex
 from ctypes import sizeof, c_char_p
 from ptrace.errors import PtraceError
@@ -322,9 +322,9 @@ class PtraceProcess(object):
         done = False
         try:
             if self.is_stopped:
-                self.cont(SIGKILL)
+                self.cont(SIGTERM)
             else:
-                self.kill(SIGKILL)
+                self.kill(SIGTERM)
         except PtraceError as event:
             if event.errno == ESRCH:
                 done = True
@@ -358,9 +358,9 @@ class PtraceProcess(object):
                     self.cont(signum)
                 else:
                     self.cont()
-            except PtraceError:
+            except PtraceError as ex:
                 warning(f"{self} received {event} while waiting for exit,"
-                    " but the signal could not be delivered.")
+                    f" but the signal could not be delivered {ex=}.")
 
     def processStatus(self, status):
         # Process exited?
