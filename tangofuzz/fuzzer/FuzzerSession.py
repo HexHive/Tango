@@ -141,9 +141,6 @@ class FuzzerSession:
 
         ProfileTimeElapsed('elapsed')
 
-        # FIXME the WebRenderer is async and can thus be started in the same loop
-        WebRenderer(self).start()
-
         # launch fuzzing loop
         await self._loop()
 
@@ -156,6 +153,8 @@ class FuzzerSession:
 
         await self.initialize()
         await profiler.initialize()
+        # FIXME the WebRenderer is async and can thus be started in the same loop
+        WebRenderer(self).start()
 
         await asyncio.gather(main_task.coro, *ProfilingTasks)
 
