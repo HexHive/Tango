@@ -16,10 +16,10 @@ from common        import (StabilityException,
 from common        import Suspendable
 import os
 
+import profiler
 from profiler import (ProfileLambda,
                      ProfileCount,
                      ProfiledObjects,
-                     ProfilingStoppedEvent,
                      ProfileTimeElapsed)
 
 from webui import WebRenderer
@@ -155,6 +155,7 @@ class FuzzerSession:
 
         await self.initialize()
         await main_task.coro
+        await profiler.initialize()
 
     def sigint_handler(self, sig, frame):
         main_task = asyncio.get_running_loop().main_task

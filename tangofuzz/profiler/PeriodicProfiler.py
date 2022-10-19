@@ -1,6 +1,7 @@
 from abc import abstractmethod
-from profiler import ProfilerBase, ProfilingStoppedEvent as stopped
 from threading import Thread
+import profiler
+from profiler import ProfilerBase
 
 class PeriodicProfiler(ProfilerBase):
     def __init__(self, name, period=1, **kwargs):
@@ -16,7 +17,7 @@ class PeriodicProfiler(ProfilerBase):
         return obj
 
     def _thread_worker(self):
-        while not stopped.wait(self._period):
+        while not profiler.ProfilingStoppedEvent.wait(self._period):
             self._task()
 
     @abstractmethod

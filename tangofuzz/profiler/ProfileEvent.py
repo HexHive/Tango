@@ -1,6 +1,7 @@
 from . import error
 
-from profiler import ProfilerBase, ProfilingStoppedEvent
+import profiler
+from profiler import ProfilerBase
 from functools import partial
 import asyncio
 from asyncio import (get_running_loop, run_coroutine_threadsafe, wait_for,
@@ -89,7 +90,7 @@ class ProfileEvent(ProfilerBase):
         try:
             self._listeners.append(get_running_loop())
             self._listener_event = asyncio.Event()
-            while not ProfilingStoppedEvent.is_set():
+            while not profiler.ProfilingStoppedEvent.is_set():
                 async with self:
                     if self._args is None:
                         error("Event triggered while args is None. Check for data races in code!")

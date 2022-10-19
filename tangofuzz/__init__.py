@@ -13,7 +13,7 @@ import common, fuzzer, generator, input, interaction, loader, mutator, \
        dataio, profiler, ptrace, statemanager, tests
 
 import atexit
-from profiler import ProfilingStoppedEvent
+import profiler
 def exit_handler():
-    ProfilingStoppedEvent.set()
+    profiler.ProfilingStoppedEvent.set()
 atexit.register(exit_handler)
