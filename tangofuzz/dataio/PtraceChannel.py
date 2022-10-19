@@ -54,7 +54,7 @@ class PtraceChannel(NetworkChannel):
         default_ignore = lambda syscall: syscall.name not in SOCKET_SYSCALL_NAMES
         self.prepare_process(self._proc, default_ignore, syscall=True)
 
-        self._monitor_executor = ThreadPoolExecutor()
+        self._monitor_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='PtraceMonitorExecutor')
 
     def prepare_process(self, process, ignore_callback, syscall=True):
         if not process in self._debugger:
