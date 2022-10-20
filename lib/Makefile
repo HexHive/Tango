@@ -1,5 +1,8 @@
 CC=clang
-CFLAGS := -fsanitize-coverage=$(COVERAGE),trace-pc-guard -fsanitize=address
+CFLAGS := -fsanitize-coverage=$(COVERAGE),trace-pc-guard
+ifdef USE_ASAN
+	CFLAGS += -fsanitize=address
+endif
 CFLAGS += -O3 -g -fPIC
 
 all: libtangofuzz.o pytangofuzz.so

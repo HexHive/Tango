@@ -5,14 +5,20 @@ export CC=clang
 export CXX=clang++
 
 CFLAGS := -fsanitize-coverage=$(COVERAGE),trace-pc-guard
-CFLAGS += -O3 -fPIC -fsanitize=address
+CFLAGS += -O3 -fPIC
+ifdef USE_ASAN
+	CFLAGS += -fsanitize=address
+endif
 
 export CFLAGS
 export CXXFLAGS=$(CFLAGS)
 
 LIBDIR=$(realpath ../lib)
 
-LDFLAGS := -fPIE -pie -L$(LIBDIR) -fsanitize=address
+LDFLAGS := -fPIE -pie -L$(LIBDIR)
+ifdef USE_ASAN
+	LDFLAGS += -fsanitize=address
+endif
 LDFLAGS += -Wl,-wrap,bind -Wl,-wrap,fork -Wl,-wrap,random
 
 export LDFLAGS
