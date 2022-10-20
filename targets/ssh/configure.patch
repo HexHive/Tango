@@ -1,0 +1,97 @@
+diff --git a/configure.ac b/configure.ac
+index c2878e3d..57a9e07f 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -3159,92 +3159,6 @@ AC_ARG_WITH([sandbox],
+ 	]
+ )
+ 
+-# Some platforms (seems to be the ones that have a kernel poll(2)-type
+-# function with which they implement select(2)) use an extra file descriptor
+-# when calling select(2), which means we can't use the rlimit sandbox.
+-AC_MSG_CHECKING([if select works with descriptor rlimit])
+-AC_RUN_IFELSE(
+-	[AC_LANG_PROGRAM([[
+-#include <sys/types.h>
+-#ifdef HAVE_SYS_TIME_H
+-# include <sys/time.h>
+-#endif
+-#include <sys/resource.h>
+-#ifdef HAVE_SYS_SELECT_H
+-# include <sys/select.h>
+-#endif
+-#include <errno.h>
+-#include <fcntl.h>
+-#include <stdlib.h>
+-	]],[[
+-	struct rlimit rl_zero;
+-	int fd, r;
+-	fd_set fds;
+-	struct timeval tv;
+-
+-	fd = open("/dev/null", O_RDONLY);
+-	FD_ZERO(&fds);
+-	FD_SET(fd, &fds);
+-	rl_zero.rlim_cur = rl_zero.rlim_max = 0;
+-	setrlimit(RLIMIT_FSIZE, &rl_zero);
+-	setrlimit(RLIMIT_NOFILE, &rl_zero);
+-	tv.tv_sec = 1;
+-	tv.tv_usec = 0;
+-	r = select(fd+1, &fds, NULL, NULL, &tv);
+-	exit (r == -1 ? 1 : 0);
+-	]])],
+-	[AC_MSG_RESULT([yes])
+-	 select_works_with_rlimit=yes],
+-	[AC_MSG_RESULT([no])
+-	 select_works_with_rlimit=no],
+-	[AC_MSG_WARN([cross compiling: assuming yes])]
+-)
+-
+-AC_MSG_CHECKING([if setrlimit(RLIMIT_NOFILE,{0,0}) works])
+-AC_RUN_IFELSE(
+-	[AC_LANG_PROGRAM([[
+-#include <sys/types.h>
+-#ifdef HAVE_SYS_TIME_H
+-# include <sys/time.h>
+-#endif
+-#include <sys/resource.h>
+-#include <errno.h>
+-#include <stdlib.h>
+-	]],[[
+-	struct rlimit rl_zero;
+-	int fd, r;
+-	fd_set fds;
+-
+-	rl_zero.rlim_cur = rl_zero.rlim_max = 0;
+-	r = setrlimit(RLIMIT_NOFILE, &rl_zero);
+-	exit (r == -1 ? 1 : 0);
+-	]])],
+-	[AC_MSG_RESULT([yes])
+-	 rlimit_nofile_zero_works=yes],
+-	[AC_MSG_RESULT([no])
+-	 rlimit_nofile_zero_works=no],
+-	[AC_MSG_WARN([cross compiling: assuming yes])]
+-)
+-
+-AC_MSG_CHECKING([if setrlimit RLIMIT_FSIZE works])
+-AC_RUN_IFELSE(
+-	[AC_LANG_PROGRAM([[
+-#include <sys/types.h>
+-#include <sys/resource.h>
+-#include <stdlib.h>
+-	]],[[
+-		struct rlimit rl_zero;
+-
+-		rl_zero.rlim_cur = rl_zero.rlim_max = 0;
+-		exit(setrlimit(RLIMIT_FSIZE, &rl_zero) != 0);
+-	]])],
+-	[AC_MSG_RESULT([yes])],
+-	[AC_MSG_RESULT([no])
+-	 AC_DEFINE(SANDBOX_SKIP_RLIMIT_FSIZE, 1,
+-	    [setrlimit RLIMIT_FSIZE works])],
+-	[AC_MSG_WARN([cross compiling: assuming yes])]
+-)
+-
+ if test "x$sandbox_arg" = "xpledge" || \
+    ( test -z "$sandbox_arg" && test "x$ac_cv_func_pledge" = "xyes" ) ; then
+ 	test "x$ac_cv_func_pledge" != "xyes" && \
