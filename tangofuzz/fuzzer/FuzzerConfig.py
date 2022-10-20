@@ -19,6 +19,7 @@ import ctypes
 from pathlib import Path
 from subprocess import DEVNULL, PIPE
 from profiler import ProfileValue
+import collections.abc
 
 class FuzzerConfig:
     """
@@ -86,15 +87,22 @@ class FuzzerConfig:
         }
     }
     """
-    def __init__(self, file: str):
+    def __init__(self, file: str, overrides: dict=None):
         """
         Reads and parses a JSON-formatted configuration file.
 
         :param      file:  The path to the JSON file
         :type       file:  str
+
+        :param      overrides: A nested dict of keys to override those in the
+                               main config.
+        :type       overrides: dict
         """
         with open(file, "rt") as f:
             self._config = json.load(f)
+
+        if overrides:
+            self.update_overrides(overrides)
 
         if self.lib_dir:
             so_path = os.path.join(self.lib_dir, "pytangofuzz.so")
@@ -116,6 +124,15 @@ class FuzzerConfig:
         cwd = self._config["fuzzer"].get("cwd", ".")
         return cwd
 
+    def update_overrides(self, overrides: dict):
+        def update(d, u):
+            for k, v in u.items():
+                if isinstance(v, collections.abc.Mapping):
+                    d[k] = update(d.get(k, {}), v)
+                else:
+                    d[k] = v
+            return d
+        update(self._config, overrides)
 
     @cached_property
     async def exec_env(self):
