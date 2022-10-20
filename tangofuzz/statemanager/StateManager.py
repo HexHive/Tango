@@ -48,6 +48,16 @@ class StateManager:
         if not dryrun:
             ProfileValue('status')('reset_state')
             self._reset_current_path()
+            # must clear last state's input whenever a new state is
+            # loaded
+            #
+            # WARN if using SnapshotStateLoader, the snapshot must be
+            # taken when the state is first reached, not when a
+            # transition is about to happen. Otherwise, last_input may
+            # be None, but the snapshot may have residual effect from
+            # previous inputs before the state change.
+            if self._last_state is not None:
+                self._last_state.last_input = None
 
         try:
             if state_or_path is None:
@@ -359,6 +369,7 @@ class StateManagerContext(DecoratorBase):
 
     async def ___aiter___(self, orig):
         self._start = self._stop = 0
+        idx = -1
         async for idx, interaction in async_enumerate(orig()):
             ProfileValue('status')('fuzz')
             self._stop = idx + 1
@@ -372,14 +383,9 @@ class StateManagerContext(DecoratorBase):
                 if await self._sman.update(self.input_gen):
                     self._start = idx + 1
 
-                    # must clear last state's input whenever a new state is
-                    # loaded
-                    #
-                    # WARN if using SnapshotStateLoader, the snapshot must be
-                    # taken when the state is first reached, not when a
-                    # transition is about to happen. Otherwise, last_input may
-                    # be None, but the snapshot may have residual effect from
-                    # previous inputs before the state change.
+                    # if an update has happened, we've transitioned out of the
+                    # last_state and as such, it's no longer necessary to keep
+                    # track of the last input
                     last_state.last_input = None
             except Exception:
                 # we also clear the last input on an exception, because the next
@@ -398,9 +404,10 @@ class StateManagerContext(DecoratorBase):
             # It may be better to let the input update the state manager freely
             # all throughout the sequence, and perform the validation step at
             # the end to make sure no interesting states are lost.
-
-        # commit the rest of the input
-        self._sman._last_state.last_input = self.input_gen()
+        else:
+            if idx >= 0:
+                # commit the rest of the input
+                self._sman._last_state.last_input = self.input_gen()
 
     def ___iter___(self, orig):
         return orig()
