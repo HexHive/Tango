@@ -253,6 +253,8 @@ class PtraceChannel(NetworkChannel):
         return (last_process, result)
 
     def terminator(self, process):
+        for p in process.children:
+            self.terminator(p)
         try:
             # WARN it seems necessary to wait for the child to exit, otherwise
             # the forkserver may misbehave, and the fuzzer will receive a lot of
@@ -263,8 +265,6 @@ class PtraceChannel(NetworkChannel):
         finally:
             if process in self._debugger:
                 self._debugger.deleteProcess(process)
-        for p in process.children:
-            self.terminator(p)
 
     def close(self, terminate, **kwargs):
         if terminate:
