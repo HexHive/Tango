@@ -28,6 +28,7 @@
 		"lib": "./lib/",
 		"cwd": "./targets/ssh/",
 		"workdir": "./workdir/",
-		"resume": true
+		"resume": true,
+		"seeds": "./seeds/"
 	}
 }
