@@ -87,10 +87,10 @@ class PtraceChannel(NetworkChannel):
             raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with {event.signum=}", signum=event.signum)
         elif event.exitcode == 1:
             # exitcode == 1 is usually ASan's return code when a violation is reported
-            # FIXME can we read ASan's exit code from env options?
+            # FIXME ASan should use abort_on_error so that SIGABRT is received instead
             raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with {event.exitcode=}", exitcode=1)
         else:
-            raise ProcessCrashedException(f"Process with {event.process.pid=} terminated abnormally with {event.exitcode=}", exitcode=event.exitcode)
+            raise ProcessTerminatedException(f"Process with {event.process.pid=} terminated abnormally with {event.exitcode=}", exitcode=event.exitcode)
 
     def process_signal(self, event):
         if event.signum == signal.SIGUSR2:

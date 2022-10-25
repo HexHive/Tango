@@ -2,9 +2,7 @@
 	"exec": {
 		"path": "./tcp_server",
 		"args": ["./tcp_server"],
-		"env": {
-			"ASAN_OPTIONS": "detect_leaks=0"
-		},
+		"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"},
 		"stdout": "./stdout",
 		"stderr": "./stderr"
 	},

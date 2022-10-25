@@ -3,8 +3,7 @@
 		"path": "./dnsmasq",
 		"args": ["./dnsmasq", "-C", "dnsmasq.conf"],
 		"cwd": "./",
-		"stdout": "./stdout",
-		"stderr": "./stderr"
+		"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
 	},
 	"channel": {
 		"type": "udp",
