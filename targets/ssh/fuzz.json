@@ -1,7 +1,7 @@
 {
 	"exec": {
 		"path": "./sshd",
-		"args": ["./sshd", "-d", "-e", "-p", "2022", "-r", "-f", "sshd_config"],
+		"args": ["./sshd", "-D", "-e", "-p", "2022", "-r", "-f", "sshd_config"],
 		"cwd": "./",
 		"env": {"ASAN_OPTIONS": "detect_leaks=0"},
 		"stdout": "./stdout",
