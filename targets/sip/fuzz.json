@@ -1,0 +1,33 @@
+{
+	"exec": {
+		"path": "./kamailio",
+		"args": ["./kamailio", "-f", "kamailio-basic.cfg", "-L", "./modules", "-Y", "./rundir", "-n", "1", "-D", "-E"],
+		"cwd": "./",
+		"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
+	},
+	"channel": {
+		"type": "udp",
+		"udp": {
+			"endpoint": "127.0.0.1",
+			"port": 5060
+		}
+	},
+	"loader": {
+		"type": "replay",
+		"forkserver": false,
+		"disable_aslr": true
+	},
+	"input": {
+		"type": "mutation"
+	},
+	"statemanager": {
+		"type": "coverage",
+		"strategy": "uniform"
+	},
+	"fuzzer": {
+		"lib": "./lib/",
+		"cwd": "./targets/sip/",
+		"workdir": "./workdir/",
+		"seeds": "./seeds/"
+	}
+}
