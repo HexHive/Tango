@@ -1,0 +1,12 @@
+diff --git a/src/src/buildconfig.c b/src/src/buildconfig.c
+index 4ed287414..0e14d9f2a 100644
+--- a/src/src/buildconfig.c
++++ b/src/src/buildconfig.c
+@@ -723,6 +723,7 @@ else if (isgroup)
+       fprintf(new, "#define FIXED_NEVER_USERS     %d", j);
+       for (i = 0; i < j; i++) fprintf(new, ", %d", (unsigned int)vector[i]);
+       fprintf(new, "\n");
++      free(vector);
+       }
+     continue;
+     }

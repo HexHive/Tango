@@ -1,0 +1,35 @@
+{
+	"exec": {
+		"path": "./exim",
+		"args": ["./exim", "-C", "exim.config", "-bdf", "-d", "-oX", "2025"],
+		"cwd": "./",
+		"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
+	},
+	"channel": {
+		"type": "tcp",
+		"tcp": {
+			"endpoint": "127.0.0.1",
+			"port": 2025,
+			"fork_location": "accepting"
+		}
+	},
+	"loader": {
+		"type": "replay",
+		"forkserver": true,
+		"disable_aslr": true
+	},
+	"input": {
+		"type": "mutation",
+		"startup": "init.pcap"
+	},
+	"statemanager": {
+		"type": "coverage",
+		"strategy": "uniform"
+	},
+	"fuzzer": {
+		"lib": "./lib/",
+		"cwd": "./targets/smtp/",
+		"workdir": "./workdir/",
+		"resume": true
+	}
+}
