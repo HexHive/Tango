@@ -130,7 +130,7 @@ class PtraceDebugger(object):
         """
         Quit the debugger: terminate all processes in reverse order.
         """
-        info("Quit debugger")
+        debug("Quit debugger")
         # Terminate processes in reverse order
         # to kill children before parents
         processes = list(self.list)
@@ -279,7 +279,7 @@ class PtraceDebugger(object):
                 "Tracing fork events is not supported on this architecture or operating system")
         self.options |= PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK
         self.trace_fork = True
-        info("Debugger trace forks (options=%s)" % self.options)
+        debug("Debugger trace forks (options=%s)" % self.options)
 
     def traceExec(self):
         """
@@ -290,6 +290,7 @@ class PtraceDebugger(object):
             return
         self.trace_exec = True
         self.options |= PTRACE_O_TRACEEXEC
+        debug("Debugger trace execs (options=%s)" % self.options)
 
     def traceClone(self):
         """
