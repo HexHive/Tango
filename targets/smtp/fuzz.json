@@ -29,6 +29,7 @@
 		"lib": "./lib/",
 		"cwd": "./targets/smtp/",
 		"workdir": "./workdir/",
+		"seeds": "./seeds/",
 		"resume": true
 	}
 }
