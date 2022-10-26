@@ -19,8 +19,7 @@
 		"disable_aslr": true
 	},
 	"input": {
-		"type": "mutation",
-		"startup": "init.pcap"
+		"type": "mutation"
 	},
 	"statemanager": {
 		"type": "coverage",
