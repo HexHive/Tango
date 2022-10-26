@@ -12,6 +12,6 @@ pyroute2
 #setcap cap_net_admin,cap_sys_admin,cap_dac_override+eip python3.9
 #libncurses-dev (from apt)
 async-property==0.2.1
-scipy==1.7.3
+scipy==1.9.3
 lru-dict==1.1.8
 ipdb==0.13.9
