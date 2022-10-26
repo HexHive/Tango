@@ -30,6 +30,7 @@
 		"cwd": "./targets/smtp/",
 		"workdir": "./workdir/",
 		"seeds": "./seeds/",
-		"resume": true
+		"resume": true,
+		"timescale": 0
 	}
 }
