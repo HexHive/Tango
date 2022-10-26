@@ -85,10 +85,6 @@ class PtraceChannel(NetworkChannel):
             raise ProcessTerminatedException(f"Process with {event.process.pid=} exited normally", exitcode=0)
         elif event.signum is not None:
             raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with {event.signum=}", signum=event.signum)
-        elif event.exitcode == 1:
-            # exitcode == 1 is usually ASan's return code when a violation is reported
-            # FIXME ASan should use abort_on_error so that SIGABRT is received instead
-            raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with {event.exitcode=}", exitcode=1)
         else:
             raise ProcessTerminatedException(f"Process with {event.process.pid=} terminated abnormally with {event.exitcode=}", exitcode=event.exitcode)
 
