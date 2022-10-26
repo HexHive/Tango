@@ -42,8 +42,8 @@ class TCPChannel(PtraceChannel):
         self._data_timeout = data_timeout * self._timescale if data_timeout else None
         self._socket = None
         self._accept_process = None
-        self._refcounter = 0
-        self._sockfd = -1
+        self._refcounter = dict()
+        self._sockfd = set()
         self.setup((endpoint, port))
 
     def cb_socket_listening(self, process, syscall):
@@ -60,7 +60,8 @@ class TCPChannel(PtraceChannel):
         # FIXME self._socket could be not None but the socket may not yet be
         # accepted (see: connect())
         if self._socket is not None:
-            self._refcounter += 1
+            for fd in self._refcounter:
+                self._refcounter[fd] += 1
 
     def setup(self, address: tuple):
         ## Wait for a socket that is listening on the same port
@@ -88,7 +89,7 @@ class TCPChannel(PtraceChannel):
         ## Now that we've verified the server is listening, we can connect
         ## Listen for a call to accept() to get the connected socket fd
         self._connect_address = address
-        self._sockfd = -1
+        self._sockfd.clear()
         self._accept_process, _ = self.monitor_syscalls( \
             self._connect_monitor_target, self._connect_ignore_callback, \
             self._connect_break_callback, self._connect_syscall_callback, \
@@ -251,15 +252,15 @@ class TCPChannel(PtraceChannel):
         if syscall.name in ('accept', 'accept4') \
                 and syscall.arguments[0].value == listenfd \
                 and syscall.result >= 0:
-            self._sockfd = syscall.result
-            self._refcounter = 1
+            self._sockfd.add(syscall.result)
+            self._refcounter[syscall.result] = 1
             self.cb_socket_accepted(process, syscall)
 
     def _connect_ignore_callback(self, syscall):
         return syscall.name not in ('accept', 'accept4')
 
     def _connect_break_callback(self):
-        return self._sockfd > 0
+        return len(self._sockfd) > 0
 
     def _connect_monitor_target(self):
         return self._socket.connect(self._connect_address)
@@ -274,7 +275,7 @@ class TCPChannel(PtraceChannel):
                 size = struct.calcsize(fmt)
                 for i in range(nfds):
                     fd, events, revents = struct.unpack(fmt, process.readBytes(pollfds + i * size, size))
-                    if fd == self._sockfd and (events & select.POLLIN) != 0:
+                    if fd in self._sockfd and (events & select.POLLIN) != 0:
                         args = list(syscall.readArgumentValues(process.getregs()))
                         # convert call to blocking
                         args[2] = -1
@@ -285,36 +286,48 @@ class TCPChannel(PtraceChannel):
             # select
             elif syscall.name == 'select':
                 nfds = syscall.arguments[0].value
-                if nfds <= self._sockfd:
+                if nfds <= max(self._sockfd):
                     return
                 readfds = syscall.arguments[1].value
                 fmt = '@l'
                 size = struct.calcsize(fmt)
-                l_idx = self._sockfd // (size * 8)
-                b_idx = self._sockfd % (size * 8)
-                fd_set, = struct.unpack(fmt, process.readBytes(readfds + l_idx * size, size))
-                if fd_set & (1 << b_idx) == 0:
+                for fd in self._sockfd:
+                    l_idx = fd // (size * 8)
+                    b_idx = fd % (size * 8)
+                    fd_set, = struct.unpack(fmt, process.readBytes(readfds + l_idx * size, size))
+                    if fd_set & (1 << b_idx) != 0:
+                        break
+                else:
                     return
                 args = list(syscall.readArgumentValues(process.getregs()))
                 # convert call to blocking
                 args[4] = 0
                 syscall.writeArgumentValues(*args)
             # read, recv, recvfrom, recvmsg
-            elif syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') and syscall.arguments[0].value == self._sockfd:
+            elif syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') and syscall.arguments[0].value in self._sockfd:
                 pass
             # For the next two cases, since break_on_entry is True, the effect
             # only takes place on the second occurrence, when the syscall exits;
             # so we check if the result is None (entry) or not (exit)
-            elif syscall.name in ('shutdown', 'close') and syscall.arguments[0].value == self._sockfd:
+            elif syscall.name in ('shutdown', 'close') and syscall.arguments[0].value in self._sockfd:
                 if syscall.result is None:
                     return
                 elif syscall.name == 'shutdown':
                     raise ChannelBrokenException("Channel closed while waiting for server to read")
                 elif syscall.name == 'close':
-                    self._refcounter -= 1
-                    if self._refcounter == 0:
+                    self._refcounter[syscall.arguments[0].value] -= 1
+                    if len(self._refcounter) == 0:
                         raise ChannelBrokenException("Channel closed while waiting for server to read")
                     return
+            elif syscall.name.startswith('dup') and syscall.arguments[0].value in self._sockfd:
+                # FIXME might need to implement dup monitoring in all handlers
+                # but for now this should work
+                if syscall.result is None or syscall.result < 0:
+                    return
+                self._sockfd.add(syscall.result)
+                self._refcounter[syscall.result] = 1
+                debug(f"Accepted socket has been duplicated in fd={syscall.result}")
+                return
             else:
                 return
         finally:
@@ -324,22 +337,23 @@ class TCPChannel(PtraceChannel):
     def _poll_ignore_callback(self, syscall):
         # TODO add support for epoll?
         return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg', \
-                                'poll', 'ppoll', 'select', 'close', 'shutdown')
+                                'poll', 'ppoll', 'select', 'close', 'shutdown',
+                                'dup', 'dup2', 'dup3')
 
     def _poll_break_callback(self):
         return self._poll_server_waiting
 
     def _send_syscall_callback(self, process, syscall):
         if syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') \
-                and syscall.arguments[0].value == self._sockfd:
+                and syscall.arguments[0].value in self._sockfd:
             if syscall.result == 0:
                 raise ChannelBrokenException("Server failed to read data off socket")
             self._send_server_received += syscall.result
-        elif syscall.name == 'shutdown' and syscall.arguments[0].value == self._sockfd:
+        elif syscall.name == 'shutdown' and syscall.arguments[0].value in self._sockfd:
             raise ChannelBrokenException("Channel closed while waiting for server to read")
-        elif syscall.name == 'close' and syscall.arguments[0].value == self._sockfd:
-            self._refcounter -= 1
-            if self._refcounter == 0:
+        elif syscall.name == 'close' and syscall.arguments[0].value in self._sockfd:
+            self._refcounter[syscall.arguments[0].value] -= 1
+            if len(self._refcounter) == 0:
                 raise ChannelBrokenException("Channel closed while waiting for server to read")
 
     def _send_ignore_callback(self, syscall):
