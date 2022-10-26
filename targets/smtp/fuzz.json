@@ -1,7 +1,7 @@
 {
 	"exec": {
 		"path": "./exim",
-		"args": ["./exim", "-C", "exim.config", "-bdf", "-d", "-oX", "2025"],
+		"args": ["./exim", "-C", "exim.config", "-bdf", "-oX", "2025"],
 		"cwd": "./",
 		"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
 	},
