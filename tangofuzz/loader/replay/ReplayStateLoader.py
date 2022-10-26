@@ -18,7 +18,7 @@ class ReplayStateLoader(ProcessLoader):
         return self._channel
 
     async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager) -> StateBase:
-        if self.state_tracker is None:
+        if self.state_tracker is None or state_or_path is None:
             # special case where the state tracker wants an initial state
             path_gen = ((),)
         elif isinstance((state := state_or_path), StateBase):
