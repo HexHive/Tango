@@ -5,10 +5,14 @@ ifdef USE_ASAN
 endif
 CFLAGS += -O3 -g -fPIC
 
-all: libtangofuzz.o pytangofuzz.so
+.PHONY: all clean
 
-pytangofuzz.so: pytangofuzz.c
-	$(CC) -O0 -g -fPIC -fPIE -shared $^ -o $@ -DSKIP_COUNTS
+all: libtangofuzz.o pytangofuzz.so
 
 clean:
 	rm -f *.o *.so
+
+libtangofuzz.o: libtangofuzz.c clean
+
+pytangofuzz.so: pytangofuzz.c clean
+	$(CC) -O0 -g -fPIC -fPIE -shared $< -o $@ -DSKIP_COUNTS
