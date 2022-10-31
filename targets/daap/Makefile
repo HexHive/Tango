@@ -25,7 +25,9 @@ daapd: libevent_noepoll #pth
 		--enable-static \
 		--disable-webinterface \
 		--without-libevent_pthreads \
-		--without-libwebsockets && \
+		--without-libwebsockets \
+		--without-alsa \
+		--without-pulseaudio && \
 	$(MAKE) -C src/ SMARTPL2SQL.c SMARTPL.c DAAP2SQL.c DAAPLexer.c RSPLexer.c RSP2SQL.c && \
 	$(MAKE) clean all && \
 	cp -r htdocs ../ && \
