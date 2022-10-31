@@ -66,8 +66,6 @@ class FunctionArgument(object):
             return value
 
     def readStruct(self, address, struct):
-        address = self.value
-
         struct_name = struct.__name__
         data = self.function.process.readStruct(address, struct)
         arguments = []
