@@ -1,6 +1,7 @@
 /daapd_repo
 /daapd
 /libevent_repo
+/libpth_repo
 /htdocs
 /forked-daapd.log
 /songs3.db
