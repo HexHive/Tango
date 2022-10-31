@@ -69,11 +69,11 @@ class PtraceChannel(NetworkChannel):
         # ensure that the syscall has finished successfully before callback
         if syscall and syscall.result != -1 and \
                 (break_on_entry or syscall.result is not None):
-            syscall_callback(process, syscall, **kwargs)
             # calling syscall.format() takes a lot of time and should be
             # avoided in production, even if logging is disabled
-            debug(f"syscall processed: [{process.pid}] {syscall.name}")
-            # debug(f"syscall processed: [{process.pid}] {syscall.format()}")
+            debug(f"syscall requested: [{process.pid}] {syscall.name}")
+            # debug(f"syscall requested: [{process.pid}] {syscall.format()}")
+            syscall_callback(process, syscall, **kwargs)
             return True
         else:
             return False
