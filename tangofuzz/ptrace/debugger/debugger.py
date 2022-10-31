@@ -155,13 +155,19 @@ class PtraceDebugger(object):
                                     wanted_pid, pid=wanted_pid)
 
             process = self.dict[wanted_pid]
-            if process.is_thread:
-                flags |= THREAD_TRACE_FLAGS
+            for p in process.children:
+                if p.is_thread:
+                    flags |= THREAD_TRACE_FLAGS
+                    break
 
+        if wanted_pid and (flags & THREAD_TRACE_FLAGS) == 0:
             pid, status = waitpid(wanted_pid, flags)
         else:
             pid, status = waitpid(-1, flags)
-        if (blocking or pid) and wanted_pid and (pid != wanted_pid):
+
+        if (blocking or pid) and wanted_pid and (pid != wanted_pid) and \
+                (pid not in map(lambda p: p.pid, filter(lambda p: p.is_thread,
+                    process.children))):
             raise DebuggerError("Unwanted PID: %r (instead of %s)"
                                 % (pid, wanted_pid), pid=pid)
         return pid, status

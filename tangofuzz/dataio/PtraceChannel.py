@@ -44,6 +44,7 @@ class PtraceChannel(NetworkChannel):
         self._debugger = PtraceDebugger()
         self._debugger.traceFork()
         self._debugger.traceExec()
+        self._debugger.traceClone()
         self._proc = self._debugger.addProcess(self._pobj.pid, is_attached=True)
         self._syscall_signum = signal.SIGTRAP
         if self._debugger.use_sysgood:
@@ -249,18 +250,24 @@ class PtraceChannel(NetworkChannel):
         return (last_process, result)
 
     def terminator(self, process):
-        for p in process.children:
-            self.terminator(p)
         try:
-            # WARN it seems necessary to wait for the child to exit, otherwise
-            # the forkserver may misbehave, and the fuzzer will receive a lot of
-            # ForkChildKilledEvents
-            process.terminate()
-        except PtraceError as ex:
-            critical(f"Attempted to terminate non-existent process ({ex})")
+            while True:
+                try:
+                    # WARN it seems necessary to wait for the child to exit, otherwise
+                    # the forkserver may misbehave, and the fuzzer will receive a lot of
+                    # ForkChildKilledEvents
+                    process.terminate()
+                    break
+                except PtraceError as ex:
+                    critical(f"Attempted to terminate non-existent process ({ex})")
+                except ProcessExit as ex:
+                    debug(f"{ex.process} exited while terminating {process}")
+                    continue
         finally:
             if process in self._debugger:
                 self._debugger.deleteProcess(process)
+        for p in process.children:
+            self.terminator(p)
 
     def close(self, terminate, **kwargs):
         if terminate:
