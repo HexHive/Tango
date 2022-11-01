@@ -2,6 +2,7 @@ from __future__ import annotations
 from interaction import InteractionBase
 from dataio   import ChannelBase
 from typing      import ByteString
+from profiler import ProfileCount
 
 class TransmitInteraction(InteractionBase):
     def __init__(self, data: ByteString):
@@ -11,6 +12,7 @@ class TransmitInteraction(InteractionBase):
         sent = await channel.send(self._data)
         if sent < len(self._data):
             self._data = self._data[:sent]
+        ProfileCount('bytes_sent')(sent)
         # TODO hook target's recv calls and identify packet boundaries
 
     def __eq__(self, other: TransmitInteraction):
