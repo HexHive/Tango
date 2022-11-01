@@ -316,7 +316,7 @@ class TCPChannel(PtraceChannel):
                     raise ChannelBrokenException("Channel closed while waiting for server to read")
                 elif syscall.name == 'close':
                     self._refcounter[syscall.arguments[0].value] -= 1
-                    if len(self._refcounter) == 0:
+                    if sum(self._refcounter.values()) == 0:
                         raise ChannelBrokenException("Channel closed while waiting for server to read")
                     return
             elif syscall.name.startswith('dup') and syscall.arguments[0].value in self._sockfd:
@@ -353,7 +353,7 @@ class TCPChannel(PtraceChannel):
             raise ChannelBrokenException("Channel closed while waiting for server to read")
         elif syscall.name == 'close' and syscall.arguments[0].value in self._sockfd:
             self._refcounter[syscall.arguments[0].value] -= 1
-            if len(self._refcounter) == 0:
+            if sum(self._refcounter.values()) == 0:
                 raise ChannelBrokenException("Channel closed while waiting for server to read")
 
     def _send_ignore_callback(self, syscall):
