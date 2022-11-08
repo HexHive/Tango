@@ -279,9 +279,8 @@ class UDPChannel(PtraceChannel):
             self._send_barrier.wait()
             self._send_barrier.abort()
         debug(f"{self._send_client_sent=}; {self._send_server_received=}")
-        assert (self._send_client_sent > 0 \
-                    and self._send_server_received <= self._send_client_sent), \
-            "Client sent no bytes, or server received too many bytes!"
+        if self._send_client_sent == 0 or self._send_server_received > self._send_client_sent:
+            raise ChannelBrokenException("Client sent no bytes, or server received too many bytes!")
         return self._send_server_received > 0
 
     def _send_send_monitor(self):

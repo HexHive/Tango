@@ -1,7 +1,7 @@
 from __future__ import annotations
 from . import debug, info, warning, critical
 
-from common import StabilityException, StateNotReproducibleException
+from common import StabilityException, StateNotReproducibleException, StatePrecisionException
 from typing import Callable
 from statemanager import StateMachine
 from statemanager.strategy import StrategyBase
@@ -197,7 +197,7 @@ class StateManager:
                         await self._loader.execute_input(input)
                         assert current_state == self.state_tracker.peek(self._last_state, current_state)
                         debug(f"{current_state} is reproducible")
-                    except AssertionError:
+                    except AssertionError as ex:
                         # This occurs when the predecessor state was reached through
                         # a different path than that used by reset_state().
                         # The incremental input thus applied to the predecessor
@@ -213,18 +213,7 @@ class StateManager:
                             # we save the input for later coverage measurements
                             FileCachingDecorator(self._workdir, "queue", self._protocol)(input, self, copy=False, path=self._last_path)
                         stable = False
-
-                        debug(f"Reloading last state ({self._last_state})")
-                        self._current_path[:] = self._last_path
-                        await self.reset_state(self._current_path, dryrun=True)
-                        if self._last_state.last_input is not None:
-                            await self._loader.execute_input(self._last_state.last_input, self, dryrun=True)
-                        ProfileCount('imprecise')(1)
-                        # WARN we set update to be True, despite no change in state,
-                        # to force the StateManagerContext object to trim the
-                        # input_gen past the troubling interactions, since we won't
-                        # be using those interactions in the following iterations.
-                        updated = True
+                        raise StatePrecisionException(f"{current_state} was reached through an imprecise path") from ex
                     except (StabilityException, StateNotReproducibleException):
                         # This occurs when the reset_state() encountered an error
                         # trying to reproduce a state, most likely due to an
@@ -234,7 +223,7 @@ class StateManager:
                             self._sm.dissolve_state(current_state)
                             self._strategy.update_state(current_state, invalidate=True)
                         stable = False
-                        ProfileCount('unstable')(1)
+                        raise
                     except Exception as ex:
                         debug(f'{ex}')
                         if is_new_state:
@@ -334,8 +323,8 @@ class StateManager:
         await self._loader.execute_input(lin_input)
         try:
             assert dst == self.state_tracker.peek(src, dst)
-        except AssertionError:
-            raise StabilityException("destination state did not match current state")
+        except AssertionError as ex:
+            raise StabilityException("destination state did not match current state") from ex
 
         if reduced:
             return lin_input

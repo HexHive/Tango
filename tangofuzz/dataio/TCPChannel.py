@@ -146,8 +146,8 @@ class TCPChannel(PtraceChannel):
                     data = b''.join(chunks)
                     debug(f"Received data from server: {data}")
                     return data
-            except ValueError:
-                raise ChannelBrokenException("socket fd is negative, socket is closed")
+            except ValueError as ex:
+                raise ChannelBrokenException("socket fd is negative, socket is closed") from ex
 
             ret = self._socket.recv(self.RECV_CHUNK_SIZE)
             if ret == b'' and len(chunks) == 0:
@@ -366,9 +366,8 @@ class TCPChannel(PtraceChannel):
             self._send_barrier.abort()
         debug(f"{self._send_client_sent=}; {self._send_server_received=}")
         # FIXME is there a case where client_sent == 0?
-        assert (self._send_client_sent > 0 \
-                    and self._send_server_received <= self._send_client_sent), \
-            "Client sent no bytes, or server received too many bytes!"
+        if self._send_client_sent == 0 or self._send_server_received > self._send_client_sent:
+            raise ChannelBrokenException("Client sent no bytes, or server received too many bytes!")
         return self._send_server_received == self._send_client_sent
 
     def _send_send_monitor(self):
