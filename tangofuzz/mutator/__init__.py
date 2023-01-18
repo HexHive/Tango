@@ -5,3 +5,4 @@ for func in ('debug', 'info', 'warning', 'error', 'critical'):
 
 from .MutatorBase import MutatorBase
 from .HavocMutator import HavocMutator
+from .ReactiveHavocMutator import ReactiveHavocMutator

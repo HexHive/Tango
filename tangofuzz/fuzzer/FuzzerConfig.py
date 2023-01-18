@@ -10,7 +10,7 @@ from loader       import ReplayStateLoader, ReplayForkStateLoader
 from statemanager import StateManager
 from statemanager.strategy import RandomStrategy, UniformStrategy
 from tracker.coverage import CoverageStateTracker
-from generator    import RandomInputGenerator
+from generator    import RandomInputGenerator, ReactiveInputGenerator, StatelessReactiveInputGenerator
 from random       import Random
 import json
 import os
@@ -63,7 +63,7 @@ class FuzzerConfig:
             ...
         },
         "input": {
-            "type": "<mutation | generation | ...>",
+            "type": "<random | reactive | reactless | ...>",
             "spec": "/path/to/spec",
             "startup": "/path/to/pcap",
             ...
@@ -228,9 +228,13 @@ class FuzzerConfig:
     @cached_property
     async def input_generator(self):
         _config = self._config["input"]
-        input_type = _config.get("type", "mutation")
-        if input_type == "mutation":
+        input_type = _config.get("type", "random")
+        if input_type == "random":
             return RandomInputGenerator(await self.startup_pcap, await self.seed_dir, await self.protocol)
+        elif input_type == "reactive":
+            return ReactiveInputGenerator(await self.startup_pcap, await self.seed_dir, await self.protocol, await self.work_dir)
+        elif input_type == "reactless":
+            return StatelessReactiveInputGenerator(await self.startup_pcap, await self.seed_dir, await self.protocol, await self.work_dir)
         else:
             raise NotImplementedError()
 
