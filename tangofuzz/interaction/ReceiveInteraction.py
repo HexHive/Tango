@@ -13,6 +13,9 @@ class ReceiveInteraction(InteractionBase):
         self._data = await channel.receive()
         # TODO verify size? verify data??
 
+    def __repr__(self):
+        return f'<rx data="{self._data}">'
+
     def __eq__(self, other: ReceiveInteraction):
         # FIXME make this depend on the expected data?
         return isinstance(other, ReceiveInteraction)

@@ -153,7 +153,8 @@ class TCPChannel(PtraceChannel):
                 poll, _, _ = select.select([self._socket], [], [], 0)
                 if self._socket not in poll:
                     data = b''.join(chunks)
-                    debug(f"Received data from server: {data}")
+                    if data:
+                        debug(f"Received data from server: {data}")
                     return data
             except ValueError as ex:
                 raise ChannelBrokenException("socket fd is negative, socket is closed") from ex

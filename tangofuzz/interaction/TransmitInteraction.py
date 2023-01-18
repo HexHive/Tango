@@ -21,3 +21,6 @@ class TransmitInteraction(InteractionBase):
     def mutate(self, mutator, entropy):
         self._data = bytearray(self._data)
         mutator.mutate_buffer(self._data, entropy)
+
+    def __repr__(self):
+        return f'<tx data="{self._data}">'

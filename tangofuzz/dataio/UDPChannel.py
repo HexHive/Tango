@@ -142,17 +142,14 @@ class UDPChannel(PtraceChannel):
         try:
             poll, _, _ = select.select([self._socket], [], [], 0)
             if self._socket not in poll:
-                debug(f"Received nothing from the server!")
                 return b''
         except ValueError:
             raise ChannelBrokenException("socket fd is negative, socket is closed")
 
         data = self._socket.recv(self.MAX_DATAGRAM_SIZE)
-        if data == b'':
-            raise ChannelBrokenException("recv returned 0, socket shutdown")
-        else:
+        if data:
             debug(f"Received data from server: {data}")
-            return data
+        return data
 
     def close(self, **kwargs):
         if self._socket is not None:
