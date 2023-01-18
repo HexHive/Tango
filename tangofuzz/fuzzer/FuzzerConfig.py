@@ -285,7 +285,8 @@ class FuzzerConfig:
         wd = self._config["fuzzer"]["workdir"]
         tree = {
             "queue": {},
-            "crash": {}
+            "crash": {},
+            "figs": {}
         }
         mktree(wd, tree)
         return wd
