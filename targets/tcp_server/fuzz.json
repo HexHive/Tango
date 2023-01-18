@@ -19,7 +19,7 @@
 		"disable_aslr": true
 	},
 	"input": {
-		"type": "mutation"
+		"type": "reactive"
 	},
 	"statemanager": {
 		"type": "coverage"
