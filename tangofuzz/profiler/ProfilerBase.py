@@ -4,7 +4,7 @@ from math import trunc
 
 class ProfilerBase(ABC):
     def __new__(cls, name, **kwargs):
-        if (other := objects.get(name)):
+        if (other := objects.get(name)) is not None:
             other._init_called = True
             return other
         else:
