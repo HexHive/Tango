@@ -25,6 +25,11 @@ class HavocMutator(MutatorBase):
         super().__init__(entropy)
 
     def __enter__(self):
+        # When two mutators are being sequenced simultaneously, the shared
+        # entropy object is accessed by both, and depending on the access order,
+        # it may change the outcome of each mutator. To solve this, we
+        # essentially clone the entropy object, and on exit, we set it to the
+        # state of one of the two cloned entropies (the last one to exit)
         entropy = Random()
         entropy.setstate(self._state0)
         self._temp = entropy
