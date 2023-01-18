@@ -43,9 +43,6 @@ class UniformStrategy(StrategyBase):
             self._target_state = self._entropy.choices(filtered, \
                                     weights=self._calc_weights(len(filtered)), \
                                     k=1)[0]
-        for node in self._sm._graph.nodes:
-            node._energy = 0
-
 
     def step(self) -> bool:
         should_reset = False

@@ -250,6 +250,10 @@ class StateManager:
                             stable = False
                             raise
 
+                    # FIXME doesn't work as intended, but could save from recalculating cov map diffs if it works
+                    # if self._current_state != self.state_tracker.peek(self._last_state):
+                    #     raise StabilityException("Failed to obtain consistent behavior")
+                    # self.state_tracker.update(self._last_state, last_input, peek_result=self._current_state)
                     if self._current_state != self.state_tracker.update(self._last_state, last_input):
                         raise StabilityException("Failed to obtain consistent behavior")
 

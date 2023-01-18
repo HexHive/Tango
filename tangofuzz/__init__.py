@@ -12,8 +12,9 @@ root_logger = ColoredLogger()
 import common, fuzzer, generator, input, interaction, loader, mutator, \
        dataio, profiler, ptrace, statemanager, tests
 
-import atexit
-import profiler
-def exit_handler():
-    profiler.ProfilingStoppedEvent.set()
-atexit.register(exit_handler)
+# FIXME this is currently broken after switching to asyncio.Event
+# import atexit
+# import profiler
+# def exit_handler():
+#     profiler.ProfilingStoppedEvent.set()
+# atexit.register(exit_handler)
