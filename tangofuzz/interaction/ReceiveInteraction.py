@@ -19,6 +19,3 @@ class ReceiveInteraction(InteractionBase):
     def __eq__(self, other: ReceiveInteraction):
         # FIXME make this depend on the expected data?
         return isinstance(other, ReceiveInteraction)
-
-    def mutate(self, mutator, entropy):
-        pass

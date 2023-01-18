@@ -19,13 +19,5 @@ class DelayInteraction(InteractionBase):
         return isinstance(other, DelayInteraction) and \
             isclose(self._time, other._time, rel_tol=0.01)
 
-    def mutate(self, mutator, entropy):
-        a, b = self._time.as_integer_ratio()
-
-        b = mutator.mutate_int(b, entropy) or 1
-        a = (mutator.mutate_int(a, entropy) % b) * self._maxdelay
-
-        self._time = a / b
-
     def __repr__(self):
         return f'sleep({self._time})'

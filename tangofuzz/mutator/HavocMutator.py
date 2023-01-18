@@ -48,35 +48,9 @@ class HavocMutator(MutatorBase):
     def ___repr___(self, orig):
         return f'HavocMutatedInput:0x{self._input.id:08X} (0x{self._input_id:08X})'
 
-    def mutate_int(self, n: int, entropy: Random):
-        def to_bytes(n, order='little'):
-            nbytes = (n.bit_length() - 1) // 8 + 1
-            return n.to_bytes(nbytes, order)
-        def from_bytes(buf, order='little'):
-            return int.from_bytes(buf, order)
-        buffer_n = bytearray(to_bytes(n))
-        self.mutate_buffer(buffer_n, entropy)
-        return from_bytes(buffer_n)
-
-    def mutate_buffer(self, buffer: bytearray, entropy: Random):
-        # optionally extend buffer, but highest weight is for no-extend
-        ext = b'\0' * entropy.choices(
-                range(8),
-                cum_weights=range(92, 100)
-            )[0]
-        buffer.extend(ext)
-
-        # ultra efficient mutator, courtesy of Brandon Falk
-        if buffer:
-            if len(buffer) == 1:
-                buffer[0] = entropy.randint(0, 255)
-            else:
-                for _ in range(entropy.randint(1, 8)):
-                    buffer[entropy.randint(0, len(buffer) - 1)] = \
-                        entropy.randint(0, 255)
-
     def _mutate(self, interaction: InteractionBase, reorder_buffer: Sequence, entropy: Random) -> Sequence[InteractionBase]:
         if interaction is not None:
+            raise NotImplementedError("InteractionBase.mutate was removed!")
             interaction.mutate(self, entropy)
             # TODO perform random operation
             low = 0

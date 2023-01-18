@@ -15,9 +15,5 @@ class InteractionBase(ABC):
         pass
 
     @abstractmethod
-    def mutate(self, mutator, entropy):
-        pass
-
-    @abstractmethod
     def __eq__(self, other: InteractionBase):
         pass

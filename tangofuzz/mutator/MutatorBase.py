@@ -8,10 +8,6 @@ class MutatorBase(DecoratorBase):
         self._entropy = entropy
         self._state0 = self._entropy.getstate()
 
-    @abstractmethod
-    def mutate_buffer(self, buffer: bytearray):
-        pass
-
     def __deepcopy__(self, memo):
         # make sure that the entropy object is shared across mutators;
         # otherwise, the state of the PRNG would not change
