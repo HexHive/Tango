@@ -29,6 +29,10 @@ class PtraceChannel(NetworkChannel):
         super().__init__(**kwargs)
         self._pobj = pobj
 
+        # DEBUG options
+        self._process_all = False
+        self._verbose = False
+
         debug("Setting up new ptrace-enabled channel")
 
         self._syscall_options = FunctionCallOptions(
@@ -61,18 +65,22 @@ class PtraceChannel(NetworkChannel):
         if not process in self._debugger:
             self._debugger.addProcess(process, is_attached=True)
 
+        if self._process_all:
+            ignore_callback = lambda x: False
         process.syscall_state.ignore_callback = ignore_callback
+
         if syscall:
             process.syscall()
 
     def process_syscall(self, process, syscall, syscall_callback, break_on_entry, **kwargs) -> bool:
         # ensure that the syscall has finished successfully before callback
-        if syscall and syscall.result != -1 and \
-                (break_on_entry or syscall.result is not None):
+        if break_on_entry or syscall.result is not None:
             # calling syscall.format() takes a lot of time and should be
             # avoided in production, even if logging is disabled
-            debug(f"syscall requested: [{process.pid}] {syscall.name}")
-            # debug(f"syscall requested: [{process.pid}] {syscall.format()}")
+            if self._process_all or self._verbose:
+                debug(f"syscall requested: [{process.pid}] {syscall.format()}")
+            else:
+                debug(f"syscall requested: [{process.pid}] {syscall.name}")
             syscall_callback(process, syscall, **kwargs)
             return True
         else:
@@ -155,7 +163,11 @@ class PtraceChannel(NetworkChannel):
             #############
 
             syscall = state.event(self._syscall_options)
-            processed = self.process_syscall(event.process, syscall, syscall_callback, break_on_entry, **kwargs)
+            if syscall is not None and \
+                    not (self._process_all and ignore_callback(syscall)):
+                processed = self.process_syscall(event.process, syscall, syscall_callback, break_on_entry, **kwargs)
+            else:
+                processed = False
 
             if not processed or not break_on_entry:
                 # resume the suspended process until it encounters the next syscall
@@ -226,6 +238,8 @@ class PtraceChannel(NetworkChannel):
                        **kwargs):
         for process in self._debugger:
             # update the ignore_callback of processes in the debugger
+            if self._process_all:
+                ignore_callback = lambda x: False
             process.syscall_state.ignore_callback = ignore_callback
 
         ## Execute monitor target
