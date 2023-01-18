@@ -9,8 +9,7 @@
 		"type": "tcp",
 		"tcp": {
 			"endpoint": "127.0.0.1",
-			"port": 2025,
-			"fork_location": "accepting"
+			"port": 2025
 		}
 	},
 	"loader": {
