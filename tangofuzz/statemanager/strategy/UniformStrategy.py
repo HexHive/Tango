@@ -29,7 +29,7 @@ class UniformStrategy(StrategyBase):
                 self._recalculate_target()
         else:
             self._invalid_states.discard(state)
-            if is_new or not hasattr(state, '_energy'):
+            if not hasattr(state, '_energy'):
                 state._energy = 1
             else:
                 state._energy += 1
