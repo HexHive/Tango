@@ -3,6 +3,7 @@ from collections.abc import Iterable
 from tracker import StateBase
 from dataio   import ChannelFactoryBase
 from input import InputBase, PCAPInput, PreparedInput
+from profiler import ProfileFrequency
 import os
 
 class InputGeneratorBase(ABC):
@@ -35,8 +36,12 @@ class InputGeneratorBase(ABC):
     def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, *, state_changed: bool, exc: Exception=None, **kwargs):
         pass
 
+    @ProfileFrequency('gens')
+    def generate(self, *args, **kwargs) -> InputBase:
+        return self.generate_internal(*args, **kwargs)
+
     @abstractmethod
-    def generate(self, state: StateBase, entropy) -> InputBase:
+    def generate_internal(self, state: StateBase, entropy) -> InputBase:
         pass
 
     @property
