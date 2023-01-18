@@ -149,6 +149,33 @@ class DecoratorBase(ABC):
             method = getattr(method, '__func__', method)  # fallback to __qualname__ parsing
         return getattr(method, '__objclass__', None)  # handle special descriptor objects
 
+    @staticmethod
+    def pop_decorator(input: DecoratedInput) -> (InputBase, DecoratorBase):
+        if not isinstance(input, DecoratedInput):
+            raise TypeError("Input is not decorated!")
+        decorator = input.___decorator___
+        decorated_iter = getattr(input, '___iter___', None)
+        # decorated iters are partial functions with args[0] == orig
+        orig_iter = decorated_iter.args[0]
+        if isinstance(orig_iter, partial):
+            # nested decorators => orig_iter is also decorated
+            orig_self = orig_iter.func.__self__._input
+        else:
+            # iter is a bound method whose `self` points to the owning InputBase
+            orig_self = orig_iter.__self__
+        return (orig_self, decorator)
+
+    @staticmethod
+    def search_decorator_stack(input: InputBase, filter: Callable[[DecoratorBase], bool], max_depth: int=None) -> DecoratorBase:
+        depth = 1
+        while True:
+            input, decorator = DecoratorBase.pop_decorator(input)
+            if filter(decorator):
+                return decorator
+            if max_depth and depth >= max_depth:
+                raise RuntimeError("Max search depth exceeded")
+            depth += 1
+
 class SlicingDecorator(DecoratorBase):
     def __init__(self, idx):
         self._idx = idx
