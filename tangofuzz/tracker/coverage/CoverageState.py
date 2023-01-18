@@ -6,14 +6,15 @@ from typing       import Sequence
 from collections  import OrderedDict
 from functools    import cache, reduce, partial
 from ctypes       import POINTER as P, c_ubyte as B, c_size_t as S, cast as C
+import numpy as np
 
 class CoverageState(StateBase):
     _cache = {}
     _id = 0
 
-    def __new__(cls, parent: CoverageState, set_map: Sequence, clr_map: Sequence, set_count: int, clr_count: int, map_hash: int, global_cov: GlobalCoverage):
+    def __new__(cls, parent: CoverageState, set_map: Sequence, clr_map: Sequence, set_count: int, clr_count: int, map_hash: int, global_cov: GlobalCoverage, do_not_cache: bool=False):
         _hash = map_hash
-        if cached := cls._cache.get(_hash):
+        if not do_not_cache and (cached := cls._cache.get(_hash)):
             return cached
         new = super(CoverageState, cls).__new__(cls)
         new._parent = parent
@@ -28,11 +29,12 @@ class CoverageState(StateBase):
         cls._id += 1
         # to obtain the context from the current global map, we revert the bits
         new._context.revert(set_map, clr_map)
-        cls._cache[_hash] = new
+        if not do_not_cache:
+            cls._cache[_hash] = new
         super(CoverageState, new).__init__()
         return new
 
-    def __init__(self, parent: CoverageState, set_map: Sequence, clr_map: Sequence, set_count: int, clr_count: int, map_hash: int, global_cov: GlobalCoverage):
+    def __init__(self, parent: CoverageState, set_map: Sequence, clr_map: Sequence, set_count: int, clr_count: int, map_hash: int, global_cov: GlobalCoverage, do_not_cache: bool=False):
         pass
 
     def __hash__(self):
@@ -42,6 +44,11 @@ class CoverageState(StateBase):
         # return hash(self) == hash(other)
         return isinstance(other, CoverageState) and \
                hash(self) == hash(other)
+               # self._set_count == other._set_count and \
+               # self._clr_count == other._clr_count and \
+               # np.array_equal(self._set_map, other._set_map) and \
+               # np.array_equal(self._clr_map, other._clr_map) and \
+               # self._context == other._context
 
     def __repr__(self):
         return f'({self._id}) +{self._set_count} -{self._clr_count}'

@@ -29,10 +29,16 @@ class CoverageStateTracker(LoaderDependentTracker):
         # initialize a global coverage map
         self._global = GlobalCoverage(self._reader.length)
         self._scratch = GlobalCoverage(self._reader.length)
+        self._local = GlobalCoverage(self._reader.length)
 
+        self._local_state = None
         self._current_state = None
+        # the update creates a new initial _current_state
         self.update(None, None)
         self._entry_state = self._current_state
+
+        # initialize local map and local state
+        self.reset_state(self._current_state)
 
         return self
 
@@ -44,29 +50,38 @@ class CoverageStateTracker(LoaderDependentTracker):
     def current_state(self) -> CoverageState:
         return self.peek(self._current_state)
 
-    def _diff_global_to_state(self, global_map: GlobalCoverage, parent_state: StateBase) -> StateBase:
+    def _diff_global_to_state(self, global_map: GlobalCoverage, parent_state: StateBase, local_state: bool=False) -> StateBase:
         coverage_map = self._reader.array
         set_map, clr_map, set_count, clr_count, map_hash = global_map.update(coverage_map)
         if set_count or clr_count:
-            return CoverageState(parent_state, set_map, clr_map, set_count, clr_count, map_hash, global_map)
+            return CoverageState(parent_state, set_map, clr_map, set_count, clr_count, map_hash, global_map, do_not_cache=local_state)
         else:
             return None
 
-    def update(self, source: StateBase, input: InputBase) -> StateBase:
-        parent = source
-        glbl = self._global
+    def update(self, source: StateBase, input: InputBase, peek_result: StateBase=None) -> StateBase:
+        if peek_result is None:
+            next_state = self._diff_global_to_state(self._global, parent_state=source)
+        else:
+            # if peek_result was specified, we can skip the recalculation
+            next_state = peek_result
+            self._global.copy_from(next_state._context)
+            # we un-revert the bitmaps to obtain the actual global context
+            self._global.revert(next_state._set_map, next_state._clr_map)
 
-        next_state = self._diff_global_to_state(glbl, parent)
-        if not next_state:
+        if not next_state or (same := next_state == source):
             next_state = source
+            same = True
         else:
             self._current_state = next_state
 
         # we maintain _a_ path to each new state we encounter so that
         # reproducing the state is more path-aware and does not invoke a graph
         # search every time
-        if input is not None and source != next_state and next_state.predecessor_transition is None:
+        if input is not None and not same and next_state.predecessor_transition is None:
             next_state.predecessor_transition = (source, input)
+
+        # update local coverage
+        self._update_local()
 
         return next_state
 
@@ -88,3 +103,15 @@ class CoverageStateTracker(LoaderDependentTracker):
 
     def reset_state(self, state: StateBase):
         self._current_state = state
+
+        # reset local map
+        self._local.clear()
+        self._local_state = None
+        # update the local map with the latest coverage readings
+        self._update_local()
+
+    def _update_local(self):
+        # this is a pseudo-state that stores the last observed diffs in the local map
+        next_state = self._diff_global_to_state(self._local, self._local_state, local_state=True)
+        # TODO is there special handling needed if next_state is None?
+        self._local_state = next_state

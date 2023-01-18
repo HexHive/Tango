@@ -77,3 +77,11 @@ class GlobalCoverage:
     def clear(self):
         self._set_arr.fill(0)
         self._clr_arr.fill(0xFF)
+
+    def __eq__(self, other):
+        return isinstance(other, GlobalCoverage) and \
+               np.array_equal(self._set_arr, other._set_arr) and \
+               np.array_equal(self._clr_arr, other._clr_arr)
+
+    def __hash__(self):
+        return hash(self._set_arr.data.tobytes()) ^ hash(self._clr_arr.data.tobytes())
