@@ -108,16 +108,25 @@ class TCPChannel(PtraceChannel):
             break_on_entry=True, timeout=self._data_timeout)
         del self._poll_server_waiting
 
+    # this is needed so that poll_sync is executed by GLOBAL_ASYNC_EXECUTOR
+    # so that the ptraced child is accessed by the same tracer
     @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
-    def send(self, data: ByteString) -> int:
+    def _async_poll_sync(self):
+        return self._poll_sync()
+
+    async def send(self, data: ByteString) -> int:
+        # flush any data left in the receive buffer
+        await self.receive()
+
         sent = 0
         while sent < len(data):
-            sent += self._send_sync(data[sent:])
+            sent += await self._send_sync(data[sent:])
 
-        self._poll_sync()
+        await self._async_poll_sync()
         debug(f"Sent data to server: {data}")
         return sent
 
+    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
     def _send_sync(self, data: ByteString) -> int:
         self._send_server_received = 0
         self._send_client_sent = 0

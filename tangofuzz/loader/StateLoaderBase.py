@@ -58,14 +58,3 @@ class StateLoaderBase(ABC):
                 ProfileCount("total_interactions")(idx + 1)
         except Exception as ex:
             raise LoadedException(ex, input[:idx + 1]) from ex
-
-        # poll channel for incoming data
-        # FIXME what to do with this data? if input did not request it, it was
-        #   probably useless
-        try:
-            # server may have killed the connection at this point and we need to
-            # report it
-            # FIXME this should now be addressed through asyncio task cancelling
-            data = await self.channel.receive()
-        except ChannelBrokenException as ex:
-            raise LoadedException(ex, input) from ex
