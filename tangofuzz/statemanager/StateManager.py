@@ -7,16 +7,19 @@ from statemanager import StateMachine
 from statemanager.strategy import StrategyBase
 from tracker import StateBase, StateTrackerBase
 from input        import InputBase, DecoratorBase, MemoryCachingDecorator, FileCachingDecorator
+from generator    import InputGeneratorBase
 from loader       import StateLoaderBase # FIXME there seems to be a cyclic dep
 from profiler     import ProfileValue, ProfileFrequency, ProfileCount
 import asyncio
 from common import async_enumerate
 
 class StateManager:
-    def __init__(self, loader: StateLoaderBase, tracker: StateTrackerBase,
+    def __init__(self, generator: InputGeneratorBase, loader: StateLoaderBase,
+            tracker: StateTrackerBase,
             strategy_ctor: Callable[[StateMachine, StateBase], StrategyBase],
             workdir: str, protocol: str,
             validate_transitions: bool, minimize_transitions: bool):
+        self._generator = generator
         self._loader = loader
         self._tracker = tracker
         self._tracker.state_manager = self
@@ -355,6 +358,14 @@ class StateManagerContext(DecoratorBase):
                 return tail
         else:
             return head + tail
+
+    def update_state(self, *args, **kwargs):
+        self._sman._strategy.update_state(*args, **kwargs)
+        self._sman._generator.update_state(*args, **kwargs)
+
+    def update_transition(self, *args, **kwargs):
+        self._sman._strategy.update_transition(*args, **kwargs)
+        self._sman._generator.update_transition(*args, **kwargs)
 
     async def ___aiter___(self, orig):
         self._start = self._stop = 0

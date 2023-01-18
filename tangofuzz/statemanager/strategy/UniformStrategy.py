@@ -20,8 +20,10 @@ class UniformStrategy(StrategyBase):
             *self._exp_weights[1:n],
             *((0.0,) * (n - len(self._exp_weights))))[:n]
 
-    def update_state(self, state: StateBase, invalidate: bool=False, is_new: bool=False):
-        if invalidate:
+    def update_state(self, state: StateBase, *, input: InputBase=None, exc: Exception=None, **kwargs):
+        if state is None:
+            return
+        if exc:
             self._invalid_states.add(state)
             if self._target_state == state:
                 self._recalculate_target()
@@ -44,8 +46,6 @@ class UniformStrategy(StrategyBase):
         for node in self._sm._graph.nodes:
             node._energy = 0
 
-    def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, invalidate: bool=False):
-        pass
 
     def step(self) -> bool:
         should_reset = False

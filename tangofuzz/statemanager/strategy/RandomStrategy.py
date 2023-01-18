@@ -39,13 +39,10 @@ class RandomStrategy(StrategyBase):
     def target(self) -> StateBase:
         return self._target_state
 
-    def update_state(self, state: StateBase, invalidate: bool=False, is_new: bool=False):
-        if invalidate:
+    def update_state(self, state: StateBase, *, input: InputBase=None, exc: Exception=None, **kwargs):
+        if exc:
             self._invalid_states.add(state)
             if self._target_state == state:
                 self._recalculate_target()
         else:
             self._invalid_states.discard(state)
-
-    def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, invalidate: bool=False):
-        pass

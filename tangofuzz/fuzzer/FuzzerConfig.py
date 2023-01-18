@@ -256,8 +256,9 @@ class FuzzerConfig:
         _config = self._config["statemanager"]
         validate = _config.get("validate_transitions", True)
         minimize = _config.get("minimize_transitions", True)
-        return StateManager(await self.loader, await self.state_tracker,
-            await self.scheduler_strategy, await self.work_dir, await self.protocol,
+        return StateManager(await self.input_generator, await self.loader,
+            await self.state_tracker, await self.scheduler_strategy,
+            await self.work_dir, await self.protocol,
             validate, minimize)
 
     @cached_property

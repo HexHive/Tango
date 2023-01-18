@@ -9,25 +9,21 @@ class StrategyBase(ABC):
         self._sm = sm
         self._entry = entry_state
 
-    @abstractmethod
-    def update_state(self, state: StateBase, invalidate: bool, is_new: bool):
+    def update_state(self, state: StateBase, input: InputBase, *, exc: Exception=None, **kwargs):
         """
         Updates the internal strategy parameters related to the state. In case a
         state is invalidated, it should remain so until it is revalidated in a
         following call to update_state(). Otherwise, invalidated states must not
         be selected at the target state.
 
-        :param      state:       The current state of the target.
-        :type       state:       StateBase
-        :param      invalidate:  Whether or not the state should be invalidated.
-        :type       invalidate:  bool
-        :param      is_new:      Whether or not the state was newly discovered
-        :type       is_new:      bool
+        :param      state:  The current state of the target.
+        :type       state:  StateBase
+        :param      exc:    An exception that occured while processing the input.
+        :type       exc:    Exception
         """
         pass
 
-    @abstractmethod
-    def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, invalidate: bool):
+    def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, *, state_changed: bool, exc: Exception=None, **kwargs):
         """
         Similar to update_state(), but for transitions.
 
@@ -38,9 +34,9 @@ class StrategyBase(ABC):
         :type       destination:  StateBase
         :param      input:        The input associated with the transition.
         :type       input:        InputBase
-        :param      invalidate:   Whether or not the transition should be
-                                  invalidated.
-        :type       invalidate:   bool
+        :param      exc:          An exception that occured while processing the
+                                  input.
+        :type       exc:          Exception
         """
         pass
 

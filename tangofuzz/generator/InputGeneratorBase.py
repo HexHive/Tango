@@ -29,6 +29,12 @@ class InputGeneratorBase(ABC):
             input = PCAPInput(seed, protocol=self._protocol)
             self._pcaps.append(input)
 
+    def update_state(self, state: StateBase, input: InputBase, *, exc: Exception=None, **kwargs):
+        pass
+
+    def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, *, state_changed: bool, exc: Exception=None, **kwargs):
+        pass
+
     @abstractmethod
     def generate(self, state: StateBase, entropy) -> InputBase:
         pass
