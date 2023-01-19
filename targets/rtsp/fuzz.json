@@ -7,7 +7,7 @@
 			"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0",
 			"LD_PRELOAD": "../../lib/libfaketime/src/libfaketime.so.1",
 			"FAKETIME": "+0 i0",
-			"FAKETIME_NO_CACHE": 1
+			"FAKETIME_NO_CACHE": "1"
 		}
 	},
 	"channel": {
