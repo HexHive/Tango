@@ -9,7 +9,7 @@ from tracker import StateBase, StateTrackerBase
 from input        import InputBase, DecoratorBase, MemoryCachingDecorator, FileCachingDecorator
 from generator    import InputGeneratorBase
 from loader       import StateLoaderBase # FIXME there seems to be a cyclic dep
-from profiler     import ProfileValue, ProfileFrequency, ProfileCount
+from profiler     import ProfileValue, ProfileFrequency, ProfileCount, ProfileLambda
 import asyncio
 from common import async_enumerate
 
@@ -34,6 +34,8 @@ class StateManager:
         self._strategy = strategy_ctor(self._sm, self._last_state)
         self._current_path = []
         self._reset_current_path()
+
+        ProfileLambda('global_cov')(lambda: sum(map(lambda x: x._set_count + x._clr_count, filter(lambda x: x != self.state_tracker.entry_state, self._sm._graph.nodes))))
 
     @property
     def state_machine(self) -> StateMachine:
