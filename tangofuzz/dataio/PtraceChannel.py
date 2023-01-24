@@ -74,7 +74,7 @@ class PtraceChannel(NetworkChannel):
 
     def process_syscall(self, process, syscall, syscall_callback, break_on_entry, **kwargs) -> bool:
         # ensure that the syscall has finished successfully before callback
-        if break_on_entry or syscall.result is not None:
+        if break_on_entry or (syscall.result is not None and syscall.result >= 0):
             # calling syscall.format() takes a lot of time and should be
             # avoided in production, even if logging is disabled
             if self._process_all or self._verbose:
