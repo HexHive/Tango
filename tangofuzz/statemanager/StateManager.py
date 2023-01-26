@@ -374,6 +374,8 @@ class StateManagerContext(DecoratorBase):
 
     @property
     def orig_input(self):
+        # we pop the StateManagerContext decorator itself to obtain a reference
+        # to the original input, typically the output of the input generator
         return self.pop_decorator(self._input)[0]
 
     async def ___aiter___(self, orig):
