@@ -1,7 +1,7 @@
 from loader import StateLoaderBase, Environment
 import ctypes
 from ptrace.binding import ptrace_traceme
-from pyroute2 import netns, NetNS
+from pyroute2 import netns, IPRoute
 import subprocess
 from uuid import uuid4
 import os
@@ -17,8 +17,6 @@ class ProcessLoader(StateLoaderBase):
         self._exec_env = exec_env
         self._pobj = None # Popen object of child process
         self._netns_name = f'ns:{uuid4()}'
-        self._netns = NetNS(self._netns_name, flags=os.O_CREAT | os.O_EXCL)
-        self._netns.link('set', index=1, state='up')
 
         if no_aslr:
             ADDR_NO_RANDOMIZE = 0x0040000
@@ -28,11 +26,12 @@ class ProcessLoader(StateLoaderBase):
             personality(ADDR_NO_RANDOMIZE)
 
     def __del__(self):
-        if hasattr(self, '_netns'):
-            self._netns.remove()
+        netns.remove(self._netns_name)
 
     def _prepare_process(self):
-        netns.setns(self._netns_name)
+        netns.setns(self._netns_name, flags=os.O_CREAT | os.O_EXCL)
+        with IPRoute() as ipr:
+            ipr.link('set', index=1, state='up')
         ptrace_traceme()
 
     @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
