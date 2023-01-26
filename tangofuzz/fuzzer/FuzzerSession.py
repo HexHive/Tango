@@ -12,9 +12,11 @@ from common        import (StabilityException,
                           ChannelSetupException,
                           ProcessCrashedException,
                           ProcessTerminatedException,
-                          StateNotReproducibleException)
+                          StateNotReproducibleException,
+                          CoroInterrupt)
 from common        import Suspendable
 import os
+import sys
 
 import profiler
 from profiler import (ProfileLambda,
@@ -25,10 +27,7 @@ from profiler import (ProfileLambda,
 
 from webui import WebRenderer
 import asyncio
-from code import InteractiveConsole
-# it seems this library fixes the handling of arrows and other
-# special console signals
-import readline
+from aioconsole import AsynchronousConsole, get_standard_streams
 import signal
 
 class FuzzerSession:
@@ -46,7 +45,6 @@ class FuzzerSession:
         :type       config: FuzzerConfig
         """
         self._config = config
-        self._repl = InteractiveConsole(locals=locals())
 
     async def initialize(self):
         self._input_gen = await self._config.input_generator
@@ -116,7 +114,7 @@ class FuzzerSession:
                             critical(f"Encountered unhandled loaded exception {ex = }")
                         # reset to StateManager's current target state
                         await self._sman.reload_target()
-                    except asyncio.CancelledError as ex:
+                    except CoroInterrupt:
                         # the input generator cancelled an execution
                         warning("Received interrupt, continuing!")
                         continue
@@ -124,12 +122,14 @@ class FuzzerSession:
                         import ipdb; ipdb.set_trace()
                         critical(f"Encountered weird exception {ex = }")
                         await self._sman.reload_target()
-            except asyncio.CancelledError:
+            except CoroInterrupt:
                 # the input generator cancelled an execution
                 warning("Received interrupt while reloading target")
                 continue
             except StateNotReproducibleException as ex:
                 warning(f"Target state {ex._faulty_state} not reachable anymore!")
+            except asyncio.CancelledError:
+                return
             except Exception as ex:
                 critical(f"Encountered exception while resetting state! {ex = }")
 
@@ -147,26 +147,73 @@ class FuzzerSession:
         # TODO anything else?
 
     async def _bootstrap(self):
-        main_task = asyncio.get_running_loop().main_task = asyncio.current_task()
+        loop = asyncio.get_running_loop()
+        main_task = loop.main_task = asyncio.current_task()
         main_task.suspendable_ancestors = []
         main_task.coro = Suspendable(self._start())
+
+        self._stream_cache = {}
+        streams = get_standard_streams(cache=self._stream_cache, use_stderr=True, loop=loop)
+        self._repl = AsynchronousConsole(streams=streams, loop=loop,
+            locals=locals() | {'exit': lambda: self._cleanup_and_exit(loop)})
 
         await self.initialize()
         await profiler.initialize()
         # FIXME the WebRenderer is async and can thus be started in the same loop
         WebRenderer(self).start()
 
-        await asyncio.gather(main_task.coro, *ProfilingTasks)
+        self._gather = asyncio.gather(main_task.coro, *ProfilingTasks)
+        self._bootstrap_sigint(loop, handle=True)
 
-    def sigint_handler(self, sig, frame):
-        main_task = asyncio.get_running_loop().main_task
+        try:
+            await self._gather
+        except asyncio.CancelledError:
+            info("Goodbye!")
+
+    def _bootstrap_sigint(self, loop, handle=True):
+        if handle:
+            loop.add_signal_handler(signal.SIGINT, self._sigint_handler, loop)
+        else:
+            loop.remove_signal_handler(signal.SIGINT)
+
+    def _sigint_handler(self, loop):
+        return loop.create_task(self._interact(loop))
+
+    async def _interact(self, loop):
+        main_task = loop.main_task
+        assert main_task != asyncio.current_task()
+
+        # disable handler
+        self._bootstrap_sigint(loop, handle=False)
+
+        # suspend main task (and call respective suspend handlers)
         main_task.coro.suspend()
+
+        # pause fuzzing timer
         ProfiledObjects['elapsed'].toggle()
-        self._repl.interact(banner="Fuzzing paused (type exit() to quit)",
-            exitmsg="Fuzzing resumed")
+
+        # interact
+        await self._repl.interact(banner="Fuzzing paused (type exit() to quit)",
+            stop=False, handle_sigint=False)
+
+        # reset streams if stdin is EOF
+        if self._repl.reader.at_eof():
+            sys.stdin.close()
+            sys.stdin = open("/dev/tty")
+            self._stream_cache.clear()
+            self._repl.streams = get_standard_streams(cache=self._stream_cache, use_stderr=True, loop=loop)
+
+        # reverse setup
         ProfiledObjects['elapsed'].toggle()
         main_task.coro.resume()
+        self._bootstrap_sigint(loop, handle=True)
+
+    def _cleanup_and_exit(self, loop):
+        profiler.ProfilingStoppedEvent.set()
+        loop.main_task.cancel()
+        # for task in asyncio.all_tasks():
+        #     task.cancel()
+        sys.exit()
 
     def run(self):
-        signal.signal(signal.SIGINT, self.sigint_handler)
         asyncio.run(self._bootstrap())

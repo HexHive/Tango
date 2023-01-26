@@ -12,7 +12,8 @@ from .Exceptions import (LoadedException,
                         ChannelTimeoutException,
                         ProcessCrashedException,
                         ProcessTerminatedException,
-                        StateNotReproducibleException)
+                        StateNotReproducibleException,
+                        CoroInterrupt)
 from .Logger import ColoredLogger
 from .AsyncIO import (async_property,
                      async_cached_property,

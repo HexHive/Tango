@@ -1,7 +1,8 @@
 from __future__ import annotations
 from . import debug, info, warning, critical
 
-from common import StabilityException, StateNotReproducibleException, StatePrecisionException
+from common import (StabilityException, StateNotReproducibleException,
+                    StatePrecisionException, CoroInterrupt)
 from typing import Callable
 from statemanager import StateMachine
 from statemanager.strategy import StrategyBase
@@ -76,7 +77,7 @@ class StateManager:
                     import ipdb; ipdb.set_trace()
                 self._last_state = current_state
                 self._strategy.update_state(self._last_state, is_new=False)
-        except asyncio.CancelledError:
+        except CoroInterrupt:
             # if an interrupt is received while loading a state (e.g. death),
             # self._last_state is not set to the current state because of the
             # exception. Instead, at the next input step, a transition is
