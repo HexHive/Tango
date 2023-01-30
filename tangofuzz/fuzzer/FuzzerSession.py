@@ -109,19 +109,28 @@ class FuzzerSession:
                         except ChannelSetupException:
                             # TODO save broken setup input
                             warning("Received channel setup exception")
+                        except (CoroInterrupt, StateNotReproducibleException, asyncio.CancelledError):
+                            # we pass these over to the next try-catch
+                            raise
                         except Exception as ex:
-                            import ipdb; ipdb.set_trace()
+                            # everything else, we probably need to debug
                             critical(f"Encountered unhandled loaded exception {ex = }")
+                            import ipdb; ipdb.set_trace()
+                            raise
                         # reset to StateManager's current target state
                         await self._sman.reload_target()
                     except CoroInterrupt:
                         # the input generator cancelled an execution
                         warning("Received interrupt, continuing!")
                         continue
+                    except (StateNotReproducibleException, asyncio.CancelledError):
+                        # we pass these over to the next try-catch
+                        raise
                     except Exception as ex:
-                        import ipdb; ipdb.set_trace()
+                        # everything else, we probably need to debug
                         critical(f"Encountered weird exception {ex = }")
-                        await self._sman.reload_target()
+                        import ipdb; ipdb.set_trace()
+                        raise
             except CoroInterrupt:
                 # the input generator cancelled an execution
                 warning("Received interrupt while reloading target")
