@@ -215,7 +215,7 @@ class StateManager:
                             self._sm.dissolve_state(self._current_state)
 
                             # we save the input for later coverage measurements
-                            FileCachingDecorator(self._workdir, "queue", self._protocol)(input, self, copy=False, path=self._last_path)
+                            FileCachingDecorator(self._workdir, "unstable", self._protocol)(input, self, copy=False, path=self._last_path)
                         stable = False
                         raise StatePrecisionException(f"{self._current_state} was reached through an imprecise path") from ex
                     except (StabilityException, StateNotReproducibleException):
@@ -249,7 +249,7 @@ class StateManager:
                             # Minimization failed, again probably due to an
                             # indeterministic target
                             warning(f"Minimization failed, saving original input {ex=}")
-                            FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=True)
+                            FileCachingDecorator(self._workdir, "unstable", self._protocol)(last_input, self, copy=True)
                             stable = False
                             raise
 

@@ -285,6 +285,7 @@ class FuzzerConfig:
         wd = self._config["fuzzer"]["workdir"]
         tree = {
             "queue": {},
+            "unstable": {},
             "crash": {},
             "figs": {}
         }
