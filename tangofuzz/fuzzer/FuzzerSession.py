@@ -62,6 +62,7 @@ class FuzzerSession:
         Loops over the initial set of seeds to populate the state machine with
         known states.
         """
+        # TODO also load in existing queue if config.resume is True
         for input in self._input_gen.seeds:
             try:
                 await self._sman.reset_state()
@@ -93,9 +94,9 @@ class FuzzerSession:
                             debug("Encountered imprecise state transition")
                             ProfileCount('imprecise')(1)
                         except ProcessCrashedException as pc:
-                            # TODO save crashing input
                             error(f"Process crashed: {pc = }")
                             ProfileCount('crash')(1)
+                            # TODO augment loader to dump stdout and stderr too
                             FileCachingDecorator(self._workdir, "crash", self._protocol)(ex.payload, self._sman, copy=True)
                         except ProcessTerminatedException as pt:
                             debug(f"Process terminated unexpectedtly? ({pt = })")
