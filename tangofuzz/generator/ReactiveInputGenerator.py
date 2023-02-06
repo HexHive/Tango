@@ -97,6 +97,7 @@ class ReactiveInputGenerator(InputGeneratorBase):
             while state is not None and state not in ancestors:
                 ancestors.add(state)
                 self._state_model[state]['cum_features'] += fcount
+                # FIXME verify that state._parent == state.[ancestor]
                 state = state._parent
             ancestors.clear()
 
@@ -105,6 +106,7 @@ class ReactiveInputGenerator(InputGeneratorBase):
                 state = source
                 depth = 0
                 while True:
+                    # FIXME check other FIXME
                     state = state._parent
                     depth += 1
                     if state is None or state in ancestors: # loops should not exist, but this is a safety measure
@@ -199,6 +201,7 @@ class ReactiveInputGenerator(InputGeneratorBase):
         while state is not None and state not in visited:
             visited.add(state)
             cost += state._set_count
+            # FIXME check other FIXME
             state = state._parent
         return cost / bound
 
