@@ -34,7 +34,6 @@ class StateManager:
         self._sm = StateMachine(self._last_state)
         self._strategy = strategy_ctor(self._sm, self._last_state)
         self._current_path = []
-        self._reset_current_path()
 
         ProfileLambda('global_cov')(lambda: sum(map(lambda x: x._set_count + x._clr_count, filter(lambda x: x != self.state_tracker.entry_state, self._sm._graph.nodes))))
 
@@ -262,7 +261,6 @@ class StateManager:
 
                     self._sm.update_transition(self._last_state, self._current_state,
                         last_input)
-                    self._current_path.append((self._last_state, self._current_state, last_input))
                     self._last_state = self._current_state
                     info(f'Transitioned to {self._current_state=}')
                     updated = True
@@ -411,10 +409,13 @@ class StateManagerContext(DecoratorBase):
                 raise
             else:
                 if not updated:
-                    # we force a state tracker update
+                    # we force a state tracker update (e.g. update implicit state)
                     # FIXME this may not work well with all state trackers
                     ns = self._sman.state_tracker.update(last_state, last_input)
                     assert ns == last_state, "State tracker is inconsistent!"
+                else:
+                    self._sman._current_path.append(
+                        (last_state, self._sman._current_state, last_input))
 
                 self.update_state(self._sman._current_state, input=last_input,
                     orig_input=self.orig_input)
