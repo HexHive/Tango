@@ -215,13 +215,11 @@ class PtraceChannel(ChannelBase):
                     continue
                 sc = self.process_event(event, ignore_callback, syscall_callback,
                     break_on_entry, **kwargs)
-                if sc is None:
-                    continue
-                last_process = event.process
+                if sc is not None:
+                    last_process = event.process
             except ProcessEvent as e:
                 self.process_event(e, ignore_callback, syscall_callback,
                     break_on_entry, **kwargs)
-                continue
 
             if break_callback():
                 debug("Syscall monitoring finished, breaking out of debug loop")
