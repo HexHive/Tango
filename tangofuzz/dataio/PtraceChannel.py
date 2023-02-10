@@ -284,10 +284,10 @@ class PtraceChannel(ChannelBase):
             self.terminator(p)
 
     def close(self, terminate, **kwargs):
+        self._monitor_executor.shutdown(wait=True)
         if terminate:
             self.terminator(self._proc)
 
     def __del__(self):
-        self._monitor_executor.shutdown(wait=True)
         self.close(terminate=True)
         self._debugger.quit()
