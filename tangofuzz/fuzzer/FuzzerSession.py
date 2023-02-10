@@ -158,21 +158,25 @@ class FuzzerSession:
 
     async def _bootstrap(self):
         loop = asyncio.get_running_loop()
-        main_task = loop.main_task = asyncio.current_task()
-        main_task.suspendable_ancestors = []
-        main_task.coro = Suspendable(self._start())
-
         self._stream_cache = {}
-        streams = get_standard_streams(cache=self._stream_cache, use_stderr=True, loop=loop)
-        self._repl = AsynchronousConsole(streams=streams, loop=loop,
-            locals=locals() | {'exit': lambda: self._cleanup_and_exit(loop)})
+        # we use an empty tuple for `streams` to prevent it being seen as None
+        self._repl = AsynchronousConsole(streams=(), loop=loop,
+            locals=locals() | {
+                'exit': lambda: self._cleanup_and_exit(loop),
+                'loop': loop
+            })
 
         await self.initialize()
         await profiler.initialize()
         # FIXME the WebRenderer is async and can thus be started in the same loop
         WebRenderer(self).start()
 
-        self._gather = asyncio.gather(main_task.coro, *ProfilingTasks)
+        # set up the main suspendable fuzzing task
+        suspendable = Suspendable(self._start())
+        loop.main_task = main_task = loop.create_task(suspendable.as_coroutine())
+        main_task.suspendable = suspendable
+
+        self._gather = asyncio.gather(main_task, *ProfilingTasks)
         self._bootstrap_sigint(loop, handle=True)
 
         try:
@@ -187,7 +191,12 @@ class FuzzerSession:
             loop.remove_signal_handler(signal.SIGINT)
 
     def _sigint_handler(self, loop):
-        return loop.create_task(self._interact(loop))
+        async def await_repl(task, restore):
+            await task
+            loop.main_task.suspendable.set_tasks(wakeup_task=restore)
+        repl_task = loop.create_task(self._interact(loop))
+        _, wakeup_restore = loop.main_task.suspendable.tasks
+        loop.main_task.suspendable.set_tasks(wakeup_task=await_repl(repl_task, wakeup_restore))
 
     async def _interact(self, loop):
         main_task = loop.main_task
@@ -197,25 +206,32 @@ class FuzzerSession:
         self._bootstrap_sigint(loop, handle=False)
 
         # suspend main task (and call respective suspend handlers)
-        main_task.coro.suspend()
+        main_task.suspendable.suspend()
 
         # pause fuzzing timer
         ProfiledObjects['elapsed'].toggle()
 
-        # interact
+        # The coroutine get_standard_streams is deliberately not awaited.
+        # AsynchronousConsole supports having an awaitable `streams` attribute
+        # that is called every time `interact` is invoked. To allow for reusing
+        # the console, we use this coroutine with a no-op cache so that streams
+        # are re-generated every time `interact` is called.
+        # interact.
+        # Unfortunately, AsynchronousConsole sets `self.streams` to None after
+        # evaluating it, so we need to re-assign it.
+        self._stream_cache.clear()
+        self._repl.streams = get_standard_streams(cache=self._stream_cache, use_stderr=True, loop=loop)
         await self._repl.interact(banner="Fuzzing paused (type exit() to quit)",
             stop=False, handle_sigint=False)
 
-        # reset streams if stdin is EOF
+        # reopen stdin if it is at EOF
         if self._repl.reader.at_eof():
             sys.stdin.close()
             sys.stdin = open("/dev/tty")
-            self._stream_cache.clear()
-            self._repl.streams = get_standard_streams(cache=self._stream_cache, use_stderr=True, loop=loop)
 
         # reverse setup
         ProfiledObjects['elapsed'].toggle()
-        main_task.coro.resume()
+        main_task.suspendable.resume()
         self._bootstrap_sigint(loop, handle=True)
 
     def _cleanup_and_exit(self, loop):

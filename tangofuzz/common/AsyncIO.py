@@ -26,43 +26,81 @@ class Suspendable:
     Adapted from:
     https://stackoverflow.com/questions/66687549/is-it-possible-to-suspend-and-restart-tasks-in-async-python
     """
-    def __init__(self, target, /, *, suspend_cb=None, resume_cb=None):
+    def __init__(self, target, /, **kwargs):
         self._target = target
+        self._init_kwargs = kwargs
+
+    def _initialize(self, *, suspend_cb=None, resume_cb=None,
+            sleep_task=None, wakeup_task=None):
         self._can_run = asyncio.Event()
         self._can_run.set()
-        self._suspend_cb = suspend_cb
-        self._resume_cb = resume_cb
         self._awaited = False
+        self.set_callbacks(suspend_cb=suspend_cb, resume_cb=resume_cb)
+        self.set_tasks(sleep_task=sleep_task, wakeup_task=wakeup_task)
 
-        if hasattr(asyncio.current_task(), 'suspendable_ancestors'):
-            self._parent = asyncio.current_task().suspendable_ancestors[-1] \
-                                if asyncio.current_task().suspendable_ancestors \
-                                else self
-            self.child_suspendables = []
-            self.child_suspend_cbs = []
-            self.child_resume_cbs = []
-            self._push_suspend_idx = len(self._parent.child_suspend_cbs)
-            self._push_resume_idx = len(self._parent.child_resume_cbs)
-            asyncio.current_task().suspendable_ancestors.append(self)
+        current_task = asyncio.current_task()
+        if not hasattr(current_task, 'suspendable_ancestors'):
+            current_task.suspendable_ancestors = []
+            self._parent = self
         else:
-            self.push_cbs = self.pop_cbs = lambda: None
+            self._parent = current_task.suspendable_ancestors[-1]
 
-    def set_callbacks(self, *, suspend_cb=None, resume_cb=None):
-        if self._awaited:
-            # change the callbacks even while the coroutine gets awaited
-            if self._suspend_cb:
-                self._parent.child_suspend_cbs[self._push_suspend_idx] = suspend_cb
-            else:
-                self._parent.child_suspend_cbs.insert(self._push_suspend_idx, suspend_cb)
+        self.child_suspendables = []
+        self.child_suspend_cbs = []
+        self.child_resume_cbs = []
+        self._push_suspend_idx = len(self._parent.child_suspend_cbs)
+        self._push_resume_idx = len(self._parent.child_resume_cbs)
 
-            if self._resume_cb:
-                self._parent.child_resume_cbs[self._push_resume_idx] = resume_cb
-            else:
-                self._parent.child_resume_cbs.insert(self._push_resume_idx, resume_cb)
-        self._suspend_cb = suspend_cb
-        self._resume_cb = resume_cb
+    def set_callbacks(self, **kwargs):
+        def set_suspend_cb(cb):
+            if self._awaited:
+                if self._suspend_cb:
+                    self._parent.child_suspend_cbs[self._push_suspend_idx] = cb
+                else:
+                    self._parent.child_suspend_cbs.insert(self._push_suspend_idx, cb)
+            self._suspend_cb = cb
+        def set_resume_cb(cb):
+            if self._awaited:
+                if self._resume_cb:
+                    self._parent.child_resume_cbs[self._push_resume_idx] = cb
+                else:
+                    self._parent.child_resume_cbs.insert(self._push_resume_idx, cb)
+            self._resume_cb = cb
+
+        try:
+            set_suspend_cb(kwargs['suspend_cb'])
+        except KeyError:
+            pass
+        try:
+            set_resume_cb(kwargs['resume_cb'])
+        except KeyError:
+            pass
+
+    def set_tasks(self, **kwargs):
+        def set_sleep_task(task):
+            self._sleep_task = task
+        def set_wakeup_task(task):
+            self._wakeup_task = task
+
+        try:
+            set_sleep_task(kwargs['sleep_task'])
+        except KeyError:
+            pass
+        try:
+            set_wakeup_task(kwargs['wakeup_task'])
+        except KeyError:
+            pass
+
+    @property
+    def tasks(self):
+        return self._sleep_task, self._wakeup_task
+
+    @property
+    def callbacks(self):
+        return self._suspend_cb, self._resume_cb
 
     def push_cbs(self):
+        asyncio.current_task().suspendable_ancestors.append(self)
         if self._suspend_cb:
             assert self._push_suspend_idx == len(self._parent.child_suspend_cbs)
             self._parent.child_suspend_cbs.append(self._suspend_cb)
@@ -81,34 +119,45 @@ class Suspendable:
             assert self._resume_cb is self._parent.child_resume_cbs.pop()
         if self._parent is not self:
             assert self is self._parent.child_suspendables.pop()
+        assert asyncio.current_task().suspendable_ancestors.pop() == self
 
     def __await__(self):
+        self._initialize(**self._init_kwargs)
         self.push_cbs()
 
-        target_iter = self._target.__await__()
-        iter_send, iter_throw = target_iter.send, target_iter.throw
-        send, message = iter_send, None
-        # This "while" emulates yield from.
-        while True:
-            # wait for can_run before resuming execution of self._target
-            try:
-                while not self._can_run.is_set():
-                    yield from self._can_run.wait().__await__()
-            except BaseException as err:
-                send, message = iter_throw, err
+        try:
+            target_iter = self._target.__await__()
+            iter_send, iter_throw = target_iter.send, target_iter.throw
+            send, message = iter_send, None
+            # This "while" emulates yield from.
+            while True:
+                # wait for can_run before resuming execution of self._target
+                slept = False
+                try:
+                    while not self._can_run.is_set():
+                        if not slept and self._sleep_task:
+                            yield from self._sleep_task.__await__()
+                            slept = True
+                        yield from self._can_run.wait().__await__()
+                        if self._can_run.is_set() and self._wakeup_task:
+                            yield from self._wakeup_task.__await__()
+                            break
+                except BaseException as err:
+                    send, message = iter_throw, err
 
-            # continue with our regular program
-            try:
-                signal = send(message)
-            except StopIteration as err:
-                self.pop_cbs()
-                return err.value
-            else:
-                send = iter_send
-            try:
-                message = yield signal
-            except BaseException as err:
-                send, message = iter_throw, err
+                # continue with our regular program
+                try:
+                    signal = send(message)
+                except StopIteration as err:
+                    return err.value
+                else:
+                    send = iter_send
+                try:
+                    message = yield signal
+                except BaseException as err:
+                    send, message = iter_throw, err
+        finally:
+            self.pop_cbs()
 
     def suspend(self):
         for child in self.child_suspendables[::-1]:
@@ -128,6 +177,9 @@ class Suspendable:
         for child in self.child_suspendables:
             child.resume()
         warning(f"Resumed all children {self._target=}")
+
+    async def as_coroutine(self):
+        await self
 
 class OwnerDecorator(ABC):
     _is_coroutine = asyncio.coroutines._is_coroutine
