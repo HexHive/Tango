@@ -62,6 +62,14 @@ void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
         edge_cnt[*guard] = UINT8_MAX;
 }
 
+int __wrap_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+int __real_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+
+pid_t __wrap_fork();
+pid_t __real_fork();
+
+long int __wrap_random(void);
+
 __attribute__((no_sanitize("coverage")))
 static inline void __reset_cov_map() {
     for (int i = 0; i < edge_sz; ++i)
@@ -72,7 +80,7 @@ __attribute__((used, no_sanitize("coverage")))
 static void _forkserver() {
     while(1) {
         __reset_cov_map();
-        int child_pid = fork();
+        int child_pid = __real_fork();
         if (child_pid) {
             asm("int $3"); // trap and wait until fuzzer wakes us up
             int status, ret;
@@ -118,17 +126,10 @@ void forkserver() {
 static struct linger no_linger = {0};
 static uint32_t reuse = 1;
 
-int __wrap_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
-int __real_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
-
-pid_t __wrap_fork();
-pid_t __real_fork();
-
-long int __wrap_random(void);
-
 /* Refer to this SO answer on the nitty-gritty about TIME_WAIT
  * https://stackoverflow.com/a/14388707
  */
+__attribute__((no_sanitize("coverage")))
 int __wrap_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
     setsockopt(sockfd, SOL_SOCKET, SO_LINGER, &no_linger, sizeof(no_linger));
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
@@ -139,6 +140,7 @@ int __wrap_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
     return __real_bind(sockfd, addr, addrlen);
 }
 
+__attribute__((no_sanitize("coverage")))
 pid_t __wrap_fork() {
     pid_t ppid = getpid();
     pid_t child_pid = __real_fork();
@@ -150,6 +152,7 @@ pid_t __wrap_fork() {
     return child_pid;
 }
 
+__attribute__((no_sanitize("coverage")))
 long int __wrap_random(void) {
     static long int x = 0;
     return ++x;
