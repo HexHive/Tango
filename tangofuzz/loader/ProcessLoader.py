@@ -29,7 +29,7 @@ class ProcessLoader(StateLoaderBase):
         netns.remove(self._netns_name)
 
     def _prepare_process(self):
-        netns.setns(self._netns_name, flags=os.O_CREAT | os.O_EXCL)
+        netns.setns(self._netns_name, flags=os.O_CREAT)
         with IPRoute() as ipr:
             ipr.link('set', index=1, state='up')
         ptrace_traceme()
