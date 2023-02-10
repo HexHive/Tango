@@ -57,14 +57,14 @@ class ReactiveHavocMutator(MutatorBase):
             yield from entropy.sample(reorder_buffer, k=len(reorder_buffer))
             reorder_buffer.clear()
 
-    def ___iter___(self, orig):
+    def ___iter___(self, input, orig):
         self._actions_taken = False
         for interaction in self._iter_helper(orig):
             yield interaction
             self._actions_taken = False
 
-    def ___repr___(self, orig):
-        return f'HavocMutatedInput:0x{self._input.id:08X} (0x{self._input_id:08X})'
+    def ___repr___(self, input, orig):
+        return f'HavocMutatedInput:0x{input.id:08X} (0x{self._input_id:08X})'
 
     def _apply_actions(self, data, entropy):
         for func in self._actions:

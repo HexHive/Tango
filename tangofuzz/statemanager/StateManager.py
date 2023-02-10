@@ -376,9 +376,9 @@ class StateManagerContext(DecoratorBase):
     def orig_input(self):
         # we pop the StateManagerContext decorator itself to obtain a reference
         # to the original input, typically the output of the input generator
-        return self.pop_decorator(self._input)[0]
+        return self._input.pop_decorator()[0]
 
-    async def ___aiter___(self, orig):
+    async def ___aiter___(self, input, orig):
         self._start = self._stop = 0
         idx = -1
         async for idx, interaction in async_enumerate(orig()):
@@ -439,5 +439,5 @@ class StateManagerContext(DecoratorBase):
             # commit the rest of the input
             self._sman._last_state.last_input = self.input_gen()
 
-    def ___iter___(self, orig):
+    def ___iter___(self, input, orig):
         return orig()

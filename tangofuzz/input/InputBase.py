@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Union
-from functools import partial
+from functools import partial, partialmethod
 import inspect
 from itertools import islice, chain
 from profiler import ProfileValueMean
@@ -21,6 +21,8 @@ class InputBase(ABC):
         return f"{self.__class__.__name__}:0x{self.id:08X}"
 
     def ___len___(self):
+        # if NotImplementedError is raised, then tuple(input) fails;
+        # if None is returned, tuple resorts to dynamic allocation
         return None
 
     async def ___aiter___(self):
@@ -57,14 +59,15 @@ class InputBase(ABC):
     def __add__(self, other: InputBase):
         return JoiningDecorator(other)(self)
 
-    def __iadd__(self, other: InputBase):
-        return JoiningDecorator(other)(self, copy=False)
-
     @classmethod
     @property
     def uniq_id(cls):
         cls._COUNTER += 1
         return cls._COUNTER
+
+    @property
+    def decorated(self):
+        return False
 
     ## Decoratable functions ##
     # These definitions are needed so that a decorator can override the behavior
@@ -89,6 +92,10 @@ class InputBase(ABC):
     def __getitem__(self, idx: Union[int, slice]):
         return self.___getitem___(idx)
 
+    def __bool__(self):
+        # we define this so that __len__ is not used to test truthiness
+        return True
+
 class DecoratorBase(ABC):
     DECORATED_METHODS = ('___iter___', '___aiter___', '___eq___', '___add___',
                          '___getitem___', '___repr___', '___len___')
@@ -101,7 +108,7 @@ class DecoratorBase(ABC):
             if name not in self.DECORATED_METHODS:
                 continue
             oldfunc = getattr(input, name, None)
-            newfunc = partial(func, oldfunc)
+            newfunc = partialmethod(partial(func), oldfunc).__get__(self._input)
             setattr(self._input, name, newfunc)
 
         self._input._decoration_depth = input._decoration_depth + 1
@@ -116,7 +123,7 @@ class DecoratorBase(ABC):
         self._input_id = input.id
         self._input = DecoratedInput(self)
 
-    def ___repr___(self, orig):
+    def ___repr___(self, input, orig):
         return f"{self.__class__.__name__}({orig()})"
 
     def undecorate(self):
@@ -127,7 +134,7 @@ class DecoratorBase(ABC):
                 continue
             newfunc = getattr(self._input, name, None)
             # extract `orig` from the partial function
-            oldfunc = newfunc.args[0]
+            oldfunc = newfunc._partialmethod.args[0]
             delattr(self._input, name)
             setattr(self._input, name, oldfunc)
         del self._input.___decorator___
@@ -149,32 +156,15 @@ class DecoratorBase(ABC):
             method = getattr(method, '__func__', method)  # fallback to __qualname__ parsing
         return getattr(method, '__objclass__', None)  # handle special descriptor objects
 
-    @staticmethod
-    def pop_decorator(input: DecoratedInput) -> (InputBase, DecoratorBase):
-        if not isinstance(input, DecoratedInput):
-            raise TypeError("Input is not decorated!")
-        decorator = input.___decorator___
-        decorated_iter = getattr(input, '___iter___', None)
+    def pop(self) -> InputBase:
+        decorated_iter = self._input.___iter___
         # decorated iters are partial functions with args[0] == orig
-        orig_iter = decorated_iter.args[0]
-        if isinstance(orig_iter, partial):
-            # nested decorators => orig_iter is also decorated
-            orig_self = orig_iter.func.__self__._input
+        orig_iter = decorated_iter._partialmethod.args[0]
+        owner = orig_iter.__self__
+        if isinstance(owner, DecoratorBase):
+            return owner.pop()
         else:
-            # iter is a bound method whose `self` points to the owning InputBase
-            orig_self = orig_iter.__self__
-        return (orig_self, decorator)
-
-    @staticmethod
-    def search_decorator_stack(input: InputBase, filter: Callable[[DecoratorBase], bool], max_depth: int=None) -> DecoratorBase:
-        depth = 1
-        while True:
-            input, decorator = DecoratorBase.pop_decorator(input)
-            if filter(decorator):
-                return decorator
-            if max_depth and depth >= max_depth:
-                raise RuntimeError("Max search depth exceeded")
-            depth += 1
+            return owner
 
 class SlicingDecorator(DecoratorBase):
     def __init__(self, idx):
@@ -191,22 +181,23 @@ class SlicingDecorator(DecoratorBase):
     def __call__(self, input, copy=True): # -> InputBase:
         if self._start == 0 and self._stop == None:
             return input
-        elif self.get_parent_class(input.___iter___) is self.__class__ and \
-                input.___decorator___._step == self._step:
-            self._start += input.___decorator___._start
+        elif input.decorated and isinstance(input.___decorator___, self.__class__) \
+                and input.___decorator___._step == self._step:
+            input, other = input.pop_decorator()
+            self._start += other._start
             if self._stop is not None:
-                self._stop = input.___decorator___._start + (self._stop - self._start)
-                assert input.___decorator___._stop is None or \
-                    input.___decorator___._stop >= self._stop
+                self._stop = other._start + (self._stop - self._start)
+                assert other._stop is None or \
+                    other._stop >= self._stop
             else:
-                self._stop = input.___decorator___._stop
+                self._stop = other._stop
 
         return super().__call__(input)
 
-    def ___iter___(self, orig):
+    def ___iter___(self, input, orig):
         return islice(orig(), self._start, self._stop, self._step)
 
-    def ___repr___(self, orig):
+    def ___repr___(self, input, orig):
         if self._stop == self._start + 1 and self._step == 1:
             fmt = f'{self._start}'
         elif self._stop is None:
@@ -216,24 +207,25 @@ class SlicingDecorator(DecoratorBase):
                 fmt = f'{self._start}::{self._step}'
         else:
             fmt = f'{self._start}:{self._stop}:{self._step}'
-        return f'SlicedInput:0x{self._input.id:08X} (0x{self._input_id:08X}[{fmt}])'
+        return f'SlicedInput:0x{input.id:08X} (0x{self._input_id:08X}[{fmt}])'
 
 class JoiningDecorator(DecoratorBase):
     def __init__(self, *others):
         self._others = list(others)
 
     def __call__(self, input, copy=True): # -> InputBase:
-        if self.get_parent_class(input.___iter___) is self.__class__:
-            self._others = input.___decorator___._others + self._others
+        if input.decorated and isinstance(input.___decorator___, self.__class__):
+            input, other = input.pop_decorator()
+            self._others = other._others + self._others
         return super().__call__(input)
 
-    def ___iter___(self, orig):
+    def ___iter___(self, input, orig):
         return chain(orig(), *self._others)
 
-    def ___repr___(self, orig):
+    def ___repr___(self, input, orig):
         id = f'0x{self._input_id:08X}'
         ids = (f'0x{x.id:08X}' for x in self._others)
-        return f'JoinedInput:0x{self._input.id:08X} ({" || ".join((id, *ids))})'
+        return f'JoinedInput:0x{input.id:08X} ({" || ".join((id, *ids))})'
 
 class MemoryCachingDecorator(DecoratorBase):
     def __init__(self):
@@ -259,6 +251,9 @@ class MemoryCachingDecorator(DecoratorBase):
         del self._input.___decorator___
         del self._input
 
+    def pop(self) -> InputBase:
+        return self._input
+
     def ___cached_iter___(self):
         return iter(self._cached_iter)
 
@@ -278,3 +273,26 @@ class DecoratedInput(InputBase):
 
     def __del__(self):
         self.___decorator___.undecorate()
+
+    @property
+    def decorated(self):
+        # this could be invalidated when undecorate() is called
+        return hasattr(self, '___decorator___')
+
+    def pop_decorator(self) -> (InputBase, DecoratorBase):
+        decorator = self.___decorator___
+        return decorator.pop(), decorator
+
+    def search_decorator_stack(self, select: Callable[[DecoratorBase], bool], max_depth: int=None) -> DecoratorBase:
+        depth = 0
+        input = self
+        while True:
+            if not input.decorated:
+                raise RuntimeError("Reached end of decorator stack")
+            elif max_depth and depth >= max_depth:
+                raise RuntimeError("Max search depth exceeded")
+            input, decorator = input.pop_decorator()
+            if select(decorator):
+                return decorator
+            depth += 1
+

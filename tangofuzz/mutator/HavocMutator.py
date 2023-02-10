@@ -38,7 +38,7 @@ class HavocMutator(MutatorBase):
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self._entropy.setstate(self._temp.getstate())
 
-    def ___iter___(self, orig):
+    def ___iter___(self, input, orig):
         with self as entropy:
             i = -1
             reorder_buffer = []
@@ -50,8 +50,8 @@ class HavocMutator(MutatorBase):
                 if i == -1:
                     yield from self._mutate(None, reorder_buffer, entropy)
 
-    def ___repr___(self, orig):
-        return f'HavocMutatedInput:0x{self._input.id:08X} (0x{self._input_id:08X})'
+    def ___repr___(self, input, orig):
+        return f'HavocMutatedInput:0x{input.id:08X} (0x{self._input_id:08X})'
 
     def _mutate(self, interaction: InteractionBase, reorder_buffer: Sequence, entropy: Random) -> Sequence[InteractionBase]:
         if interaction is not None:
