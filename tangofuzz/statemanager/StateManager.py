@@ -75,7 +75,7 @@ class StateManager:
                     critical("Current state is not in state graph! Launching interactive debugger...")
                     import ipdb; ipdb.set_trace()
                 self._last_state = current_state
-                self._strategy.update_state(self._last_state, is_new=False)
+                self._strategy.update_state(self._last_state, input=None)
         except CoroInterrupt:
             # if an interrupt is received while loading a state (e.g. death),
             # self._last_state is not set to the current state because of the
@@ -98,7 +98,7 @@ class StateManager:
                         ProfileCount("dissolved_states")(1)
                     except KeyError as ex:
                         warning(f"Faulty state was not even valid")
-                    self._strategy.update_state(faulty_state, invalidate=True)
+                    self._strategy.update_state(faulty_state, input=None, exc=ex)
             raise
         return current_state
 
@@ -140,7 +140,8 @@ class StateManager:
                             self._sm.delete_transition(transition[0], transition[1])
                         except KeyError as ex:
                             warning(f"Faulty transition was not even valid")
-                        self._strategy.update_transition(transition[0], transition[1], transition[2], invalidate=True)
+                        self._strategy.update_transition(*transition, state_changed=transition[0]==transition[1],
+                            exc=ex)
                     except StopIteration:
                         pass
             except Exception as ex:
@@ -148,7 +149,7 @@ class StateManager:
                 # target, because we're not entirely sure what went wrong. We
                 # invalidate the target state and hope for the best.
                 warning(f'Failed to step to new target; invalidating it {ex=}')
-                self._strategy.update_state(self._strategy.target_state, invalidate=True)
+                self._strategy.update_state(self._strategy.target_state, input=None, exc=ex)
                 raise
 
         context_input = self.get_context_input(input)

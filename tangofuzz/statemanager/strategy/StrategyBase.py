@@ -9,7 +9,7 @@ class StrategyBase(ABC):
         self._sm = sm
         self._entry = entry_state
 
-    def update_state(self, state: StateBase, input: InputBase, *, exc: Exception=None, **kwargs):
+    def update_state(self, state: StateBase, *, input: InputBase, exc: Exception=None, **kwargs):
         """
         Updates the internal strategy parameters related to the state. In case a
         state is invalidated, it should remain so until it is revalidated in a
