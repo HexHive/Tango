@@ -45,43 +45,31 @@ class GlobalCoverage:
         self._length = length
         self._type = B * length
         self._set_arr = np.zeros(length, dtype=np.uint8)
-        self._clr_arr = np.zeros(length, dtype=np.uint8)
         self.clear()
 
-    def update(self, coverage_map: Sequence) -> (Sequence, Sequence, int, int, int):
+    def update(self, coverage_map: Sequence) -> (Sequence, int, int):
         kls_arr = CLASS_LUT[coverage_map]
-
         set_map = (self._set_arr | kls_arr) ^ self._set_arr
-        clr_map = (self._clr_arr & kls_arr) ^ self._clr_arr
-
         self._set_arr ^= set_map
-        self._clr_arr ^= clr_map
-
         set_count = np.sum(HAMMING_LUT[set_map])
-        clr_count = np.sum(HAMMING_LUT[clr_map])
+        map_hash = hash(set_map.data.tobytes())
 
-        map_hash = hash(set_map.data.tobytes()) ^ hash(clr_map.data.tobytes())
+        return set_map, set_count, map_hash
 
-        return set_map, clr_map, set_count, clr_count, map_hash
-
-    def revert(self, set_map: Sequence, clr_map: Sequence):
+    def revert(self, set_map: Sequence):
         self._set_arr ^= set_map
-        self._clr_arr ^= clr_map
 
     def copy_from(self, other: GlobalCoverage):
         if self._length != other._length:
             raise RuntimeError("Mismatching coverage map sizes")
         np.copyto(self._set_arr, other._set_arr)
-        np.copyto(self._clr_arr, other._clr_arr)
 
     def clear(self):
         self._set_arr.fill(0)
-        self._clr_arr.fill(0xFF)
 
     def __eq__(self, other):
         return isinstance(other, GlobalCoverage) and \
-               np.array_equal(self._set_arr, other._set_arr) and \
-               np.array_equal(self._clr_arr, other._clr_arr)
+               np.array_equal(self._set_arr, other._set_arr)
 
     def __hash__(self):
-        return hash(self._set_arr.data.tobytes()) ^ hash(self._clr_arr.data.tobytes())
+        return hash(self._set_arr.data.tobytes())

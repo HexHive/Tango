@@ -12,7 +12,7 @@ class CoverageState(StateBase):
     _cache = {}
     _id = 0
 
-    def __new__(cls, parent: CoverageState, set_map: Sequence, clr_map: Sequence, set_count: int, clr_count: int, map_hash: int, global_cov: GlobalCoverage, do_not_cache: bool=False):
+    def __new__(cls, parent: CoverageState, set_map: Sequence, set_count: int, map_hash: int, global_cov: GlobalCoverage, do_not_cache: bool=False):
         _hash = map_hash
         if not do_not_cache and (cached := cls._cache.get(_hash)):
             return cached
@@ -20,13 +20,11 @@ class CoverageState(StateBase):
         new._parent = parent
         new._set_map = set_map
         new._set_count = set_count
-        new._clr_map = clr_map
-        new._clr_count = clr_count
         new._hash = _hash
         new._context = GlobalCoverage(global_cov._length)
         new._context.copy_from(global_cov)
         # to obtain the context from the current global map, we revert the bits
-        new._context.revert(set_map, clr_map)
+        new._context.revert(set_map)
         if not do_not_cache:
             cls._cache[_hash] = new
             new._id = cls._id
@@ -36,7 +34,7 @@ class CoverageState(StateBase):
         super(CoverageState, new).__init__()
         return new
 
-    def __init__(self, parent: CoverageState, set_map: Sequence, clr_map: Sequence, set_count: int, clr_count: int, map_hash: int, global_cov: GlobalCoverage, do_not_cache: bool=False):
+    def __init__(self, parent: CoverageState, set_map: Sequence, set_count: int, map_hash: int, global_cov: GlobalCoverage, do_not_cache: bool=False):
         pass
 
     def __hash__(self):
@@ -47,10 +45,8 @@ class CoverageState(StateBase):
         return isinstance(other, CoverageState) and \
                hash(self) == hash(other)
                # self._set_count == other._set_count and \
-               # self._clr_count == other._clr_count and \
                # np.array_equal(self._set_map, other._set_map) and \
-               # np.array_equal(self._clr_map, other._clr_map) and \
                # self._context == other._context
 
     def __repr__(self):
-        return f'({self._id}) +{self._set_count} -{self._clr_count}'
+        return f'({self._id}) +{self._set_count}'

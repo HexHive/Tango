@@ -179,12 +179,12 @@ class ReactiveInputGenerator(InputGeneratorBase):
     def _calculate_reward(cls, source: StateBase, destination: StateBase, amplifier: float=10) -> float:
         bound = revenue = 0.
         if source != destination:
-            bound += (len(destination._set_map) * 0.9 + len(destination._clr_map) * 0.1) * 8
-            revenue += (destination._set_count * 0.9 + destination._clr_count * 0.1)
+            bound += len(destination._set_map) * 8
+            revenue += destination._set_count
         if (local_state := destination.state_manager.state_tracker._local_state) is not None:
             # now we rely on local state changes
-            bound += (len(local_state._set_map) * 0.9 + len(local_state._clr_map) * 0.1) * 8
-            revenue += (local_state._set_count * 0.9 + local_state._clr_count * 0.1) / amplifier
+            bound += len(local_state._set_map) * 8
+            revenue += local_state._set_count / amplifier
         if bound > 0.:
             revenue /= bound
         # WARN reward in exp3 must belong to [0, 1)
@@ -211,7 +211,7 @@ class ReactiveInputGenerator(InputGeneratorBase):
 
     @staticmethod
     def _count_features(source: StateBase, destination: StateBase) -> int:
-        return int(destination._set_count + destination._clr_count)
+        return int(destination._set_count)
 
     @staticmethod
     def _update_weights(model: dict, actions_taken: list, normalized_reward: float, gamma: float=0.1):
