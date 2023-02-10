@@ -139,6 +139,7 @@ class FuzzerSession:
             except asyncio.CancelledError:
                 return
             except Exception as ex:
+                import ipdb; ipdb.set_trace()
                 critical(f"Encountered exception while resetting state! {ex = }")
 
     async def _start(self):
