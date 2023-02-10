@@ -17,7 +17,8 @@ class PeriodicProfiler(ProfilerBase):
     async def _task_worker(self):
         while True:
             try:
-                await wait_for(shield(profiler.ProfilingStoppedEvent.wait()), self._period)
+                await wait_for(profiler.ProfilingStoppedEvent.wait(), self._period)
+                return
             except TimeoutError:
                 self._task()
             except CancelledError:
