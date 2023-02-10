@@ -7,7 +7,7 @@ from typing import Callable
 from statemanager import StateMachine
 from statemanager.strategy import StrategyBase
 from tracker import StateBase, StateTrackerBase
-from input        import InputBase, DecoratorBase, MemoryCachingDecorator, FileCachingDecorator
+from input        import InputBase, DecoratorBase, MemoryCachingDecorator
 from generator    import InputGeneratorBase
 from loader       import StateLoaderBase # FIXME there seems to be a cyclic dep
 from profiler     import ProfileValue, ProfileFrequency, ProfileCount, ProfileLambda
@@ -17,15 +17,12 @@ from common import async_enumerate
 class StateManager:
     def __init__(self, generator: InputGeneratorBase, loader: StateLoaderBase,
             tracker: StateTrackerBase,
-            strategy_ctor: Callable[[StateMachine, StateBase], StrategyBase],
-            workdir: str, protocol: str,
+            strategy_ctor: Callable[[StateMachine, StateBase], StrategyBase], *,
             validate_transitions: bool, minimize_transitions: bool):
         self._generator = generator
         self._loader = loader
         self._tracker = tracker
         self._tracker.state_manager = self
-        self._workdir = workdir
-        self._protocol = protocol
         self._validate = validate_transitions
         self._minimize = minimize_transitions
 
@@ -215,7 +212,7 @@ class StateManager:
                             self._sm.dissolve_state(self._current_state)
 
                             # we save the input for later coverage measurements
-                            FileCachingDecorator(self._workdir, "unstable", self._protocol)(input, self, copy=False, path=self._last_path)
+                            self._generator.save_input(input, self._last_path, 'unstable', repr(self._current_state))
                         stable = False
                         raise StatePrecisionException(f"{self._current_state} was reached through an imprecise path") from ex
                     except (StabilityException, StateNotReproducibleException):
@@ -238,20 +235,22 @@ class StateManager:
                 if stable:
                     last_input = MemoryCachingDecorator()(input, copy=False)
                     is_new_edge = self._current_state not in self._sm._graph.successors(self._last_state)
-                    if (is_new_state or is_new_edge) and self._minimize:
-                        # call the transition pruning routine to shorten the last input
-                        debug("Attempting to minimize transition")
-                        try:
-                            last_input = await self._minimize_transition(
-                                self._current_path, self._current_state, last_input)
-                            last_input = FileCachingDecorator(self._workdir, "queue", self._protocol)(last_input, self, copy=False)
-                        except Exception as ex:
-                            # Minimization failed, again probably due to an
-                            # indeterministic target
-                            warning(f"Minimization failed, saving original input {ex=}")
-                            FileCachingDecorator(self._workdir, "unstable", self._protocol)(last_input, self, copy=True)
-                            stable = False
-                            raise
+                    if (is_new_state or is_new_edge):
+                        if self._minimize:
+                            # call the transition pruning routine to shorten the last input
+                            debug("Attempting to minimize transition")
+                            try:
+                                last_input = await self._minimize_transition(
+                                    self._current_path, self._current_state, last_input)
+                            except Exception as ex:
+                                # Minimization failed, again probably due to an
+                                # indeterministic target
+                                warning(f"Minimization failed, saving original input {ex=}")
+                                self._generator.save_input(last_input, self._last_path, 'unstable', repr(self._current_state))
+                                stable = False
+                                raise
+                            last_input = MemoryCachingDecorator()(last_input, copy=False)
+                        self._generator.save_input(last_input, self._current_path, 'queue', repr(self._current_state))
 
                     # FIXME doesn't work as intended, but could save from recalculating cov map diffs if it works
                     # if self._current_state != self.state_tracker.peek(self._last_state):

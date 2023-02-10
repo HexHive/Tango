@@ -1,8 +1,7 @@
 from . import debug, info, warning, critical, error
 
 from input         import (InputBase,
-                          PreparedInput,
-                          FileCachingDecorator)
+                          PreparedInput)
 from fuzzer        import FuzzerConfig
 from common        import (StabilityException,
                           StatePrecisionException,
@@ -52,7 +51,6 @@ class FuzzerSession:
         self._sman = await self._config.state_manager
         self._entropy = await self._config.entropy
         self._workdir = await self._config.work_dir
-        self._protocol = await self._config.protocol
 
         ## After this point, the StateManager and StateTracker are both
         #  initialized and should be able to identify states and populate the SM
@@ -97,7 +95,7 @@ class FuzzerSession:
                             error(f"Process crashed: {pc = }")
                             ProfileCount('crash')(1)
                             # TODO augment loader to dump stdout and stderr too
-                            FileCachingDecorator(self._workdir, "crash", self._protocol)(ex.payload, self._sman, copy=True)
+                            self._input_gen.save_input(ex.payload, self._sman._current_path, 'crash', repr(self._sman._current_state))
                         except ProcessTerminatedException as pt:
                             debug(f"Process terminated unexpectedtly? ({pt = })")
                         except ChannelTimeoutException:

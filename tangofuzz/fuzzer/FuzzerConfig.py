@@ -162,10 +162,6 @@ class FuzzerConfig:
         return Environment(**_config)
 
     @cached_property
-    async def protocol(self):
-        return self._config["channel"]["type"]
-
-    @cached_property
     async def ch_env(self):
         _config = self._config["channel"]
         if not await self.use_forkserver:
@@ -239,12 +235,13 @@ class FuzzerConfig:
     async def input_generator(self):
         _config = self._config["input"]
         input_type = _config.get("type", "random")
+        fmt = (await self.ch_env).fmt
         if input_type == "random":
-            return RandomInputGenerator(await self.startup_pcap, await self.seed_dir, await self.protocol)
+            return RandomInputGenerator(await self.startup_pcap, await self.seed_dir, await self.work_dir, fmt)
         elif input_type == "reactive":
-            return ReactiveInputGenerator(await self.startup_pcap, await self.seed_dir, await self.protocol, await self.work_dir)
+            return ReactiveInputGenerator(await self.startup_pcap, await self.seed_dir, await self.work_dir, fmt)
         elif input_type == "reactless":
-            return StatelessReactiveInputGenerator(await self.startup_pcap, await self.seed_dir, await self.protocol, await self.work_dir)
+            return StatelessReactiveInputGenerator(await self.startup_pcap, await self.seed_dir, await self.work_dir, fmt)
         else:
             raise NotImplementedError()
 
@@ -272,8 +269,8 @@ class FuzzerConfig:
         minimize = _config.get("minimize_transitions", True)
         return StateManager(await self.input_generator, await self.loader,
             await self.state_tracker, await self.scheduler_strategy,
-            await self.work_dir, await self.protocol,
-            validate, minimize)
+            validate_transitions=validate,
+            minimize_transitions=minimize)
 
     @cached_property
     async def startup_pcap(self):

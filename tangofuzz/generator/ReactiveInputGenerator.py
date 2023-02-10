@@ -18,14 +18,14 @@ from struct import pack
 HAVOC_MIN_WEIGHT = 1e-3
 
 class ReactiveInputGenerator(InputGeneratorBase):
-    def __init__(self, startup: str, seed_dir: str, protocol: str, workdir: str):
-        super().__init__(startup, seed_dir, protocol)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._seen_transitions = set()
         self._state_model = dict()
         # self._model_history = dict()
 
         self._log_counter = 0
-        self._log_path = os.path.join(workdir, "model_history.bin")
+        self._log_path = os.path.join(self._work_dir, "model_history.bin")
         self._log_buffer = bytearray()
         self._pack_log_header()
 

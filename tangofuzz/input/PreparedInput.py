@@ -7,8 +7,8 @@ class PreparedInput(InputBase):
     A buffered input. All interactions are readily available and can be exported
     to a file.
     """
-    def __init__(self, interactions: Sequence[InteractionBase]=None):
-        super().__init__()
+    def __init__(self, *, interactions: Sequence[InteractionBase]=None, **kwargs):
+        super().__init__(**kwargs)
         self._interactions = []
         if interactions:
             self._interactions.extend(interactions)

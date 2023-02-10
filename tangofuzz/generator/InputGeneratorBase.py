@@ -1,34 +1,58 @@
+from . import warning
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from tracker import StateBase
 from dataio   import ChannelFactoryBase
-from input import InputBase, PCAPInput, PreparedInput
+from input import InputBase, Serializer, PreparedInput, FormatDescriptor
 from profiler import ProfileFrequency
+from typing import Sequence
+from functools import reduce
 import os
+import unicodedata
+import re
+import operator
 
 class InputGeneratorBase(ABC):
-    def __init__(self, startup: str, seed_dir: str, protocol: str):
+    def __init__(self, startup: str, seed_dir: str, work_dir: str, fmt: FormatDescriptor):
         self._seed_dir = seed_dir
-        self._protocol = protocol
+        self._work_dir = work_dir
+
+        # FIXME maybe add an EmptyInput class
+        self._startup = PreparedInput()
+        self._seeds = []
+
+        self._fmt = fmt
+        self._input_kls = Serializer.get(fmt)
+        if self._input_kls is None:
+            warning(f"No serializer available for `{self._fmt.typ}`!")
+            return
 
         if startup and os.path.isfile(startup):
-            self._startup = PCAPInput(startup, protocol=self._protocol)
-        else:
-            # FIXME maybe add an EmptyInput class
-            self._startup = PreparedInput()
+            self._startup = self._input_kls(file=startup, load=True)
 
-        self._pcaps = []
         if self._seed_dir is None or not os.path.isdir(self._seed_dir):
             return
 
-        seeds = []
+        seed_files = []
         for root, _, files in os.walk(self._seed_dir):
-            seeds.extend(os.path.join(root, file) for file in files)
+            seed_files.extend(os.path.join(root, file) for file in files)
 
-        for seed in seeds:
-            # parse seed to PreparedInput
-            input = PCAPInput(seed, protocol=self._protocol)
-            self._pcaps.append(input)
+        for seed in seed_files:
+            input = self._input_kls(file=seed, load=True)
+            self._seeds.append(input)
+
+    def save_input(self, input: InputBase,
+            prefix_path: Sequence[tuple[StateBase, StateBase, InputBase]],
+            category: str, label: str):
+        if self._input_kls is None:
+            return
+
+        prefix = reduce(operator.add, (x[2] for x in prefix_path))
+        full_input = self.startup_input + prefix + input
+
+        filename = slugify(f'0x{input.id:08X}_{repr(input)}_{label}.{self._fmt.typ}')
+        path = os.path.join(self._work_dir, category, filename)
+        self._input_kls(file=path).dump(full_input)
 
     def update_state(self, state: StateBase, input: InputBase, *, exc: Exception=None, **kwargs):
         pass
@@ -46,9 +70,25 @@ class InputGeneratorBase(ABC):
 
     @property
     def seeds(self) -> Iterable[InputBase]:
-        # the default behavior is to just expose the raw PCAPInputs
-        return self._pcaps
+        # the default behavior is to just expose the list of loaded inputs
+        return self._seeds
 
     @property
     def startup_input(self) -> InputBase:
         return self._startup
+
+def slugify(value, allow_unicode=False):
+    """
+    Taken from https://github.com/django/django/blob/master/django/utils/text.py
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
+    dashes to single dashes. Remove characters that aren't alphanumerics,
+    underscores, or hyphens. Convert to lowercase. Also strip leading and
+    trailing whitespace, dashes, and underscores.
+    """
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s\.-]', '', value.lower())
+    return re.sub(r'[-\s]+', '-', value).strip('-_')

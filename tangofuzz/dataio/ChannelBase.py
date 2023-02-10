@@ -2,11 +2,13 @@ from   abc         import ABC, abstractmethod
 from   typing      import ByteString
 from   dataclasses import dataclass
 from   common      import async_property
+from   input       import FormatDescriptor
 
 class ChannelBase(ABC):
     def __init__(self, timescale: float):
         self._timescale = timescale
 
+    # FIXME these type annotations are way out of date
     @abstractmethod
     async def send(self, data: ByteString) -> int:
         pass
@@ -30,6 +32,7 @@ class ChannelFactoryBase(ABC):
     instantiate a new channel.
     """
     timescale: float
+    fmt: FormatDescriptor
 
     @abstractmethod
     def create(self, *args, **kwargs) -> ChannelBase:

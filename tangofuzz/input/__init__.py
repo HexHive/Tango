@@ -6,6 +6,9 @@ for func in ('debug', 'info', 'warning', 'error', 'critical'):
 from .InputBase     import (InputBase, DecoratorBase,
                            JoiningDecorator, SlicingDecorator,
                            MemoryCachingDecorator)
-from .Decorators    import FileCachingDecorator
+
 from .PreparedInput import PreparedInput
+from .SerializedInput import (SerializedInput, SerializedMetaInput,
+                              FormatDescriptor, Serializer)
 from .PCAPInput     import PCAPInput
+from .RawInput     import RawInput

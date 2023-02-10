@@ -1,6 +1,6 @@
-from input       import InputBase, PreparedInput
+from input       import SerializedMetaInput
 from scapy.all   import *
-from typing      import Sequence, Tuple, BinaryIO, Union
+from typing      import Tuple, Iterable
 from interaction import (InteractionBase,
                         TransmitInteraction,
                         ReceiveInteraction,
@@ -8,7 +8,7 @@ from interaction import (InteractionBase,
 import random
 import time
 
-class PCAPInput(PreparedInput):
+class PCAPInput(metaclass=SerializedMetaInput, typ='pcap'):
     LAYER_SOURCE = {
         Ether: "src",
         IP: "src",
@@ -25,24 +25,6 @@ class PCAPInput(PreparedInput):
 
     DELAY_THRESHOLD = 1.0
 
-    def __init__(self, pcap: Union[str, BinaryIO], interactions: Sequence[InteractionBase] = None,
-            protocol: str = None):
-        if interactions and not pcap:
-            raise RuntimeError("'interactions' may not be specified without 'pcap'")
-
-        read = False
-        if pcap and not interactions:
-            read = True
-
-        self._pcap = pcap
-        self._protocol = protocol
-
-        if read:
-            super().__init__(self.read_pcap())
-        else:
-            super().__init__(interactions)
-            self.write_pcap()
-
     @classmethod
     def _try_identify_endpoints(cls, packet: Packet) -> Tuple:
         sender = []
@@ -57,12 +39,12 @@ class PCAPInput(PreparedInput):
             raise RuntimeError("Could not identify endpoints in packet")
         return (tuple(sender), tuple(receiver))
 
-    def read_pcap(self):
-        if self._protocol in ("tcp", "udp"):
+    def loadi(self) -> Iterable[InteractionBase]:
+        if self._fmt.protocol in ("tcp", "udp"):
             layer = Raw
         else:
             layer = None
-        plist = PcapReader(self._pcap).read_all()
+        plist = PcapReader(self._file).read_all()
         endpoints = []
         for p in plist:
             eps = self._try_identify_endpoints(p)
@@ -98,23 +80,22 @@ class PCAPInput(PreparedInput):
                 interaction = ReceiveInteraction(data=payload)
             yield interaction
 
-    def write_pcap(self):
-        if self._protocol == "tcp":
+    def dumpi(self, itr: Iterable[InteractionBase], /):
+        if self._fmt.protocol == "tcp":
             layer = TCP
             cli = random.randint(40000, 65534)
             srv = random.randint(cli + 1, 65535)
-        elif self._protocol == "udp":
+        elif self._fmt.protocol == "udp":
             layer = UDP
             cli = random.randint(40000, 65534)
             srv = random.randint(cli + 1, 65535)
         else:
-            return
             raise NotImplementedError()
 
         cur_time = time.time()
-        writer = PcapWriter(self._pcap)
+        writer = PcapWriter(self._file)
         client_sent = False
-        for interaction in self:
+        for interaction in ite:
             if isinstance(interaction, DelayInteraction):
                 if interaction._time >= self.DELAY_THRESHOLD:
                     cur_time += interaction._time
@@ -133,4 +114,4 @@ class PCAPInput(PreparedInput):
             writer.write(p)
 
     def __repr__(self):
-        return f"PCAPInput({self._pcap})"
+        return f"PCAPInput({self._file})"

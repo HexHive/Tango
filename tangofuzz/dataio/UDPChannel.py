@@ -16,7 +16,7 @@ from functools import partial
 from ptrace import PtraceError
 from common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
 
-@dataclass
+@dataclass(kw_only=True)
 class UDPChannelFactory(TransportChannelFactory):
     connect_timeout: float = None # seconds
     data_timeout: float = None # seconds

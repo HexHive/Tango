@@ -13,9 +13,12 @@ from dataclasses import dataclass
 from functools import partial
 from ptrace import PtraceError
 from common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
+from input import FormatDescriptor
 
-@dataclass
+@dataclass(kw_only=True)
 class StdIOChannelFactory(ChannelFactoryBase):
+    fmt: FormatDescriptor = FormatDescriptor('raw')
+
     def create(self, pobj: Popen, *args, **kwargs) -> ChannelBase:
         ch = StdIOChannel(pobj=pobj,
                           timescale=self.timescale)

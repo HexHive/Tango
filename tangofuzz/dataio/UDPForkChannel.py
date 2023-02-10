@@ -9,7 +9,7 @@ from functools import cached_property
 from ptrace.syscall import SYSCALL_REGISTER
 import socket
 
-@dataclass
+@dataclass(kw_only=True)
 class UDPForkChannelFactory(UDPChannelFactory):
     fork_before_bind: bool
 

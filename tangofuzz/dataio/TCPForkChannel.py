@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from ptrace.syscall import SYSCALL_REGISTER
 
-@dataclass
+@dataclass(kw_only=True)
 class TCPForkChannelFactory(TCPChannelFactory):
     fork_before_accept: bool
 

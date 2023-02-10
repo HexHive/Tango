@@ -5,6 +5,7 @@ from pyroute2.netns import setns
 import socket
 from os import getpid
 from common import async_property
+from input import FormatDescriptor
 
 class NetworkChannel(ChannelBase):
     def __init__(self, netns: str, **kwargs):
@@ -63,11 +64,44 @@ class NetNSContext (object):
 
         return nspath
 
+# kw_only=True is needed because typ is no longer a non-default attribute
+@dataclass(kw_only=True, frozen=True)
+class NetworkFormatDescriptor(FormatDescriptor):
+    typ: str = 'pcap'
+
+@dataclass(frozen=True)
+class _TransportFormatDescriptor(FormatDescriptor):
+    """
+    This class is needed since `protocol` is a non-default attribute that will
+    be specified at instantiation, but the `fmt` attribute is otherwise set
+    to 'pcap', and it occurs before `protocol` in the reversed MRO.
+    Using this class as the last class in the MRO places `protocol` right
+    after the non-default `fmt`, satisfying the requirements for a dataclass.
+    """
+    protocol: str
+
+@dataclass(frozen=True)
+class TransportFormatDescriptor(NetworkFormatDescriptor, _TransportFormatDescriptor):
+    def __get__(self, obj, owner):
+        if obj is None:
+            return self
+        return getattr(obj, '_fmt')
+
+    def __set__(self, obj, value):
+        fmt = type(self)(protocol=value)
+        setattr(obj, '_fmt', fmt)
+
 @dataclass
 class NetworkChannelFactory(ChannelFactoryBase):
     pass
 
-@dataclass
+@dataclass(kw_only=True)
 class TransportChannelFactory(NetworkChannelFactory):
     endpoint: str
     port: int
+    protocol: str
+    fmt: FormatDescriptor = TransportFormatDescriptor(protocol=None)
+
+    def __post_init__(self):
+        self.fmt = self.protocol # implicit casting through the descriptor
+
