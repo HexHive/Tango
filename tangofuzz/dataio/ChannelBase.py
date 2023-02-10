@@ -4,6 +4,9 @@ from   dataclasses import dataclass
 from   common      import async_property
 
 class ChannelBase(ABC):
+    def __init__(self, timescale: float):
+        self._timescale = timescale
+
     @abstractmethod
     async def send(self, data: ByteString) -> int:
         pass
@@ -17,9 +20,8 @@ class ChannelBase(ABC):
         pass
 
     @async_property
-    @abstractmethod
     async def timescale(self):
-        pass
+        return self._timescale
 
 @dataclass
 class ChannelFactoryBase(ABC):
@@ -27,6 +29,7 @@ class ChannelFactoryBase(ABC):
     This class describes a channel's communication parameters and can be used to
     instantiate a new channel.
     """
+    timescale: float
 
     @abstractmethod
     def create(self, *args, **kwargs) -> ChannelBase:
