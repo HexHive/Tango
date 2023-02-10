@@ -12,3 +12,4 @@ from .TCPChannel              import TCPChannel, TCPChannelFactory
 from .TCPForkChannel          import TCPForkChannelFactory
 from .UDPChannel              import UDPChannel, UDPChannelFactory
 from .UDPForkChannel          import UDPForkChannelFactory
+from .StdIOChannel            import StdIOChannel, StdIOChannelFactory

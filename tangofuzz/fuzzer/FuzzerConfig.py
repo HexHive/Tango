@@ -5,7 +5,8 @@ from loader       import Environment
 from dataio    import (TCPChannelFactory,
                          TCPForkChannelFactory,
                          UDPChannelFactory,
-                         UDPForkChannelFactory)
+                         UDPForkChannelFactory,
+                         StdIOChannelFactory)
 from loader       import ReplayStateLoader, ReplayForkStateLoader
 from statemanager import StateManager
 from statemanager.strategy import RandomStrategy, UniformStrategy
@@ -171,6 +172,9 @@ class FuzzerConfig:
                     timescale=await self.timescale)
             elif _config["type"] == "udp":
                 return UDPChannelFactory(**_config["udp"], \
+                    timescale=await self.timescale)
+            elif _config["type"] == "stdio":
+                return StdIOChannelFactory(**_config["stdio"], \
                     timescale=await self.timescale)
             else:
                 raise NotImplementedError()
