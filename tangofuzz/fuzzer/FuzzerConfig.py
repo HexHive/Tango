@@ -6,7 +6,8 @@ from dataio    import (TCPChannelFactory,
                          TCPForkChannelFactory,
                          UDPChannelFactory,
                          UDPForkChannelFactory,
-                         StdIOChannelFactory)
+                         StdIOChannelFactory,
+                         StdIOForkChannelFactory)
 from loader       import ReplayStateLoader, ReplayForkStateLoader
 from statemanager import StateManager
 from statemanager.strategy import RandomStrategy, UniformStrategy
@@ -150,6 +151,7 @@ class FuzzerConfig:
                 _config[stdf] = DEVNULL
         if not _config.get("env"):
             _config["env"] = dict(os.environ)
+        _config["env"]["TANGO_WORKDIR"] = await self.work_dir
         _config["args"][0] = os.path.realpath(_config["args"][0])
         if not (path := _config.get("path")):
             _config["path"] = _config["args"][0]
@@ -191,6 +193,10 @@ class FuzzerConfig:
                 return UDPForkChannelFactory(**_config["udp"], \
                     timescale=await self.timescale, \
                     fork_before_bind=fork_before_bind)
+            elif _config["type"] == "stdio":
+                return StdIOForkChannelFactory(**_config["stdio"], \
+                    work_dir=await self.work_dir,
+                    timescale=await self.timescale)
             else:
                 raise NotImplementedError()
 

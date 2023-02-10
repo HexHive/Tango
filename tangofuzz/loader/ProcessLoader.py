@@ -41,6 +41,11 @@ class ProcessLoader(StateLoaderBase):
             # ensure that the channel is closed and the debugger detached
             self._channel.close(terminate=True)
 
+            # close pipes, if any
+            for f in ('in', 'out', 'err'):
+                if (stdf := getattr(self._pobj, f'std{f}')):
+                    stdf.close()
+
             retries = 0
             while True:
                 if retries == self.PROC_TERMINATE_RETRIES:
@@ -56,7 +61,14 @@ class ProcessLoader(StateLoaderBase):
                     retries += 1
 
         ## Launch new process
-        self._pobj = subprocess.Popen(self._exec_env.args, shell=False,
+        self._pobj = self._popen()
+
+        ## Establish a connection
+        self._channel = self._ch_env.create(self._pobj, self._netns_name)
+
+    def _popen(self):
+        pobj = subprocess.Popen(self._exec_env.args, shell=False,
+            bufsize=0,
             executable = self._exec_env.path,
             stdin  = self._exec_env.stdin,
             stdout = self._exec_env.stdout,
@@ -66,6 +78,4 @@ class ProcessLoader(StateLoaderBase):
             env = self._exec_env.env,
             preexec_fn = self._prepare_process
         )
-
-        ## Establish a connection
-        self._channel = self._ch_env.create(self._pobj, self._netns_name)
+        return pobj

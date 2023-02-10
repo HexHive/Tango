@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <sys/socket.h>
 #include <sys/prctl.h>
+#include <linux/limits.h>
 
 static uint8_t *edge_cnt;
 static size_t edge_sz;
@@ -78,6 +79,11 @@ static inline void __reset_cov_map() {
 
 __attribute__((used, no_sanitize("coverage")))
 static void _forkserver() {
+    int fifofd = -1;
+    const char *wd = getenv("TANGO_WORKDIR");
+    char fifopath[PATH_MAX];
+    snprintf(fifopath, PATH_MAX, "%s/%s", wd, "input.pipe");
+
     while(1) {
         __reset_cov_map();
         int child_pid = __real_fork();
@@ -89,6 +95,9 @@ static void _forkserver() {
                 ret = waitpid(-1, &status, WNOHANG);
             } while (ret > 0);
         } else {
+            fifofd = open(fifopath, O_RDONLY);
+            dup2(fifofd, STDIN_FILENO);
+            close(fifofd);
             break;
         }
     }

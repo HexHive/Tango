@@ -114,7 +114,7 @@ class PtraceForkChannel(PtraceChannel):
         except Exception as event:
             super().process_auxiliary_event(event, ignore_callback)
 
-    def _wait_for_syscall(self):
+    def _wait_for_syscall(self, process: PtraceProcess=None):
         # this next block ensures that a forked child does not exit before
         # the forkserver traps. in that scenario, the wake-up call is sent
         # before the forkserver traps, and then it traps forever
@@ -122,7 +122,7 @@ class PtraceForkChannel(PtraceChannel):
         if not self._wait_for_proc and self._event_queue:
             event = self._event_queue.pop(0)
         else:
-            event = self._debugger.waitSyscall()
+            event = self._debugger.waitSyscall(process=process)
             if self._wait_for_proc and event.process != self._proc:
                 self._event_queue.append(event)
                 debug("Received event while waiting for forkserver; enqueued!")
@@ -199,6 +199,15 @@ class PtraceForkChannel(PtraceChannel):
             self._wakeup_forkserver()
 
     ### Callbacks ###
+    def _invoke_forkserver_ignore_callback(self, syscall):
+        return True
+
+    def _invoke_forkserver_break_callback(self):
+        return self._proc_trapped
+
+    def _invoke_forkserver_syscall_callback(self, process, syscall):
+        process.syscall()
+
     def _wakeup_forkserver_ignore_callback(self, syscall):
         return False
 

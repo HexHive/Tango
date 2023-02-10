@@ -190,8 +190,8 @@ class PtraceChannel(ChannelBase):
                 # it needs to stop waiting
                 warning(traceback.format_exc())
 
-    def _wait_for_syscall(self):
-        return self._debugger.waitSyscall()
+    def _wait_for_syscall(self, process: PtraceProcess=None):
+        return self._debugger.waitSyscall(process=process)
 
     def _monitor_syscalls_internal_loop(self,
                        stop_event: Event,
@@ -199,6 +199,7 @@ class PtraceChannel(ChannelBase):
                        break_callback: Callable[..., bool],
                        syscall_callback: Callable[[PtraceProcess, PtraceSyscall], None],
                        break_on_entry: bool = False,
+                       process: PtraceProcess = None,
                        **kwargs):
         last_process = None
         while True:
@@ -209,7 +210,7 @@ class PtraceChannel(ChannelBase):
                 debug("Waiting for syscall...")
                 # if waitSyscall does not raise an exception, then event is
                 # a syscall, otherwise it's some other ProcessEvent
-                event = self._wait_for_syscall()
+                event = self._wait_for_syscall(process)
                 if event is None:
                     continue
                 sc = self.process_event(event, ignore_callback, syscall_callback,
@@ -233,14 +234,15 @@ class PtraceChannel(ChannelBase):
                        ignore_callback: Callable[[PtraceSyscall], bool],
                        break_callback: Callable[..., bool],
                        syscall_callback: Callable[[PtraceProcess, PtraceSyscall], None],
-                       break_on_entry: bool = False,
                        timeout: float = None,
+                       process: PtraceProcess = None,
                        **kwargs):
-        for process in self._debugger:
+        procs = (process,) if process else self._debugger
+        for proc in procs:
             # update the ignore_callback of processes in the debugger
             if self._process_all:
                 ignore_callback = lambda x: False
-            process.syscall_state.ignore_callback = ignore_callback
+            proc.syscall_state.ignore_callback = ignore_callback
 
         ## Execute monitor target
         if monitor_target:
@@ -255,7 +257,7 @@ class PtraceChannel(ChannelBase):
 
         last_process = self._monitor_syscalls_internal_loop(stop_event,
                 ignore_callback, break_callback, syscall_callback,
-                break_on_entry, **kwargs)
+                process=process, **kwargs)
 
         ## Return the target's result
         result = None
