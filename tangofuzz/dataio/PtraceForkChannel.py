@@ -65,8 +65,8 @@ class PtraceForkChannel(PtraceChannel):
             if event.process == self._forked_child:
                 self._wakeup_forkserver()
             elif event.process == self._proc:
-                error("Forkserver crashed! Launching interactive debugger")
-                import ipdb; ipdb.set_trace()
+                error("Forkserver crashed!")
+                raise ForkserverCrashedException()
 
     def process_signal(self, event):
         if event.signum == signal.SIGTRAP:
@@ -217,3 +217,6 @@ class PtraceForkChannel(PtraceChannel):
     def _wakeup_forkserver_syscall_callback(self, process, syscall):
         self._wakeup_forkserver_syscall_found = True
         process.syscall()
+
+class ForkserverCrashedException(RuntimeError):
+    pass
