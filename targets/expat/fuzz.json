@@ -1,0 +1,33 @@
+{
+	"exec": {
+		"path": "./xmlwf",
+		"args": ["./xmlwf"],
+		"cwd": "./",
+		"env": {
+			"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0",
+			"LD_LIBRARY_PATH": "libexpat_repo/expat/lib/.libs/"
+		}
+	},
+	"channel": {
+		"type": "stdio",
+		"stdio": {
+		}
+	},
+	"loader": {
+		"type": "replay",
+		"forkserver": true,
+		"disable_aslr": true
+	},
+	"input": {
+		"type": "reactive"
+	},
+	"statemanager": {
+		"type": "coverage",
+		"strategy": "uniform"
+	},
+	"fuzzer": {
+		"lib": "./lib/",
+		"cwd": "./targets/expat/",
+		"workdir": "./workdir/"
+	}
+}
