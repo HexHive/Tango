@@ -2,8 +2,7 @@ from . import debug, info
 
 from dataio import (ChannelBase,
                       PtraceForkChannel,
-                      UDPChannel,
-                      TransportChannelFactory)
+                      UDPChannel, UDPChannelFactory)
 from subprocess import Popen
 from dataclasses import dataclass
 from functools import cached_property
@@ -11,13 +10,8 @@ from ptrace.syscall import SYSCALL_REGISTER
 import socket
 
 @dataclass
-class UDPForkChannelFactory(TransportChannelFactory):
+class UDPForkChannelFactory(UDPChannelFactory):
     fork_before_bind: bool
-
-    connect_timeout: float = None # seconds
-    data_timeout: float = None # seconds
-
-    protocol: str = "udp"
 
     def create(self, pobj: Popen, netns: str, *args, **kwargs) -> ChannelBase:
         self._pobj = pobj

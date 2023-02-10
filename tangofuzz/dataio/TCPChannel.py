@@ -1,7 +1,8 @@
 from . import debug, info
 
 from typing import ByteString
-from dataio import ChannelBase, PtraceChannel, TransportChannelFactory
+from dataio import (ChannelBase, PtraceChannel,
+                    NetworkChannel, TransportChannelFactory)
 from   common      import (ChannelBrokenException,
                           ChannelSetupException)
 from subprocess import Popen
@@ -32,7 +33,7 @@ class TCPChannelFactory(TransportChannelFactory):
         ch.connect((self.endpoint, self.port))
         return ch
 
-class TCPChannel(PtraceChannel):
+class TCPChannel(PtraceChannel, NetworkChannel):
     RECV_CHUNK_SIZE = 4096
 
     def __init__(self, endpoint: str, port: int,

@@ -1,7 +1,8 @@
 from . import debug, info
 
 from typing import ByteString
-from dataio import ChannelBase, PtraceChannel, TransportChannelFactory
+from dataio import (ChannelBase, PtraceChannel,
+                    NetworkChannel, TransportChannelFactory)
 from   common      import (ChannelBrokenException,
                           ChannelSetupException)
 from subprocess import Popen
@@ -32,7 +33,7 @@ class UDPChannelFactory(TransportChannelFactory):
         ch.connect((self.endpoint, self.port))
         return ch
 
-class UDPChannel(PtraceChannel):
+class UDPChannel(PtraceChannel, NetworkChannel):
     MAX_DATAGRAM_SIZE = 65507
 
     def __init__(self, endpoint: str, port: int,

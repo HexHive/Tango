@@ -2,21 +2,15 @@ from . import debug, info
 
 from dataio import (ChannelBase,
                       PtraceForkChannel,
-                      TCPChannel,
-                      TransportChannelFactory)
+                      TCPChannel, TCPChannelFactory)
 from subprocess import Popen
 from dataclasses import dataclass
 from functools import cached_property
 from ptrace.syscall import SYSCALL_REGISTER
 
 @dataclass
-class TCPForkChannelFactory(TransportChannelFactory):
+class TCPForkChannelFactory(TCPChannelFactory):
     fork_before_accept: bool
-
-    connect_timeout: float = None # seconds
-    data_timeout: float = None # seconds
-
-    protocol: str = "tcp"
 
     def create(self, pobj: Popen, netns: str, *args, **kwargs) -> ChannelBase:
         self._pobj = pobj
