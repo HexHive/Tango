@@ -203,7 +203,11 @@ class ReactiveInputGenerator(InputGeneratorBase):
             cost += state._set_count
             # FIXME check other FIXME
             state = state._parent
-        return cost / bound
+        if cost == 0:
+            # we cannot get an estimate, so we return highest cost
+            return 1
+        else:
+            return cost / bound
 
     @staticmethod
     def _count_features(source: StateBase, destination: StateBase) -> int:
