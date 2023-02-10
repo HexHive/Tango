@@ -180,7 +180,10 @@ class FuzzerSession:
         try:
             await self._gather
         except asyncio.CancelledError:
-            info("Goodbye!")
+            pass
+        except Exception as ex:
+            warning(f"Exception raised while attempting to terminate: {ex}")
+        info("Goodbye!")
 
     def _bootstrap_sigint(self, loop, handle=True):
         if handle:
