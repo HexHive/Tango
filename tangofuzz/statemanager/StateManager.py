@@ -91,7 +91,11 @@ class StateManager:
                 if faulty_state != self.state_tracker.entry_state:
                     try:
                         debug(f"Dissolving irreproducible {faulty_state = }")
-                        self._sm.dissolve_state(faulty_state, stitch=False)
+                        # WARN if stitch==False, this may create disconnected
+                        # subgraphs that the strategy is unaware of. Conversely,
+                        # stitching may consume too much time and may bring the
+                        # fuzzer to a halt (example: states = DOOM map locations)
+                        self._sm.dissolve_state(faulty_state, stitch=True)
                         ProfileCount("dissolved_states")(1)
                     except KeyError as ex:
                         warning(f"Faulty state was not even valid")
