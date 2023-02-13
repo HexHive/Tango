@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from functools import wraps, partial
 from io import RawIOBase
 from typing import Sequence, Iterable, BinaryIO
+import struct
 import os
 
 @dataclass(frozen=True)
@@ -29,13 +30,17 @@ class SerializedMetaInput(ABCMeta):
         return Serializer(typ)(kls)
 
 class SerializedInput(PreparedInput):
+    MAGIC = b'SERL\0'
+
     def __init__(self, *, file: str | BinaryIO, fmt: FormatDescriptor,
             load: bool=False, **kwargs):
         super().__init__(**kwargs)
         if isinstance(file, RawIOBase):
+            self._name = repr(file)
             self._file = file
         elif isinstance(file, str):
             mode = 'rb+' if os.path.isfile(file) else 'wb+'
+            self._name = file
             self._file = open(file, mode=mode)
             self._file.seek(0, os.SEEK_SET)
         else:
@@ -51,20 +56,51 @@ class SerializedInput(PreparedInput):
         if hasattr(self, '_file') and not self._file.closed:
             self._file.close()
 
+    def _read_magic(self):
+        if self._file.read(len(self.MAGIC)) == self.MAGIC:
+            return True
+        self._file.seek(-len(self.MAGIC), os.SEEK_CUR)
+        return False
+
+    def _write_magic(self):
+        self._file.write(self.MAGIC)
+
+    def _read_long_name(self) -> str:
+        len_fmt = 'I'
+        name_len = self._file.read(struct.calcsize(len_fmt))
+        name_len, = struct.unpack(len_fmt, name_len)
+        name_fmt = f'{name_len}s'
+        name = self._file.read(struct.calcsize(name_fmt))
+        name, = struct.unpack(name_fmt, name)
+        return name.decode()
+
+    def _write_long_name(self, name):
+        if isinstance(name, str):
+            name = name.encode()
+        self._file.write(struct.pack('I', len(name)))
+        self._file.write(struct.pack(f'{len(name)}s', name))
+
     def load(self) -> SerializedInput:
         if self._file.closed:
             warning(f"Attempted to load from already closed stream {self._file}.")
             return
+        if self._read_magic():
+            name = self._read_long_name()
+            self._name = f'{self._name}::{name}'
         self.extend(self.loadi())
         self._file.close()
         return self
 
-    def dump(self, itr: Iterable[InteractionBase]=None, /):
+    def dump(self, itr: Iterable[InteractionBase]=None, /, *, name: str=None):
         if self._file.closed:
             warning(f"Attempted to dump to already closed stream {self._file}.")
             return
         if itr:
             self.extend(itr)
+        if name:
+            self._write_magic()
+            self._write_long_name(name)
+            self._name = f'{self._name}::{name}'
         self.dumpi(itr or self._interactions)
         os.ftruncate(self._file.fileno(), self._file.tell())
         self._file.close()

@@ -49,11 +49,12 @@ class InputGeneratorBase(ABC):
 
         prefix = reduce(operator.add, (x[2] for x in prefix_path))
         full_input = self.startup_input + prefix + input
+        long_name = f'[{label}] {repr(input)}'
 
         if filepath is None:
-            filename = slugify(f'0x{input.id:08X}_{repr(input)}_{label}.{self._fmt.typ}')
+            filename = slugify(f'0x{input.id:08X}.{self._fmt.typ}')
             filepath = os.path.join(self._work_dir, category, filename)
-        self._input_kls(file=filepath).dump(full_input)
+        self._input_kls(file=filepath).dump(full_input, name=long_name)
 
     def load_input(self, filepath: str) -> InputBase:
         if self._input_kls is None:
