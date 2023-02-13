@@ -223,7 +223,8 @@ class PtraceChannel(ChannelBase):
 
             if break_callback():
                 debug("Syscall monitoring finished, breaking out of debug loop")
-                stop_event.set()
+                if stop_event:
+                    stop_event.set()
                 break
         return last_process
 
@@ -247,8 +248,9 @@ class PtraceChannel(ChannelBase):
             future = self._monitor_executor.submit(monitor_target)
 
         ## Listen for and process syscalls
-        stop_event = Event()
+        stop_event = None
         if timeout is not None:
+            stop_event = Event()
             timeout_timer = Thread(target=self.timeout_handler, args=(stop_event,))
             timeout_timer.daemon = True
             timeout_timer.start()
