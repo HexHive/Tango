@@ -9,9 +9,13 @@ from profiler import ProfileCount
 from itertools import chain
 
 class ReplayStateLoader(ProcessLoader):
-    def __init__(self, /, *, path_retry_limit: int=50, **kwargs):
+    def __init__(self, /, *,
+            path_retry_limit: int=50,
+            verify_all_transitions: bool=True,
+            **kwargs):
         super().__init__(**kwargs)
         self._limit = path_retry_limit
+        self._verify_all = verify_all_transitions
 
     @property
     def channel(self):
@@ -54,23 +58,34 @@ class ReplayStateLoader(ProcessLoader):
                     cached_path = list(path)
                     last_state = None
                     for source, destination, input in cached_path:
-                        current_state = self.state_tracker.peek(last_state, source)
-                        # check if source matches the current state
-                        if source != current_state:
-                            faulty_state = source
-                            raise StabilityException(
-                                f"source state ({source}) did not match current state ({current_state})"
-                            )
+                        if self._verify_all:
+                            current_state = self.state_tracker.peek(last_state, source)
+                            # check if source matches the current state
+                            if source != current_state:
+                                faulty_state = source
+                                raise StabilityException(
+                                    f"source state ({source}) did not match current state ({current_state})"
+                                )
                         # perform the input
                         await self.execute_input(input)
-                        current_state = self.state_tracker.peek(source, destination)
-                        # check if destination matches the current state
+                        if self._verify_all:
+                            current_state = self.state_tracker.peek(source, destination)
+                            # check if destination matches the current state
+                            if destination != current_state:
+                                faulty_state = destination
+                                raise StabilityException(
+                                    f"destination state ({destination}) did not match current state ({current_state})"
+                                )
+                            last_state = current_state
+                    if cached_path and not self._verify_all:
+                        # we need to verify the destination at least
+                        current_state = self.state_tracker.peek(None, destination)
                         if destination != current_state:
                             faulty_state = destination
                             raise StabilityException(
                                 f"destination state ({destination}) did not match current state ({current_state})"
                             )
-                        last_state = current_state
+
                     # at this point, we've succeeded in replaying the path
                     if sman is not None and state is not None:
                         # we only update sman._current_path if it requested a

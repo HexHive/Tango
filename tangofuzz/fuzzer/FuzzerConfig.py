@@ -62,6 +62,10 @@ class FuzzerConfig:
             "type": "<replay | snapshot | ...>",
             "forkserver": <true | false>,
             "disable_aslr": <true | false>,
+            "replay": {
+                "verify_all_transitions": <true | false>,
+                "path_retry_limit": number
+            }
             ...
         },
         "input": {
@@ -208,7 +212,8 @@ class FuzzerConfig:
                 ch_env=await self.ch_env,
                 input_generator=await self.input_generator,
                 exec_env=await self.exec_env,
-                no_aslr=await self.disable_aslr
+                no_aslr=await self.disable_aslr,
+                **_config.get(_config["type"], {})
             )
         else:
             raise NotImplementedError()
