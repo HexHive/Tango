@@ -28,6 +28,7 @@ from webui import WebRenderer
 import asyncio
 from aioconsole import AsynchronousConsole, get_standard_streams
 import signal
+import logging
 
 class FuzzerSession:
     """
@@ -167,8 +168,10 @@ class FuzzerSession:
 
         await self.initialize()
         await profiler.initialize()
-        # FIXME the WebRenderer is async and can thus be started in the same loop
-        WebRenderer(self).start()
+
+        # start WebUI
+        webui_task = loop.create_task(WebRenderer(self).run())
+        ProfilingTasks.append(webui_task)
 
         # set up the main suspendable fuzzing task
         suspendable = Suspendable(self._start())
@@ -244,4 +247,8 @@ class FuzzerSession:
         sys.exit()
 
     def run(self):
+        # PidfdChildWatcher prints a warning when its children are reaped by
+        # someone else. See FIXME in WebDataLoader
+        logging.getLogger('asyncio').setLevel(logging.CRITICAL)
+        asyncio.set_child_watcher(asyncio.PidfdChildWatcher())
         asyncio.run(self._bootstrap())

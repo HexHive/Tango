@@ -1,13 +1,19 @@
+from . import debug
 from webui import WebLogHandler
 from profiler import ProfiledObjects
-from common import sync_to_async
 from statemanager import StateMachine
 import networkx as nx
 import json
 import asyncio
+import asynctempfile
 import logging
 import datetime
+import os
 now = datetime.datetime.now
+
+# A hacky fix for pydot to disable its crappy attribute getter/setter generator
+import pydot
+pydot.Common.create_attribute_methods = lambda *args, **kwargs: None
 
 class WebDataLoader:
     NA_DATE = datetime.datetime.fromtimestamp(0)
@@ -143,10 +149,9 @@ class WebDataLoader:
 
         G.graph["graph"] = {'rankdir': 'LR'}
         G.graph["node"] = {'style': 'filled'}
-        P = await (sync_to_async(owned=False)(nx.nx_pydot.to_pydot)(G))
+        P = nx.nx_pydot.to_pydot(G)
+        svg = await create_svg(P)
 
-        # dot = str(P)
-        svg = (await (sync_to_async(owned=False)(P.create_svg)())).decode()
         msg = json.dumps({
             'cmd': 'update_graph',
             'items': {
@@ -155,7 +160,7 @@ class WebDataLoader:
             }
         })
 
-        await self._ws.send(msg)
+        await self._ws.send_str(msg)
 
     async def update_stats(self, *args, ret=None, **kwargs):
         # FIXME this is not thread-safe, and the websocket experience a data race
@@ -166,4 +171,64 @@ class WebDataLoader:
             except Exception:
                 pass
         msg = json.dumps(stats | {'cmd': 'update_stats'})
-        await self._ws.send(msg)
+        await self._ws.send_str(msg)
+
+async def call_graphviz(program, arguments, **kwargs):
+    if arguments is None:
+        arguments = []
+
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH", ""),
+        "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+    }
+
+    process = await asyncio.create_subprocess_exec(program, *arguments,
+        env=env,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        **kwargs
+    )
+
+    stdout_data, stderr_data = await process.communicate()
+    return stdout_data, stderr_data, process
+
+async def create_svg(P, prog=None, encoding='utf-8'):
+    # temp file
+    async with asynctempfile.NamedTemporaryFile('wt', encoding=encoding) as f:
+        await f.write(P.to_string())
+        await f.flush()
+
+        prog = 'dot'
+        arguments = ('-Tsvg', f.name)
+        try:
+            stdout_data, stderr_data, process = await call_graphviz(
+                program=prog,
+                arguments=arguments
+            )
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                args = list(e.args)
+                args[1] = '"{prog}" not found in path.'.format(prog=prog)
+                raise OSError(*args)
+            else:
+                raise
+
+    if process.returncode != 0:
+        # FIXME because ptrace.debugger reaps all children with waitpid(-1), the
+        # asyncio loop child watcher does not get the chance to read off the
+        # exit status of its children, and returns 255 by default.
+        message = (
+            '"{prog}" with args {arguments} returned code: {code}\n\n'
+            "stdout, stderr:\n {out}\n{err}\n"
+        ).format(
+            prog=prog,
+            arguments=arguments,
+            code=process.returncode,
+            out=stdout_data,
+            err=stderr_data,
+        )
+        debug(message)
+
+    return stdout_data.decode(encoding=encoding)

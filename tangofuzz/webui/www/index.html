@@ -234,7 +234,7 @@
 
 	<script>
 		'use strict';
-		const socket = new WebSocket("ws://" + location.hostname + ":" + (parseInt(location.port) + 1));
+		const socket = new WebSocket("ws://" + location.hostname + ":" + parseInt(location.port) + "/ws");
 		const svg = $('#dgsvg')[0]
 		let viz = new Viz();
 		let parser = new DOMParser();
@@ -280,7 +280,7 @@
 			}
 		}
 
-		socket.onmessage = processCmd; 
+		socket.onmessage = processCmd;
 	</script>
 	<script>
 		$(function() {
