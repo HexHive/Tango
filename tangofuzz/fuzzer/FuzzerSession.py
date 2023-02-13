@@ -178,11 +178,10 @@ class FuzzerSession:
         loop.main_task = main_task = loop.create_task(suspendable.as_coroutine())
         main_task.suspendable = suspendable
 
-        self._gather = asyncio.gather(main_task, *ProfilingTasks)
         self._bootstrap_sigint(loop, handle=True)
 
         try:
-            await self._gather
+            await asyncio.gather(main_task, *ProfilingTasks)
         except asyncio.CancelledError:
             pass
         except Exception as ex:
