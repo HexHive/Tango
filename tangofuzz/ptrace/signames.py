@@ -54,7 +54,7 @@ def signalName(signum):
     >>> signalName(404)
     'signal<404>'
     """
-    try:
-        return SIGNAMES[signum]
-    except KeyError:
-        return "signal<%s>" % signum
+    if (name := SIGNAMES.get(signum)):
+        return name
+    name = SIGNAMES[signum] = f'signal<{signum}>'
+    return name
