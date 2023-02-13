@@ -246,8 +246,7 @@ class FuzzerSession:
         sys.exit(code)
 
     def run(self):
-        # PidfdChildWatcher prints a warning when its children are reaped by
+        # child watcher prints a warning when its children are reaped by
         # someone else. See FIXME in WebDataLoader
         logging.getLogger('asyncio').setLevel(logging.CRITICAL)
-        asyncio.set_child_watcher(asyncio.PidfdChildWatcher())
         asyncio.run(self._bootstrap())
