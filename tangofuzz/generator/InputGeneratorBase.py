@@ -43,16 +43,22 @@ class InputGeneratorBase(ABC):
 
     def save_input(self, input: InputBase,
             prefix_path: Sequence[tuple[StateBase, StateBase, InputBase]],
-            category: str, label: str):
+            category: str, label: str, filepath: str=None):
         if self._input_kls is None:
             return
 
         prefix = reduce(operator.add, (x[2] for x in prefix_path))
         full_input = self.startup_input + prefix + input
 
-        filename = slugify(f'0x{input.id:08X}_{repr(input)}_{label}.{self._fmt.typ}')
-        path = os.path.join(self._work_dir, category, filename)
-        self._input_kls(file=path).dump(full_input)
+        if filepath is None:
+            filename = slugify(f'0x{input.id:08X}_{repr(input)}_{label}.{self._fmt.typ}')
+            filepath = os.path.join(self._work_dir, category, filename)
+        self._input_kls(file=filepath).dump(full_input)
+
+    def load_input(self, filepath: str) -> InputBase:
+        if self._input_kls is None:
+            raise RuntimeError(f"Cannot deserialize `{self._fmt.typ}.`")
+        return self._input_kls(file=filepath).load()
 
     def update_state(self, state: StateBase, input: InputBase, *, exc: Exception=None, **kwargs):
         pass

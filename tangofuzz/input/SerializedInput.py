@@ -1,3 +1,4 @@
+from __future__ import annotations
 from . import warning
 from abc import ABCMeta
 from input import PreparedInput
@@ -34,7 +35,8 @@ class SerializedInput(PreparedInput):
         if isinstance(file, RawIOBase):
             self._file = file
         elif isinstance(file, str):
-            self._file = open(file, mode='ab+')
+            mode = 'rb+' if os.path.isfile(file) else 'wb+'
+            self._file = open(file, mode=mode)
             self._file.seek(0, os.SEEK_SET)
         else:
             raise TypeError("`file` must either be an open binary stream,"
@@ -46,15 +48,16 @@ class SerializedInput(PreparedInput):
             self.load()
 
     def __del__(self):
-        if not self._file.closed:
+        if hasattr(self, '_file') and not self._file.closed:
             self._file.close()
 
-    def load(self):
+    def load(self) -> SerializedInput:
         if self._file.closed:
             warning(f"Attempted to load from already closed stream {self._file}.")
             return
         self.extend(self.loadi())
         self._file.close()
+        return self
 
     def dump(self, itr: Iterable[InteractionBase]=None, /):
         if self._file.closed:
@@ -63,6 +66,7 @@ class SerializedInput(PreparedInput):
         if itr:
             self.extend(itr)
         self.dumpi(itr or self._interactions)
+        os.ftruncate(self._file.fileno(), self._file.tell())
         self._file.close()
 
     @abstractmethod
