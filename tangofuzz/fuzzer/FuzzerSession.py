@@ -162,7 +162,7 @@ class FuzzerSession:
         # we use an empty tuple for `streams` to prevent it being seen as None
         self._repl = AsynchronousConsole(streams=(), loop=loop,
             locals=locals() | {
-                'exit': lambda: self._cleanup_and_exit(loop),
+                'exit': lambda code=0: self._cleanup_and_exit(loop, code),
                 'loop': loop
             })
 
@@ -238,12 +238,12 @@ class FuzzerSession:
         main_task.suspendable.resume()
         self._bootstrap_sigint(loop, handle=True)
 
-    def _cleanup_and_exit(self, loop):
+    def _cleanup_and_exit(self, loop, code, /):
         profiler.ProfilingStoppedEvent.set()
         loop.main_task.cancel()
         # for task in asyncio.all_tasks():
         #     task.cancel()
-        sys.exit()
+        sys.exit(code)
 
     def run(self):
         # PidfdChildWatcher prints a warning when its children are reaped by
