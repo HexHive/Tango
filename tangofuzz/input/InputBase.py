@@ -25,6 +25,10 @@ class InputBase(ABC):
         # if None is returned, tuple resorts to dynamic allocation
         return None
 
+    def __bool__(self):
+        # we define this so that __len__ is not used to test truthiness
+        return True
+
     async def ___aiter___(self):
         for e in iter(self):
             yield e
@@ -56,7 +60,7 @@ class InputBase(ABC):
     def ___getitem___(self, idx: Union[int, slice]):
         return SlicingDecorator(idx)(self)
 
-    def __add__(self, other: InputBase):
+    def ___add___(self, other: InputBase):
         return JoiningDecorator(other)(self)
 
     @classmethod
@@ -92,9 +96,8 @@ class InputBase(ABC):
     def __getitem__(self, idx: Union[int, slice]):
         return self.___getitem___(idx)
 
-    def __bool__(self):
-        # we define this so that __len__ is not used to test truthiness
-        return True
+    def __add__(self, other: InputBase):
+        return self.___add___(other)
 
 class DecoratorBase(ABC):
     DECORATED_METHODS = ('___iter___', '___aiter___', '___eq___', '___add___',
