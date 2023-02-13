@@ -1,5 +1,5 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 from typing import Union
 from functools import partial, partialmethod
 import inspect
@@ -99,17 +99,26 @@ class InputBase(ABC):
     def __add__(self, other: InputBase):
         return self.___add___(other)
 
-class DecoratorBase(ABC):
-    DECORATED_METHODS = ('___iter___', '___aiter___', '___eq___', '___add___',
-                         '___getitem___', '___repr___', '___len___')
+class DecoratorBaseMeta(ABCMeta):
+    DECORATABLE_METHODS = {'___iter___', '___aiter___', '___eq___', '___add___',
+                         '___getitem___', '___repr___', '___len___'}
+    def __new__(metacls, name, bases, namespace):
+        kls_dec_methods = metacls.DECORATABLE_METHODS & namespace.keys()
+        for base in bases:
+            if hasattr(base, 'DECORATABLE_METHODS'):
+                kls_dec_methods |= base.DECORATABLE_METHODS
+        namespace['DECORATABLE_METHODS'] = kls_dec_methods
+        kls = super().__new__(metacls, name, bases, namespace)
+        return kls
+
+class DecoratorBase(ABC, metaclass=DecoratorBaseMeta):
     DECORATOR_MAX_DEPTH = 10
 
     def __call__(self, input, copy=True) -> InputBase:
         self._handle_copy(input, copy)
 
-        for name, func in inspect.getmembers(self, predicate=inspect.ismethod):
-            if name not in self.DECORATED_METHODS:
-                continue
+        for name in self.DECORATABLE_METHODS:
+            func = getattr(self, name)
             oldfunc = getattr(input, name, None)
             newfunc = partialmethod(partial(func), oldfunc).__get__(self._input)
             setattr(self._input, name, newfunc)
@@ -132,13 +141,10 @@ class DecoratorBase(ABC):
     def undecorate(self):
         assert getattr(self, '_input', None) is not None, \
                 "Decorator has not been called before!"
-        for name, func in inspect.getmembers(self, predicate=inspect.ismethod):
-            if name not in self.DECORATED_METHODS:
-                continue
+        for name in self.DECORATABLE_METHODS:
             newfunc = getattr(self._input, name, None)
             # extract `orig` from the partial function
             oldfunc = newfunc._partialmethod.args[0]
-            delattr(self._input, name)
             setattr(self._input, name, oldfunc)
         del self._input.___decorator___
         del self._input
