@@ -44,8 +44,7 @@ class CoverageReader:
         _size = ctypes.sizeof(_type)
 
         self._mem, self._map = self.init_array(tag, _type, _size, create, force)
-        self._array = np.ctypeslib.as_array( \
-            _type.from_address(self.address_of_buffer(self._map)))
+        self._array = _type.from_address(self.address_of_buffer(self._map))
 
     @classmethod
     def ensure_tag(cls, tag):

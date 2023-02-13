@@ -21,10 +21,9 @@ class CoverageState(StateBase):
         new._set_map = set_map
         new._set_count = set_count
         new._hash = _hash
-        new._context = GlobalCoverage(global_cov._length)
-        new._context.copy_from(global_cov)
+        new._context = global_cov.clone()
         # to obtain the context from the current global map, we revert the bits
-        new._context.revert(set_map)
+        new._context.revert(set_map, map_hash)
         if not do_not_cache:
             cls._cache[_hash] = new
             new._id = cls._id

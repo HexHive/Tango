@@ -1,6 +1,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 typedef uint8_t  u8;
 typedef uint16_t u16;
@@ -28,23 +29,44 @@ static const u8 count_class_lookup8[256] = {
 };
 #endif
 
-static inline u32 hash32(const void* key, u32 len, u32 seed);
-static inline void classify_counts(u8 *binned, u8 *map, size_t length);
+static const u8 count_hamming_bits[256] = {
+  0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3,
+  3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4,
+  3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 1, 2,
+  2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5,
+  3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5,
+  5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 1, 2, 2, 3,
+  2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4,
+  4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+  3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 2, 3, 3, 4, 3, 4,
+  4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6,
+  5, 6, 6, 7, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 4, 5,
+  5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8
+};
 
-u32 hash_cov(u8 *address, size_t length)
+static inline u32 hash32(const void *key, u32 len, u32 seed);
+
+bool diff(u8 *set_arr, const u8 *coverage_map, u8 *set_map, \
+    const size_t map_size, u32 *set_count, u32 *map_hash, const bool inplace)
 {
-    u8 *binned = calloc(length, sizeof(u8));
-    classify_counts(binned, address, length);
-    u32 hash = hash32(binned, length, HASH_CONST);
-    free(binned);
-    return hash;
+  u8 kls;
+  *set_count = 0;
+  for (size_t i = 0; i < map_size; ++i) {
+    kls = count_class_lookup8[coverage_map[i]];
+    set_map[i] = (set_arr[i] | kls) ^ set_arr[i];
+    *set_count += count_hamming_bits[set_map[i]];
+    if (inplace)
+      set_arr[i] |= kls;
+  }
+  *map_hash = hash32(set_map, map_size, HASH_CONST);
+  return true;
 }
 
-static inline void classify_counts(u8 *binned, u8 *map, size_t length) {
-    while (length--) {
-        *binned = count_class_lookup8[*map];
-        map++; binned++;
-    }
+bool apply(u8 *set_arr, const u8 *set_map, const size_t map_size)
+{
+  for (size_t i = 0; i < map_size; ++i)
+    set_arr[i] ^= set_map[i];
+  return true;
 }
 
 #define ROL64(_x, _r)  ((((u64)(_x)) << (_r)) | (((u64)(_x)) >> (64 - (_r))))

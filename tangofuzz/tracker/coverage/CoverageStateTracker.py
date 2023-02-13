@@ -27,9 +27,9 @@ class CoverageStateTracker(LoaderDependentTracker):
         self._reader = CoverageReader(self._shm_name, self._shm_size_name)
 
         # initialize a global coverage map
-        self._global = GlobalCoverage(self._reader.length)
-        self._scratch = GlobalCoverage(self._reader.length)
-        self._local = GlobalCoverage(self._reader.length)
+        self._global = GlobalCoverage(self._reader.length, bind_lib=self._bind_lib)
+        self._scratch = GlobalCoverage(self._reader.length, bind_lib=self._bind_lib)
+        self._local = GlobalCoverage(self._reader.length, bind_lib=self._bind_lib)
 
         self._local_state = None
         self._current_state = None
@@ -68,7 +68,7 @@ class CoverageStateTracker(LoaderDependentTracker):
             next_state = peek_result
             self._global.copy_from(next_state._context)
             # we un-revert the bitmaps to obtain the actual global context
-            self._global.revert(next_state._set_map)
+            self._global.revert(next_state._set_map, next_state._hash)
 
         if not next_state or (same := next_state == source):
             next_state = source

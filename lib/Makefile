@@ -14,5 +14,7 @@ clean:
 
 libtangofuzz.o: libtangofuzz.c clean
 
+# -march=skylake-avx512 -mprefer-vector-width=512
 pytangofuzz.so: pytangofuzz.c clean
-	$(CC) -O0 -g -fPIC -fPIE -shared $< -o $@ -DSKIP_COUNTS
+	$(CC) -O3 \
+		-fPIC -fPIE -shared $< -o $@
