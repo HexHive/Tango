@@ -58,7 +58,7 @@ class WebRenderer:
         gather_tasks = asyncio.gather(*data_loader.tasks)
         try:
             await gather_tasks
-        except RuntimeError as ex:
+        except (RuntimeError, ConnectionResetError) as ex:
             debug(f'Websocket handler terminated ({ex=})')
         finally:
             gather_tasks.cancel()
