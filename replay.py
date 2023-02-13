@@ -1,5 +1,4 @@
 from tangofuzz.fuzzer import FuzzerConfig
-from tangofuzz.input import PCAPInput
 import asyncio
 import argparse
 import logging
@@ -7,12 +6,12 @@ from subprocess import PIPE
 
 def parse_args():
     parser = argparse.ArgumentParser(description=(
-        "Replays a PCAP file to a TangoFuzz target."
+        "Replays an input file to a TangoFuzz target."
     ))
     parser.add_argument("config",
         help="The path to the TangoFuzz fuzz.json file.")
-    parser.add_argument("pcap",
-        help="The path to the .pcap file.")
+    parser.add_argument("file",
+        help="The path to the input file.")
     parser.add_argument('--override', action='append', nargs=2)
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help=("Controls the verbosity of messages. "
@@ -30,8 +29,9 @@ def configure_verbosity(level):
     numeric_level = mapping[level]
     logging.getLogger().setLevel(numeric_level)
 
-async def replay(config, pcap):
-    inp = PCAPInput(pcap, protocol=await config.protocol)
+async def replay(config, file):
+    gen = await config.input_generator
+    inp = gen.load_input(file)
     ld = await config.loader
     await ld.load_state(None, None)
     await ld.execute_input(inp)
@@ -60,7 +60,7 @@ def main():
     config = FuzzerConfig(args.config, overrides)
     config._config["exec"]["stdout"] = "inherit"
     config._config["exec"]["stderr"] = "inherit"
-    asyncio.run(replay(config, args.pcap))
+    asyncio.run(replay(config, args.file))
 
 if __name__ == '__main__':
     main()
