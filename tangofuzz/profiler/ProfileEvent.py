@@ -57,18 +57,23 @@ class ProfileEvent(ProfilerBase):
         # FIXME access to self._listeners is not thread-safe; this could be an
         # issue when multiple WebUIs are being accessed for the same fuzzer.
         ctx = self._create_event_context()
-        while not profiler.ProfilingStoppedEvent.is_set():
-            async with ctx:
-                if self._args is None:
-                    error("Event triggered while args is None. Check for data races in code!")
-                    continue
-                current_task().last_visit = now()
-                await cb(*self._args[0], **self._args[1], ret=self._ret)
+        try:
+            while not profiler.ProfilingStoppedEvent.is_set():
+                async with ctx as profiling_stopped:
+                    if profiling_stopped:
+                        continue
+                    if self._args is None:
+                        error("Event triggered while args is None. Check for data races in code!")
+                        continue
+                    last_visit = now()
+                    await cb(*self._args[0], **self._args[1], ret=self._ret)
 
-            # ensure that we don't sleep needlessly between periods
-            time_elapsed = now() - current_task().last_visit
-            if period is not None and time_elapsed < period:
-                await asyncio.sleep(period - time_elapsed)
+                # ensure that we don't sleep needlessly between periods
+                time_elapsed = now() - last_visit
+                if period is not None and time_elapsed < period:
+                    await asyncio.sleep(period - time_elapsed)
+        except asyncio.CancelledError:
+            return
 
     def listener(self, period=None):
         return partial(self._listener_internal, period=period)
@@ -81,9 +86,17 @@ class EventContextManager:
         contexts = self._prof._listeners.get(self.loop, set())
         contexts.add(self)
         self._prof._listeners[self.loop] = contexts
+        self._stop_watcher = asyncio.ensure_future(profiler.ProfilingStoppedEvent.wait())
 
     async def __aenter__(self):
-        await self._event.wait()
+        event_notify = asyncio.ensure_future(self._event.wait())
+        done, pending = await asyncio.wait((self._stop_watcher, event_notify),
+            return_when=asyncio.FIRST_COMPLETED)
+        if self._stop_watcher in done:
+            event_notify.cancel()
+            return True
+        else:
+            return False
 
     async def __aexit__(self, exc_type, exc_value, exc_traceback):
         # consume the event at exit
@@ -113,3 +126,4 @@ class EventContextManager:
         if self._event is not None:
             self._prof._listeners.discard(self)
             self._event = None
+        self._stop_watcher.cancel()
