@@ -6,7 +6,7 @@ from profiler import ProfileValue
 from input import InputBase
 
 class UniformStrategy(StrategyBase):
-    def __init__(self, entropy: Random, limit: int=100, **kwargs):
+    def __init__(self, entropy: Random, limit: int=500, **kwargs):
         super().__init__(**kwargs)
         self._entropy = entropy
         self._counter = 0
