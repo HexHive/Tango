@@ -52,6 +52,10 @@ class FuzzerSession:
         self._sman = await self._config.state_manager
         self._entropy = await self._config.entropy
         self._workdir = await self._config.work_dir
+        self._minimize_transitions = await self._config.minimize_transitions
+        self._validate_transitions = await self._config.validate_transitions
+        self._minimize_seeds = await self._config.minimize_seeds
+        self._validate_seeds = await self._config.validate_seeds
 
         ## After this point, the StateManager and StateTracker are both
         #  initialized and should be able to identify states and populate the SM
@@ -66,7 +70,8 @@ class FuzzerSession:
             try:
                 await self._sman.reset_state()
                 # feed input to target and populate state machine
-                context_input = self._sman.get_context_input(input)
+                context_input = self._sman.get_context_input(input,
+                    minimize=self._minimize_seeds, validate=self._validate_seeds)
                 await self._loader.execute_input(context_input)
                 info(f"Loaded seed file: {input}")
             except LoadedException as ex:
@@ -83,7 +88,9 @@ class FuzzerSession:
                     try:
                         cur_state = self._sman.state_tracker.current_state
                         input = self._input_gen.generate(cur_state, self._entropy)
-                        await self._sman.step(input)
+                        await self._sman.step(input,
+                            minimize=self._minimize_transitions,
+                            validate=self._validate_transitions)
                     except LoadedException as ex:
                         try:
                             raise ex.exception

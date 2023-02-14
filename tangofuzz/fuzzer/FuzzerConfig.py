@@ -79,6 +79,8 @@ class FuzzerConfig:
             "strategy": "<random | uniform | ...>",
             "validate_transitions": <true | false>,
             "minimize_transitions": <true | false>,
+            "validate_seeds": <true | false>,
+            "minimize_seeds": <true | false>,
             ...
         },
         "fuzzer": {
@@ -270,12 +272,28 @@ class FuzzerConfig:
     @cached_property
     async def state_manager(self):
         _config = self._config["statemanager"]
-        validate = _config.get("validate_transitions", True)
-        minimize = _config.get("minimize_transitions", True)
         return StateManager(await self.input_generator, await self.loader,
-            await self.state_tracker, await self.scheduler_strategy,
-            validate_transitions=validate,
-            minimize_transitions=minimize)
+            await self.state_tracker, await self.scheduler_strategy)
+
+    @cached_property
+    async def minimize_seeds(self):
+        _config = self._config["statemanager"]
+        return _config.get("minimize_seeds", False)
+
+    @cached_property
+    async def validate_seeds(self):
+        _config = self._config["statemanager"]
+        return _config.get("validate_seeds", False)
+
+    @cached_property
+    async def minimize_transitions(self):
+        _config = self._config["statemanager"]
+        return _config.get("minimize_transitions", True)
+
+    @cached_property
+    async def validate_transitions(self):
+        _config = self._config["statemanager"]
+        return _config.get("validate_transitions", True)
 
     @cached_property
     async def startup_pcap(self):

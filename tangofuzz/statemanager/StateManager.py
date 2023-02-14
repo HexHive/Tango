@@ -16,14 +16,11 @@ import asyncio
 class StateManager:
     def __init__(self, generator: InputGeneratorBase, loader: StateLoaderBase,
             tracker: StateTrackerBase,
-            strategy_ctor: Callable[[StateMachine, StateBase], StrategyBase], *,
-            validate_transitions: bool, minimize_transitions: bool):
+            strategy_ctor: Callable[[StateMachine, StateBase], StrategyBase]):
         self._generator = generator
         self._loader = loader
         self._tracker = tracker
         self._tracker.state_manager = self
-        self._validate = validate_transitions
-        self._minimize = minimize_transitions
 
         self._last_state = self._current_state = self.state_tracker.entry_state
         self._last_state.state_manager = self
@@ -107,10 +104,10 @@ class StateManager:
         debug(f"Reloading target state {strategy_target}")
         await self.reset_state(strategy_target)
 
-    def get_context_input(self, input: InputBase) -> StateManagerContext:
-        return StateManagerContext(self)(input)
+    def get_context_input(self, input: InputBase, **kwargs) -> StateManagerContext:
+        return StateManagerContext(self, **kwargs)(input)
 
-    async def step(self, input: InputBase):
+    async def step(self, input: InputBase, **kwargs):
         """
         Executes the input and updates the state queues according to the
         scheduler. May need to receive information about the current state to
@@ -152,10 +149,11 @@ class StateManager:
                 self._strategy.update_state(self._strategy.target_state, input=None, exc=ex)
                 raise
 
-        context_input = self.get_context_input(input)
+        context_input = self.get_context_input(input, **kwargs)
         await self._loader.execute_input(context_input)
 
-    async def update(self, input_gen: Callable[..., InputBase]) -> tuple(bool, InputBase):
+    async def update(self, input_gen: Callable[..., InputBase],
+            minimize: bool=True, validate: bool=True) -> tuple(bool, InputBase):
         """
         Updates the state machine in case of a state change.
 
@@ -191,7 +189,7 @@ class StateManager:
                 debug(f"Possible transition from {self._last_state} to {self._current_state}")
 
                 input = input_gen()
-                if self._validate:
+                if validate:
                     try:
                         debug("Attempting to reproduce transition")
                         # we make a copy of _current_path because the loader may
@@ -239,7 +237,7 @@ class StateManager:
                     last_input = MemoryCachingDecorator()(input, copy=False)
                     is_new_edge = self._current_state not in self._sm._graph.successors(self._last_state)
                     if (is_new_state or is_new_edge):
-                        if self._minimize:
+                        if minimize:
                             # call the transition pruning routine to shorten the last input
                             debug("Attempting to minimize transition")
                             try:
@@ -349,9 +347,10 @@ class StateManagerContext(DecoratorBase):
     and the second part continues to build up state for any following
     transition.
     """
-    def __init__(self, sman: StateManager):
+    def __init__(self, sman: StateManager, **kwargs):
         self._sman = sman
         self._start = self._stop = None
+        self._update_kwargs = kwargs
 
     def input_gen(self):
         # we delay the call to the slicing decorator until needed
@@ -394,7 +393,8 @@ class StateManagerContext(DecoratorBase):
             last_input = None
             try:
                 last_state = self._sman._last_state
-                updated, last_input = await self._sman.update(self.input_gen)
+                updated, last_input = await self._sman.update(self.input_gen,
+                    **self._update_kwargs)
                 if updated:
                     self._start = idx + 1
 
