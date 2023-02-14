@@ -1,10 +1,11 @@
-from . import debug, warning
+from . import debug, info, warning
 
 import asyncio
 import functools
 from async_property import async_property, async_cached_property
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
+import time
 
 # This is a single-threaded executor to be used for wrapping sync methods into
 # async coroutines. It is single-threaded because, for ptrace to work correctly,
@@ -263,3 +264,14 @@ class sync_to_async(OwnerDecorator):
             self._get_future_cb = getattr(owner, self._get_future_cb)
         if isinstance(self._done_cb, str):
             self._done_cb = getattr(owner, self._done_cb)
+
+def timeit(func):
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        try:
+            return await func(*args, **kwargs)
+        finally:
+            total_time = time.perf_counter() - start_time
+            info(f'Function `{func.__name__}` took {total_time:.4f} seconds')
+    return wrapper

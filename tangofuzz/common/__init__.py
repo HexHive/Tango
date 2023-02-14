@@ -22,5 +22,6 @@ from .AsyncIO import (async_property,
                      sync_to_async,
                      async_suspendable,
                      Suspendable,
+                     timeit,
                      # singleton
                      GLOBAL_ASYNC_EXECUTOR)
