@@ -28,22 +28,8 @@ class ReactiveHavocMutator(MutatorBase):
         self._actions = havoc_actions
         self._actions_taken = False
 
-    def __enter__(self):
-        # When two mutators are being sequenced simultaneously, the shared
-        # entropy object is accessed by both, and depending on the access order,
-        # it may change the outcome of each mutator. To solve this, we
-        # essentially clone the entropy object, and on exit, we set it to the
-        # state of one of the two cloned entropies (the last one to exit)
-        entropy = Random()
-        entropy.setstate(self._state0)
-        self._temp = entropy
-        return entropy
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        self._entropy.setstate(self._temp.getstate())
-
     def _iter_helper(self, orig):
-        with self as entropy:
+        with self.entropy_ctx as entropy:
             i = -1
             reorder_buffer = []
             for i, interaction in enumerate(orig()):
