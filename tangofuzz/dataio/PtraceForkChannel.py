@@ -153,8 +153,9 @@ class PtraceForkChannel(PtraceChannel):
             self._trap_asm_word = process.readWord(self._trap_rip_aligned)
 
             # place a trap
-            trap_mask = 0xff << word_offset
-            trap_word = (self._trap_asm_word & ~trap_mask) | (0xCC << word_offset)
+            mask_shift = word_offset * 8
+            trap_mask = 0xff << mask_shift
+            trap_word = (self._trap_asm_word & ~trap_mask) | (0xCC << mask_shift)
             process.writeWord(self._trap_rip_aligned, trap_word)
             process.setreg(CPU_STACK_POINTER, self._trap_rsp & ~0x0F)
 
