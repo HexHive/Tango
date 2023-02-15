@@ -6,9 +6,9 @@ from interaction import InteractionBase
 from abc import abstractmethod
 from dataclasses import dataclass
 from functools import wraps, partial
-from io import RawIOBase
 from typing import Sequence, Iterable, BinaryIO
 import struct
+import io
 import os
 
 @dataclass(frozen=True)
@@ -35,14 +35,14 @@ class SerializedInput(PreparedInput):
     def __init__(self, *, file: str | BinaryIO, fmt: FormatDescriptor,
             load: bool=False, **kwargs):
         super().__init__(**kwargs)
-        if isinstance(file, RawIOBase):
+        if isinstance(file, io.RawIOBase):
             self._name = repr(file)
             self._file = file
         elif isinstance(file, str):
             mode = 'rb+' if os.path.isfile(file) else 'wb+'
             self._name = file
             self._file = open(file, mode=mode)
-            self._file.seek(0, os.SEEK_SET)
+            self._file.seek(0, io.SEEK_SET)
         else:
             raise TypeError("`file` must either be an open binary stream,"
                             " or a string containing the path to the file.")
@@ -57,9 +57,10 @@ class SerializedInput(PreparedInput):
             self._file.close()
 
     def _read_magic(self):
-        if self._file.read(len(self.MAGIC)) == self.MAGIC:
+        data = self._file.read(len(self.MAGIC))
+        if data == self.MAGIC:
             return True
-        self._file.seek(-len(self.MAGIC), os.SEEK_CUR)
+        self._file.seek(-len(data), io.SEEK_CUR)
         return False
 
     def _write_magic(self):
