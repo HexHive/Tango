@@ -19,3 +19,10 @@ class ReceiveInteraction(InteractionBase):
     def __eq__(self, other: ReceiveInteraction):
         # FIXME make this depend on the expected data?
         return isinstance(other, ReceiveInteraction)
+
+    def __deepcopy__(self, memo):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        result.__init__(self._size, self._data, self._expected)
+        return result

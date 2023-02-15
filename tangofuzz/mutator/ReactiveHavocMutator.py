@@ -68,6 +68,7 @@ class ReactiveHavocMutator(MutatorBase):
 
     def _apply_actions(self, data, entropy):
         for func in self._actions:
+            # this copies the data buffer into a new array
             data = bytearray(data)
             data = func(data, entropy)
         self._actions_taken = True

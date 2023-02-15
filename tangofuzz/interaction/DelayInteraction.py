@@ -21,3 +21,10 @@ class DelayInteraction(InteractionBase):
 
     def __repr__(self):
         return f'sleep({self._time})'
+
+    def __deepcopy__(self, memo):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        result.__init__(self._time)
+        return result
