@@ -59,7 +59,7 @@ class ProcessSignal(ProcessEvent):
     def __init__(self, signum, process):
         # Initialize attributes
         self.name = signalName(signum)
-        ProcessEvent.__init__(self, process, "Signal %s" % self.name)
+        ProcessEvent.__init__(self, process, self.name)
         self.signum = signum
         self.reason = None
 
