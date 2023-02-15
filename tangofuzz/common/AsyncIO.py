@@ -251,8 +251,7 @@ class sync_to_async(OwnerDecorator):
             p_func = functools.partial(fn, *args, **kwargs)
             future = loop.run_in_executor(self._executor, p_func)
             if self._get_future_cb:
-                future_cb = lambda f: self._get_future_cb(*args, **kwargs, future=f)
-                future_cb(future)
+                self._get_future_cb(*args, **kwargs, future=future)
             if self._done_cb:
                 done_cb = lambda f: self._done_cb(*args, **kwargs, future=f)
                 future.add_done_callback(done_cb)
