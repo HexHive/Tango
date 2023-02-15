@@ -12,7 +12,6 @@ from generator    import InputGeneratorBase
 from loader       import StateLoaderBase # FIXME there seems to be a cyclic dep
 from profiler     import ProfileValue, ProfileFrequency, ProfileCount, ProfileLambda
 import asyncio
-from common import async_enumerate
 
 class StateManager:
     def __init__(self, generator: InputGeneratorBase, loader: StateLoaderBase,
@@ -383,7 +382,7 @@ class StateManagerContext(DecoratorBase):
     async def ___aiter___(self, input, orig):
         self._start = self._stop = 0
         idx = -1
-        async for idx, interaction in async_enumerate(orig()):
+        for idx, interaction in enumerate(input):
             ProfileValue('status')('fuzz')
             self._stop = idx + 1
             yield interaction

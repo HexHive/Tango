@@ -8,7 +8,6 @@ from generator    import InputGeneratorBase
 from statemanager import StateManager # FIXME there seems to be a cyclic dep
 from tracker import StateBase, StateTrackerBase
 from profiler import ProfileFrequency, ProfileValueMean, ProfileEvent, ProfileCount
-from common import async_enumerate
 
 class StateLoaderBase(ABC):
     """
@@ -51,10 +50,11 @@ class StateLoaderBase(ABC):
         """
         try:
             idx = -1
-            async for idx, interaction in async_enumerate(input):
+            async for interaction in input:
+                idx += 1
                 await interaction.perform(self.channel)
-            else:
-                ProfileValueMean("input_len", samples=100)(idx + 1)
-                ProfileCount("total_interactions")(idx + 1)
         except Exception as ex:
             raise LoadedException(ex, input[:idx + 1]) from ex
+        finally:
+            ProfileValueMean("input_len", samples=100)(idx + 1)
+            ProfileCount("total_interactions")(idx + 1)
