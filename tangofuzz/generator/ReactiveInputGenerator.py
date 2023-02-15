@@ -51,9 +51,8 @@ class ReactiveInputGenerator(InputGeneratorBase):
         if (model := self._state_model.get(state)) is None:
             model = self._init_state_model(state)
 
-        shuffled_actions = entropy.sample(havoc_handlers, k=len(havoc_handlers))
-        havoc_actions = entropy.choices(shuffled_actions,
-            weights=map(lambda t: model['actions'][t][1], shuffled_actions), # we use probabilities as weights
+        havoc_actions = entropy.choices(havoc_handlers,
+            weights=map(lambda t: model['actions'][t][1], havoc_handlers), # we use probabilities as weights
             k=RAND(MUT_HAVOC_STACK_POW2, entropy) + 1
         )
 
