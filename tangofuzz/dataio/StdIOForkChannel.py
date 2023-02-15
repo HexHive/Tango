@@ -35,10 +35,10 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
         self._awaited = False
         self._reconnect = True
         self._fifo = os.path.join(self._work_dir, 'input.pipe')
+        self._setup_fifo()
 
     def connect(self):
         self._reconnect = True
-        self._teardown_setup_fifo()
         super().connect()
 
         if not self._awaited:
@@ -63,7 +63,7 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
             self._invoke_forkserver_custom(process, syscall)
             self._injected = True
 
-    def _teardown_setup_fifo(self):
+    def _setup_fifo(self):
         if os.path.exists(self._fifo):
             if stat.S_ISFIFO(os.stat(self._fifo).st_mode):
                 return
