@@ -1,7 +1,7 @@
 {
 	"exec": {
 		"path": "./parse",
-		"args": ["./parse", "-b", "4"],
+		"args": ["./parse", "-b", "4", "-p", "-m", "-c"],
 		"cwd": "./",
 		"env": {
 			"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"
