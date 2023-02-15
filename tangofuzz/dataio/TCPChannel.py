@@ -133,6 +133,7 @@ class TCPChannel(PtraceChannel, NetworkChannel):
         self._send_client_sent = 0
         ## Set up a barrier so that client_sent is ready when checking for break condition
         self._send_barrier = threading.Barrier(2)
+        self._send_barrier_passed = False
 
         self._send_data = data
         _, ret = self.monitor_syscalls(self._send_send_monitor, \
@@ -142,6 +143,7 @@ class TCPChannel(PtraceChannel, NetworkChannel):
         del self._send_server_received
         del self._send_client_sent
         del self._send_barrier
+        del self._send_barrier_passed
         del self._send_data
 
         return ret
@@ -372,26 +374,28 @@ class TCPChannel(PtraceChannel, NetworkChannel):
                                     'close', 'shutdown')
 
     def _send_break_callback(self):
-        if not self._send_barrier.broken:
-            self._send_barrier.wait()
-            self._send_barrier.abort()
+        if not self._send_barrier_passed:
+            try:
+                self._send_barrier.wait()
+            except threading.BrokenBarrierError:
+                raise ChannelBrokenException("Barrier broke while waiting")
+            else:
+                self._send_barrier_passed = True
         debug(f"{self._send_client_sent=}; {self._send_server_received=}")
-        # FIXME is there a case where client_sent == 0?
         if self._send_client_sent == 0 or self._send_server_received > self._send_client_sent:
             raise ChannelBrokenException("Client sent no bytes, or server received too many bytes!")
         return self._send_server_received == self._send_client_sent
 
     def _send_send_monitor(self):
-        ret = self._socket.send(self._send_data)
-        if ret == 0:
-            raise ChannelBrokenException("Failed to send any data")
-        self._send_client_sent = ret
         try:
-            self._send_barrier.wait()
-        except threading.BrokenBarrierError:
-            # occurs sometimes when the barrier is broken while wait() has yet to finish
-            # but it's benign
-            pass
+            ret = self._socket.send(self._send_data)
+            if ret == 0:
+                raise ChannelBrokenException("Failed to send any data")
+        except Exception:
+            self._send_barrier.abort()
+            raise
+        self._send_client_sent = ret
+        self._send_barrier.wait()
         return ret
 
 class ListenerSocketState:
