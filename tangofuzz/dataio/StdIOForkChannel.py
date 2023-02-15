@@ -85,14 +85,15 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
         self._invoke_forkserver(process)
 
     def _invoke_forkserver(self, process):
-        self._trap_rip = process.getInstrPointer() - 2
-        self._inject_forkserver(process, self._trap_rip)
+        address = process.getInstrPointer() - 2
+        self._inject_forkserver(process, address)
 
     def _cleanup_forkserver(self, process):
         # WARN the use of SYSCALL_REGISTER sets orig_rax, which differs from
         # 'rax' in this context.
-        process.setreg('rax', self._syscall_num)
-        super()._cleanup_forkserver(process)
+        with process.regsctx():
+            process.setreg('rax', self._syscall_num)
+            super()._cleanup_forkserver(process)
 
     def _poll_sync(self):
         self._poll_server_waiting = False

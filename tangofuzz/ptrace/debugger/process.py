@@ -29,6 +29,7 @@ from ptrace.debugger.process_error import ProcessError
 from ptrace.debugger.memory_mapping import readProcessMappings
 from ptrace.binding.cpu import CPU_INSTR_POINTER, CPU_STACK_POINTER, CPU_FRAME_POINTER, CPU_SUB_REGISTERS
 from ptrace.debugger.syscall_state import SyscallState
+from contextlib import contextmanager
 
 if HAS_PTRACE_SINGLESTEP:
     from ptrace.binding import ptrace_singlestep
@@ -176,6 +177,8 @@ class PtraceProcess(object):
         if HAS_PROC:
             self.read_mem_file = None
         self.syscall_state = SyscallState(self)
+
+        self._ctx = None
 
     def isTraced(self):
         if not HAS_PROC:
@@ -423,6 +426,20 @@ class PtraceProcess(object):
         else:
             raise ProcessError(self, "Unknown ptrace event: %r" % event)
 
+    @contextmanager
+    def regsctx(self):
+        # WARN not compatible with asyncio or threads
+        if self._ctx:
+            yield
+        else:
+            self._ctx = self.getregs()
+            try:
+                yield
+            finally:
+                if self._ctx:
+                    self.setregs(self._ctx)
+                    self._ctx = None
+
     def getregs(self):
         if HAS_PTRACE_GETREGS or HAS_PTRACE_GETREGSET:
             return ptrace_getregs(self.pid)
@@ -437,7 +454,7 @@ class PtraceProcess(object):
             bytes = ''.join(words)
             return bytes2type(bytes, ptrace_registers_t)
 
-    def getreg(self, name):
+    def queryregs(self, regs, name):
         try:
             name, shift, mask = CPU_SUB_REGISTERS[name]
         except KeyError:
@@ -445,18 +462,23 @@ class PtraceProcess(object):
             mask = None
         if name not in REGISTER_NAMES:
             raise ProcessError(self, "Unknown register: %r" % name)
-        regs = self.getregs()
         value = getattr(regs, name)
         value >>= shift
         if mask:
             value &= mask
         return value
 
+    def getreg(self, name):
+        if self._ctx:
+            regs = self._ctx
+        else:
+            regs = self.getregs()
+        return self.queryregs(regs, name)
+
     def setregs(self, regs):
         ptrace_setregs(self.pid, regs)
 
-    def setreg(self, name, value):
-        regs = self.getregs()
+    def updateregs(self, regs, name, value):
         if name in CPU_SUB_REGISTERS:
             full_name, shift, mask = CPU_SUB_REGISTERS[name]
             full_value = getattr(regs, full_name)
@@ -467,7 +489,14 @@ class PtraceProcess(object):
         if name not in REGISTER_NAMES:
             raise ProcessError(self, "Unknown register: %r" % name)
         setattr(regs, name, value)
-        self.setregs(regs)
+
+    def setreg(self, name, value):
+        if self._ctx:
+            self.updateregs(self._ctx, name, value)
+        else:
+            regs = self.getregs()
+            self.updateregs(regs, name, value)
+            self.setregs(regs)
 
     def singleStep(self):
         if not HAS_PTRACE_SINGLESTEP:
@@ -483,7 +512,14 @@ class PtraceProcess(object):
         else:
             return signum
 
+    def _flush_ctx(self):
+        if self._ctx:
+            # flush context before resuming target
+            self.setregs(self._ctx)
+            self._ctx = None
+
     def syscall(self, signum=0):
+        self._flush_ctx()
         signum = self.filterSignal(signum)
         ptrace_syscall(self.pid, signum)
         self.is_stopped = False
@@ -732,6 +768,7 @@ class PtraceProcess(object):
             log("Unable to read registers: %s" % err)
 
     def cont(self, signum=0):
+        self._flush_ctx()
         signum = self.filterSignal(signum)
         ptrace_cont(self.pid, signum)
         self.is_stopped = False

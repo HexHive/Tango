@@ -14,6 +14,7 @@ from subprocess import Popen
 import signal
 import sys
 from elftools.elf.elffile import ELFFile
+from ptrace.cpu_info import CPU_WORD_SIZE
 
 class PtraceForkChannel(PtraceChannel):
     def __init__(self, **kwargs):
@@ -142,33 +143,40 @@ class PtraceForkChannel(PtraceChannel):
 
     def _inject_forkserver(self, process: PtraceProcess, address: int):
         debug("Injecting forkserver!")
-        self._trap_rsp = process.getStackPointer()
+        with process.regsctx():
+            self._trap_rip = address # we need this to restore execution later
+            word_offset = address % CPU_WORD_SIZE
+            self._trap_rip_aligned = address - word_offset
+            self._trap_rsp = process.getStackPointer()
 
-        # read the original byte to be replaced by a trap
-        self._trap_asm = process.readBytes(address, 1)
+            # read the original word where a byte needs be replaced by a trap
+            self._trap_asm_word = process.readWord(self._trap_rip_aligned)
 
-        # place a trap
-        process.writeBytes(address, b'\xCC')
-        process.setreg(CPU_STACK_POINTER, self._trap_rsp & ~0x0F)
+            # place a trap
+            trap_mask = 0xff << word_offset
+            trap_word = (self._trap_asm_word & ~trap_mask) | (0xCC << word_offset)
+            process.writeWord(self._trap_rip_aligned, trap_word)
+            process.setreg(CPU_STACK_POINTER, self._trap_rsp & ~0x0F)
 
-        # set up the stack, so that it returns to the trap
-        self._stack_push(process, 0) # some x86-64 alignment stuff
-        self._stack_push(process, address)
+            # set up the stack, so that it returns to the trap
+            self._stack_push(process, 0) # some x86-64 alignment stuff
+            self._stack_push(process, address)
 
-        # redirect control flow to the forkserver
-        process.setreg(CPU_INSTR_POINTER, self._forkserver)
+            # redirect control flow to the forkserver
+            process.setreg(CPU_INSTR_POINTER, self._forkserver)
 
     def _invoke_forkserver(self, process: PtraceProcess):
-        self._trap_rip = process.getInstrPointer()
-        self._inject_forkserver(process, self._trap_rip)
+        address = process.getInstrPointer()
+        self._inject_forkserver(process, address)
 
     def _cleanup_forkserver(self, process: PtraceProcess):
-        # restore the original byte that was replaced by the trap
-        process.writeBytes(self._trap_rip, self._trap_asm)
-        # restore the stack pointer to its proper location
-        process.setreg(CPU_STACK_POINTER, self._trap_rsp)
-        # redirect control flow back where it should have resumed
-        process.setreg(CPU_INSTR_POINTER, self._trap_rip)
+        with process.regsctx():
+            # restore the original byte that was replaced by the trap
+            process.writeWord(self._trap_rip_aligned, self._trap_asm_word)
+            # restore the stack pointer to its proper location
+            process.setreg(CPU_STACK_POINTER, self._trap_rsp)
+            # redirect control flow back where it should have resumed
+            process.setreg(CPU_INSTR_POINTER, self._trap_rip)
 
     def _wakeup_forkserver(self):
         if self._proc_trapped:
