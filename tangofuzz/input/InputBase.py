@@ -5,13 +5,13 @@ from functools import partial, partialmethod
 import inspect
 from itertools import islice, chain
 from profiler import ProfileValueMean
+import types
 
 class InputBase(ABC):
     _COUNTER = 0
 
     def __init__(self):
         self.id = self.uniq_id
-        self._decoration_depth = 0
 
     @abstractmethod
     def ___iter___(self):
@@ -100,14 +100,16 @@ class InputBase(ABC):
         return self.___add___(other)
 
 class DecoratorBaseMeta(ABCMeta):
-    DECORATABLE_METHODS = {'___iter___', '___aiter___', '___eq___', '___add___',
-                         '___getitem___', '___repr___', '___len___'}
+    ALL_DECORATABLE_METHODS = {'___iter___', '___aiter___', '___len___',
+        '___add___', '___getitem___', '___repr___', '___eq___'}
+
     def __new__(metacls, name, bases, namespace):
-        kls_dec_methods = metacls.DECORATABLE_METHODS & namespace.keys()
-        for base in bases:
-            if hasattr(base, 'DECORATABLE_METHODS'):
-                kls_dec_methods |= base.DECORATABLE_METHODS
-        namespace['DECORATABLE_METHODS'] = kls_dec_methods
+        if 'DECORATABLE_METHODS' not in namespace:
+            kls_dec_methods = metacls.ALL_DECORATABLE_METHODS & namespace.keys()
+            for base in bases:
+                if hasattr(base, 'DECORATABLE_METHODS'):
+                    kls_dec_methods |= base.DECORATABLE_METHODS
+            namespace['DECORATABLE_METHODS'] = kls_dec_methods
         kls = super().__new__(metacls, name, bases, namespace)
         return kls
 
@@ -123,17 +125,20 @@ class DecoratorBase(ABC, metaclass=DecoratorBaseMeta):
             newfunc = partialmethod(partial(func), oldfunc).__get__(self._input)
             setattr(self._input, name, newfunc)
 
-        self._input._decoration_depth = input._decoration_depth + 1
-        ProfileValueMean("decorator_depth", samples=100)(self._input._decoration_depth)
-
-        if self._input._decoration_depth > self.DECORATOR_MAX_DEPTH:
+        if self._input.___decorator_depth___ > self.DECORATOR_MAX_DEPTH:
             return MemoryCachingDecorator()(self._input, copy=copy)
         else:
             return self._input
 
-    def _handle_copy(self, input, copy):
+    def _handle_copy(self, input, copy) -> InputBase:
         self._input_id = input.id
-        self._input = DecoratedInput(self)
+        if input.decorated:
+            depth = input.___decorator_depth___ + 1
+        else:
+            depth = 1
+        self._input = DecoratedInput(self, depth)
+        ProfileValueMean("decorator_depth", samples=100)(depth)
+        return self._input
 
     def ___repr___(self, input, orig):
         return f"{self.__class__.__name__}({orig()})"
@@ -146,8 +151,8 @@ class DecoratorBase(ABC, metaclass=DecoratorBaseMeta):
             # extract `orig` from the partial function
             oldfunc = newfunc._partialmethod.args[0]
             setattr(self._input, name, oldfunc)
-        del self._input.___decorator___
-        del self._input
+        self._input.___decorator___ = None
+        self._input = None
 
     @classmethod
     def get_parent_class(cls, method):
@@ -166,14 +171,16 @@ class DecoratorBase(ABC, metaclass=DecoratorBaseMeta):
         return getattr(method, '__objclass__', None)  # handle special descriptor objects
 
     def pop(self) -> InputBase:
-        decorated_iter = self._input.___iter___
-        # decorated iters are partial functions with args[0] == orig
-        orig_iter = decorated_iter._partialmethod.args[0]
-        owner = orig_iter.__self__
-        if isinstance(owner, DecoratorBase):
-            return owner.pop()
-        else:
-            return owner
+        if not self.DECORATABLE_METHODS or not hasattr(self, '_input'):
+            # an "empty" decorator decorates no inputs
+            return None
+        # a decorator usually decorates at least one method, which allows us to
+        # extract the `orig` argument and return its owner
+        decorated_method = getattr(self._input, next(iter(self.DECORATABLE_METHODS)))
+        # decorated methods are partial functions with args[0] == orig
+        orig = decorated_method._partialmethod.args[0]
+        owner = orig.__self__
+        return owner
 
 class SlicingDecorator(DecoratorBase):
     def __init__(self, idx):
@@ -237,56 +244,57 @@ class JoiningDecorator(DecoratorBase):
         return f'JoinedInput:0x{input.id:08X} ({" || ".join((id, *ids))})'
 
 class MemoryCachingDecorator(DecoratorBase):
-    def __init__(self):
-        self._cached_iter = None
-        self._cached_repr = None
-
     def __call__(self, input, copy=True): # -> InputBase:
-        self._handle_copy(input, copy)
+        new_input = self._handle_copy(input, copy)
 
-        self._cached_repr = repr(input)
-        self._cached_iter = tuple(input)
-        self._cached_len = len(self._cached_iter)
-        self._input.___repr___ = self.___cached_repr___
-        self._input.___iter___ = self.___cached_iter___
-        self._input.___len___ = self.___cached_len___
-        self._input._decoration_depth = 1
+        new_input._cached_repr = repr(input)
+        new_input._cached_iter = tuple(input)
+        new_input._cached_len = len(new_input._cached_iter)
 
-        return self._input
+        cls = self.__class__
+        for name in self.DECORATABLE_METHODS:
+            func = getattr(cls, name)
+            new_func = types.MethodType(func, new_input)
+            setattr(new_input, name, new_func)
+
+        self.undecorate()
+        return new_input
 
     def undecorate(self):
         assert getattr(self, '_input', None) is not None, \
                 "Decorator has not been called before!"
-        del self._input.___decorator___
-        del self._input
+        self._input.___decorator_depth___ = 0
+        self._input.___decorator___ = None
+        self._input = None
 
     def pop(self) -> InputBase:
-        return self._input
+        raise NotImplementedError("This should never be reachable!")
 
-    def ___cached_iter___(self):
+    def ___iter___(self):
         return iter(self._cached_iter)
 
-    def ___cached_repr___(self):
+    def ___repr___(self):
         return self._cached_repr
 
-    def ___cached_len___(self):
+    def ___len___(self):
         return self._cached_len
 
 class DecoratedInput(InputBase):
-    def __init__(self, decorator: DecoratorBase):
+    def __init__(self, decorator: DecoratorBase, depth: int=0):
         super().__init__()
         self.___decorator___ = decorator
+        self.___decorator_depth___ = depth
 
     def ___iter___(self):
         raise NotImplementedError()
 
     def __del__(self):
-        self.___decorator___.undecorate()
+        if self.decorated:
+            self.___decorator___.undecorate()
 
     @property
     def decorated(self):
-        # this could be invalidated when undecorate() is called
-        return hasattr(self, '___decorator___')
+        return (self.___decorator_depth___ > 0) or self.___decorator___
 
     def pop_decorator(self) -> (InputBase, DecoratorBase):
         decorator = self.___decorator___
