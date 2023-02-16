@@ -30,7 +30,6 @@ class StatelessReactiveInputGenerator(ReactiveInputGenerator):
         src_model = self._state_model[source]
         normalized_reward = self._calculate_reward(source, destination)
         if mut._actions_taken:
-            critical(f'{normalized_reward=}')
             self._update_weights(src_model['actions'], mut._actions, normalized_reward)
 
         if state_changed:
