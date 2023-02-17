@@ -95,7 +95,7 @@ class PCAPInput(metaclass=SerializedMetaInput, typ='pcap'):
         cur_time = time.time()
         writer = PcapWriter(self._file)
         client_sent = False
-        for interaction in ite:
+        for interaction in itr:
             if isinstance(interaction, DelayInteraction):
                 if interaction._time >= self.DELAY_THRESHOLD:
                     cur_time += interaction._time
