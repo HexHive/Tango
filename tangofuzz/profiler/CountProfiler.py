@@ -1,12 +1,11 @@
-from profiler import ProfileValue
+from profiler import ValueProfiler
 
-class ProfileCount(ProfileValue):
-    def __init__(self, name, **kwargs):
-        super().__init__(name, **kwargs)
-        if not self._init_called:
-            self._count = 0
+class CountProfiler(ValueProfiler):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._count = 0
 
-    def ___call___(self, obj):
+    def __call__(self, obj):
         self._count += obj
         return obj
 

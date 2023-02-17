@@ -2,27 +2,16 @@ from __future__ import annotations
 from . import warning
 from abc import ABCMeta
 from input import PreparedInput
-from interaction import InteractionBase
+from dataio import FormatDescriptor
+from interaction import AbstractInteraction
 from abc import abstractmethod
-from dataclasses import dataclass
 from functools import wraps, partial
 from typing import Sequence, Iterable, BinaryIO
 import struct
 import io
 import os
 
-@dataclass(frozen=True)
-class FormatDescriptor:
-    """
-    This is just a helper class to be used when passing around
-    information describing the format of the serialized data.
-    Additional fields could be added by inheritance, in case a
-    format can be further specialized, depending on the channel
-    being used.
-    """
-    typ: str
-
-class SerializedMetaInput(ABCMeta):
+class SerializedInputMeta(ABCMeta):
     def __new__(metacls, name, bases, namespace, *, typ):
         # we add SerializedInput as the last base class in the MRO
         bases = bases + (SerializedInput,)
@@ -92,7 +81,7 @@ class SerializedInput(PreparedInput):
         self._file.close()
         return self
 
-    def dump(self, itr: Iterable[InteractionBase]=None, /, *, name: str=None):
+    def dump(self, itr: Iterable[AbstractInteraction]=None, /, *, name: str=None):
         if self._file.closed:
             warning(f"Attempted to dump to already closed stream {self._file}.")
             return
@@ -107,11 +96,11 @@ class SerializedInput(PreparedInput):
         self._file.close()
 
     @abstractmethod
-    def loadi(self) -> Iterable[InteractionBase]:
+    def loadi(self) -> Iterable[AbstractInteraction]:
         pass
 
     @abstractmethod
-    def dumpi(self, itr: Iterable[InteractionBase], /):
+    def dumpi(self, itr: Iterable[AbstractInteraction], /):
         pass
 
 class Serializer:
@@ -123,7 +112,7 @@ class Serializer:
 
     def __call__(self, kls: type):
         return self.serialize(kls, self._typ)
-        
+
     @classmethod
     def serialize(cls, kls: type, typ: str):
         if (dk := cls.mapping.get(typ)) is not None:

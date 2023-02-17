@@ -1,7 +1,7 @@
-from tracker import StateTrackerBase
-from loader import StateLoaderBase
+from tracker import AbstractStateTracker
+from loader import AbstractStateLoader
 
-class LoaderDependentTracker(StateTrackerBase):
-    def __init__(self, /, *, loader: StateLoaderBase, **kwargs):
+class LoaderDependentTracker(AbstractStateTracker):
+    def __init__(self, /, *, loader: AbstractStateLoader, **kwargs):
         super().__init__(**kwargs)
         self._loader = loader

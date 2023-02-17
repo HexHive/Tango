@@ -1,16 +1,15 @@
-from profiler import ProfilerBase
+from profiler import AbstractProfiler
 import datetime
 now = datetime.datetime.now
 
-class ProfileTimeElapsed(ProfilerBase):
-    def __init__(self, name, **kwargs):
-        super().__init__(name, **kwargs)
-        if not self._init_called:
-            self._start = now()
+class TimeElapsedProfiler(AbstractProfiler):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._start = now()
         self._running = True
         self._accum = datetime.timedelta()
 
-    def ___call___(self, obj):
+    def __call__(self, obj):
         raise NotImplementedError()
 
     def toggle(self):

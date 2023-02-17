@@ -1,6 +1,6 @@
 from . import debug, info
 
-from dataio import (ChannelBase,
+from dataio import (AbstractChannel,
                       PtraceForkChannel,
                       TCPChannel, TCPChannelFactory)
 from subprocess import Popen
@@ -12,7 +12,7 @@ from ptrace.syscall import SYSCALL_REGISTER
 class TCPForkChannelFactory(TCPChannelFactory):
     fork_before_accept: bool
 
-    def create(self, pobj: Popen, netns: str, *args, **kwargs) -> ChannelBase:
+    def create(self, pobj: Popen, netns: str, *args, **kwargs) -> AbstractChannel:
         self._pobj = pobj
         self._netns = netns
         ch = self.forkchannel

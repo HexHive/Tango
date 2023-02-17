@@ -1,15 +1,15 @@
 from __future__ import annotations
-from interaction import InteractionBase
-from dataio   import ChannelBase
+from interaction import AbstractInteraction
+from dataio   import AbstractChannel
 from typing      import ByteString
 
-class ReceiveInteraction(InteractionBase):
+class ReceiveInteraction(AbstractInteraction):
     def __init__(self, size: int = 0, data: ByteString = None, expected: ByteString = None):
         self._size = size
         self._expected = expected
         self._data = data
 
-    async def perform_internal(self, channel: ChannelBase):
+    async def perform(self, channel: AbstractChannel):
         self._data = await channel.receive()
         # TODO verify size? verify data??
 

@@ -1,15 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import Union
-from input import InputBase
+from input import AbstractInput
 from statemanager import StateMachine
-from tracker import StateBase
+from tracker import AbstractState
 
-class StrategyBase(ABC):
-    def __init__(self, sm: StateMachine, entry_state: StateBase):
-        self._sm = sm
-        self._entry = entry_state
-
-    def update_state(self, state: StateBase, *, input: InputBase, exc: Exception=None, **kwargs):
+class AbstractStrategy(ABC):
+    @abstractmethod
+    def update_state(self, state: AbstractState, *, input: AbstractInput, exc: Exception=None, **kwargs):
         """
         Updates the internal strategy parameters related to the state. In case a
         state is invalidated, it should remain so until it is revalidated in a
@@ -17,23 +14,24 @@ class StrategyBase(ABC):
         be selected at the target state.
 
         :param      state:  The current state of the target.
-        :type       state:  StateBase
+        :type       state:  AbstractState
         :param      exc:    An exception that occured while processing the input.
         :type       exc:    Exception
         """
         pass
 
-    def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, *, state_changed: bool, exc: Exception=None, **kwargs):
+    @abstractmethod
+    def update_transition(self, source: AbstractState, destination: AbstractState, input: AbstractInput, *, state_changed: bool, exc: Exception=None, **kwargs):
         """
         Similar to update_state(), but for transitions.
 
         :param      source:       The source state of the transition.
-        :type       source:       StateBase
+        :type       source:       AbstractState
         :param      destination:  The destination state. This can be assumed to
                                   be the current state of the target too.
-        :type       destination:  StateBase
+        :type       destination:  AbstractState
         :param      input:        The input associated with the transition.
-        :type       input:        InputBase
+        :type       input:        AbstractInput
         :param      exc:          An exception that occured while processing the
                                   input.
         :type       exc:          Exception
@@ -53,7 +51,7 @@ class StrategyBase(ABC):
 
     @property
     @abstractmethod
-    def target_state(self) -> StateBase:
+    def target_state(self) -> AbstractState:
         """
         The selected target state. This is mainly used for reporting purposes.
         """
@@ -61,7 +59,7 @@ class StrategyBase(ABC):
 
     @property
     @abstractmethod
-    def target(self) -> Union[StateBase, list]:
+    def target(self) -> Union[AbstractState, list]:
         """
         The last selected target state or path.
         """

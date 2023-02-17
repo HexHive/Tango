@@ -1,7 +1,7 @@
 from typing       import Callable
-from tracker import StateBase, LoaderDependentTracker
+from tracker import AbstractState, LoaderDependentTracker
 from tracker.coverage import CoverageState, GlobalCoverage, CoverageReader
-from input        import InputBase
+from input        import AbstractInput
 from uuid         import uuid4
 
 class CoverageStateTracker(LoaderDependentTracker):
@@ -50,8 +50,8 @@ class CoverageStateTracker(LoaderDependentTracker):
     def current_state(self) -> CoverageState:
         return self.peek(self._current_state)
 
-    def _diff_global_to_state(self, global_map: GlobalCoverage, parent_state: StateBase,
-            local_state: bool=False, allow_empty: bool=False) -> StateBase:
+    def _diff_global_to_state(self, global_map: GlobalCoverage, parent_state: AbstractState,
+            local_state: bool=False, allow_empty: bool=False) -> AbstractState:
         coverage_map = self._reader.array
         set_map, set_count, map_hash = global_map.update(coverage_map)
         if set_count or allow_empty:
@@ -59,7 +59,7 @@ class CoverageStateTracker(LoaderDependentTracker):
         else:
             return None
 
-    def update(self, source: StateBase, input: InputBase, peek_result: StateBase=None) -> StateBase:
+    def update(self, source: AbstractState, input: AbstractInput, peek_result: AbstractState=None) -> AbstractState:
         if peek_result is None:
             next_state = self._diff_global_to_state(self._global, parent_state=source,
                 allow_empty=source is None)
@@ -87,7 +87,7 @@ class CoverageStateTracker(LoaderDependentTracker):
 
         return next_state
 
-    def peek(self, default_source: StateBase=None, expected_destination: StateBase=None) -> StateBase:
+    def peek(self, default_source: AbstractState=None, expected_destination: AbstractState=None) -> AbstractState:
         glbl = self._scratch
         if expected_destination:
             # when the destination is not None, we use its `context_map` as a
@@ -103,7 +103,7 @@ class CoverageStateTracker(LoaderDependentTracker):
             next_state = default_source
         return next_state
 
-    def reset_state(self, state: StateBase):
+    def reset_state(self, state: AbstractState):
         self._current_state = state
 
         # reset local map

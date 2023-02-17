@@ -18,13 +18,14 @@ from sys import gettrace as sys_gettrace
 DEBUG = sys_gettrace() is not None
 ProfilingNOP = DEBUG
 
-from .ProfilerBase import ProfilerBase
+from .Profiler import AbstractProfiler
+from .NumericalProfiler import NumericalProfiler
 from .PeriodicProfiler import PeriodicProfiler
-from .ProfileLambda import ProfileLambda
-from .ProfileLambdaMean import ProfileLambdaMean
-from .ProfileFrequency import ProfileFrequency
-from .ProfileEvent import ProfileEvent
-from .ProfileValue import ProfileValue
-from .ProfileValueMean import ProfileValueMean
-from .ProfileCount import ProfileCount
-from .ProfileTimeElapsed import ProfileTimeElapsed
+from .LambdaProfiler import LambdaProfiler
+from .LambdaMeanProfiler import LambdaMeanProfiler
+from .FrequencyProfiler import FrequencyProfiler
+from .EventProfiler import EventProfiler
+from .ValueProfiler import ValueProfiler
+from .ValueMeanProfiler import ValueMeanProfiler
+from .CountProfiler import CountProfiler
+from .TimeElapsedProfiler import TimeElapsedProfiler

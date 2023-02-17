@@ -2,13 +2,13 @@ from . import debug
 
 from   itertools    import product as xproduct, tee
 from   functools    import partial
-from   tracker import StateBase
-from   input        import InputBase, PreparedInput, MemoryCachingDecorator
+from   tracker import AbstractState
+from   input        import AbstractInput, PreparedInput, MemoryCachingDecorator
 from   typing       import Generator, Tuple, List
 import networkx     as     nx
 import collections
 
-from profiler import ProfileValue, ProfileValueMean, ProfileEvent
+from profiler import ValueProfiler, ValueMeanProfiler, EventProfiler
 from statistics import mean
 from datetime import datetime
 now = datetime.now
@@ -24,11 +24,11 @@ nx.shortest_simple_edge_paths = shortest_simple_edge_paths
 class StateMachine:
     """
     A graph-based representation of the protocol state machine.
-    States are derived from the hashable and equatable StateBase base class.
-    Transitions are circular buffers of inputs derived from the InputBase base
+    States are derived from the hashable and equatable AbstractState base class.
+    Transitions are circular buffers of inputs derived from the AbstractInput base
     class.
     """
-    def __init__(self, entry_state: StateBase):
+    def __init__(self, entry_state: AbstractState):
         self._graph = nx.DiGraph()
         self.update_state(entry_state)
         self._entry_state = entry_state
@@ -38,8 +38,8 @@ class StateMachine:
     def entry_state(self):
         return self._entry_state
 
-    @ProfileEvent('update_state')
-    def update_state(self, state: StateBase):
+    @EventProfiler('update_state')
+    def update_state(self, state: AbstractState):
         time = now()
         new = False
         if state not in self._graph.nodes:
@@ -52,21 +52,21 @@ class StateMachine:
             state = self._graph.nodes[state]['node_obj']
         self._graph.add_node(state, last_visit=time)
 
-        ProfileValue("coverage")(len(self._graph.nodes))
+        ValueProfiler("coverage")(len(self._graph.nodes))
         return new, state
 
-    @ProfileEvent('update_transition')
-    def update_transition(self, source: StateBase, destination: StateBase,
-            input: InputBase):
+    @EventProfiler('update_transition')
+    def update_transition(self, source: AbstractState, destination: AbstractState,
+            input: AbstractInput):
         """
         Adds or updates the transition between two states.
 
         :param      source:       The source state. Must exist in the state machine.
-        :type       source:       StateBase
+        :type       source:       AbstractState
         :param      destination:  The destination state. Can be a new state.
-        :type       destination:  StateBase
+        :type       destination:  AbstractState
         :param      input:        The input that causes the transition.
-        :type       input:        InputBase
+        :type       input:        AbstractInput
         """
         time = now()
         new = False
@@ -86,22 +86,22 @@ class StateMachine:
             transition = collections.deque(maxlen=self._queue_maxlen)
             self._graph.add_edge(source, destination, transition=transition,
                 added=time, last_visit=time, minimized=input)
-            ProfileValueMean("minimized_length", samples=0)(len(input))
+            ValueMeanProfiler("minimized_length", samples=0)(len(input))
             new = True
 
         exists = not new and any(inp == input for inp in transition)
         if not exists:
             transition.append(input)
-            ProfileValueMean("transition_length", samples=0)(len(input))
+            ValueMeanProfiler("transition_length", samples=0)(len(input))
 
 
-    def dissolve_state(self, state: StateBase, stitch: bool=True):
+    def dissolve_state(self, state: AbstractState, stitch: bool=True):
         """
         Deletes a state from the state machine, stitching incoming and outgoing
         transitions to maintain graph connectivity.
 
         :param      state:  The state to be removed.
-        :type       state:  StateBase
+        :type       state:  AbstractState
         """
         def flatten(edges):
             for src, dst, data in edges:
@@ -134,15 +134,15 @@ class StateMachine:
                 )
         self._graph.remove_node(state)
 
-    def delete_transition(self, source: StateBase, destination: StateBase):
+    def delete_transition(self, source: AbstractState, destination: AbstractState):
         if source not in self._graph or destination not in self._graph \
                 or not destination in nx.neighbors(self._graph, source):
             raise KeyError("Transition not valid")
 
         self._graph.remove_edge(source, destination)
 
-    def get_any_path(self, destination: StateBase, source: StateBase=None) \
-        -> List[Tuple[StateBase, StateBase, InputBase]]:
+    def get_any_path(self, destination: AbstractState, source: AbstractState=None) \
+        -> List[Tuple[AbstractState, AbstractState, AbstractInput]]:
         """
         Returns an arbitrary path to the destination by reconstructing it from
         each state's cached predecessor transition (i.e. the transition that
@@ -150,9 +150,9 @@ class StateMachine:
         reconstructed path, we search for it as usual with get_min_paths.
 
         :param      destination:  The destination state
-        :type       destination:  StateBase
+        :type       destination:  AbstractState
         :param      source:       The source state
-        :type       source:       StateBase
+        :type       source:       AbstractState
 
         :returns:   a list of consecutive edge tuples on the same path.
         :rtype:     list[src, dst, input]
@@ -176,16 +176,16 @@ class StateMachine:
             path.reverse()
             return path
 
-    def get_min_paths(self, destination: StateBase, source: StateBase=None) \
-        -> Generator[List[Tuple[StateBase, StateBase, InputBase]], None, None]:
+    def get_min_paths(self, destination: AbstractState, source: AbstractState=None) \
+        -> Generator[List[Tuple[AbstractState, AbstractState, AbstractInput]], None, None]:
         """
         Generates all minimized paths to destination from source. If source is
         None, the entry point of the state machine is used.
 
         :param      destination:  The destination state.
-        :type       destination:  StateBase
+        :type       destination:  AbstractState
         :param      source:       The source state.
-        :type       source:       StateBase
+        :type       source:       AbstractState
 
         :returns:   Generator object, each item is a list of consecutive edge
                     tuples on the same path.
@@ -193,17 +193,17 @@ class StateMachine:
         """
         return self.get_paths(destination, source, minimized_only=True)
 
-    def get_paths(self, destination: StateBase, source: StateBase=None,
+    def get_paths(self, destination: AbstractState, source: AbstractState=None,
             minimized_only=False) \
-        -> Generator[List[Tuple[StateBase, StateBase, InputBase]], None, None]:
+        -> Generator[List[Tuple[AbstractState, AbstractState, AbstractInput]], None, None]:
         """
         Generates all paths to destination from source. If source is None, the
         entry point of the state machine is used.
 
         :param      destination:  The destination state.
-        :type       destination:  StateBase
+        :type       destination:  AbstractState
         :param      source:       The source state.
-        :type       source:       StateBase
+        :type       source:       AbstractState
 
         :returns:   Generator object, each item is a list of consecutive edge
                     tuples on the same path.

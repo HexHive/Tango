@@ -1,7 +1,7 @@
 from . import debug, info
 
 from typing import ByteString
-from dataio import (ChannelBase, PtraceChannel,
+from dataio import (AbstractChannel, PtraceChannel,
                     NetworkChannel, TransportChannelFactory)
 from   common      import (ChannelBrokenException,
                           ChannelSetupException)
@@ -23,7 +23,7 @@ class TCPChannelFactory(TransportChannelFactory):
 
     protocol: str = "tcp"
 
-    def create(self, pobj: Popen, netns: str, *args, **kwargs) -> ChannelBase:
+    def create(self, pobj: Popen, netns: str, *args, **kwargs) -> AbstractChannel:
         ch = TCPChannel(pobj=pobj,
                           netns=netns,
                           endpoint=self.endpoint, port=self.port,

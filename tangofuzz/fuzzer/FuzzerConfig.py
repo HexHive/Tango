@@ -20,7 +20,7 @@ import logging
 import ctypes
 from pathlib import Path
 from subprocess import DEVNULL, PIPE
-from profiler import ProfileValue
+from profiler import ValueProfiler
 import collections.abc
 
 class FuzzerConfig:
@@ -145,7 +145,7 @@ class FuzzerConfig:
     @cached_property
     async def exec_env(self):
         _config = self._config["exec"]
-        ProfileValue('target_name')(_config["path"])
+        ValueProfiler('target_name')(_config["path"])
         for stdf in ["stdin", "stdout", "stderr"]:
             if _config.get(stdf) == "inherit":
                 _config[stdf] = None
@@ -244,11 +244,11 @@ class FuzzerConfig:
         input_type = _config.get("type", "random")
         fmt = (await self.ch_env).fmt
         if input_type == "random":
-            return RandomInputGenerator(await self.startup_pcap, await self.seed_dir, await self.work_dir, fmt)
+            return RandomInputGenerator(await self.startup_input, await self.seed_dir, await self.work_dir, fmt)
         elif input_type == "reactive":
-            return ReactiveInputGenerator(await self.startup_pcap, await self.seed_dir, await self.work_dir, fmt)
+            return ReactiveInputGenerator(await self.startup_input, await self.seed_dir, await self.work_dir, fmt)
         elif input_type == "reactless":
-            return StatelessReactiveInputGenerator(await self.startup_pcap, await self.seed_dir, await self.work_dir, fmt)
+            return StatelessReactiveInputGenerator(await self.startup_input, await self.seed_dir, await self.work_dir, fmt)
         else:
             raise NotImplementedError()
 
@@ -296,7 +296,7 @@ class FuzzerConfig:
         return _config.get("validate_transitions", True)
 
     @cached_property
-    async def startup_pcap(self):
+    async def startup_input(self):
         return self._config["input"].get("startup")
 
     @cached_property

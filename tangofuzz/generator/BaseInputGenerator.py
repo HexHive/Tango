@@ -1,10 +1,9 @@
 from . import warning
-from abc import ABC, abstractmethod
+from generator import AbstractInputGenerator
 from collections.abc import Iterable
-from tracker import StateBase
-from dataio   import ChannelFactoryBase
-from input import InputBase, Serializer, PreparedInput, FormatDescriptor
-from profiler import ProfileFrequency
+from tracker import AbstractState
+from dataio   import FormatDescriptor
+from input import AbstractInput, Serializer, PreparedInput
 from typing import Sequence
 from functools import reduce
 import os
@@ -12,7 +11,7 @@ import unicodedata
 import re
 import operator
 
-class InputGeneratorBase(ABC):
+class BaseInputGenerator(AbstractInputGenerator):
     def __init__(self, startup: str, seed_dir: str, work_dir: str, fmt: FormatDescriptor):
         self._seed_dir = seed_dir
         self._work_dir = work_dir
@@ -41,8 +40,8 @@ class InputGeneratorBase(ABC):
             input = self._input_kls(file=seed, load=True)
             self._seeds.append(input)
 
-    def save_input(self, input: InputBase,
-            prefix_path: Sequence[tuple[StateBase, StateBase, InputBase]],
+    def save_input(self, input: AbstractInput,
+            prefix_path: Sequence[tuple[AbstractState, AbstractState, AbstractInput]],
             category: str, label: str, filepath: str=None):
         if self._input_kls is None:
             return
@@ -56,33 +55,25 @@ class InputGeneratorBase(ABC):
             filepath = os.path.join(self._work_dir, category, filename)
         self._input_kls(file=filepath).dump(full_input, name=long_name)
 
-    def load_input(self, filepath: str) -> InputBase:
+    def load_input(self, filepath: str) -> AbstractInput:
         if self._input_kls is None:
             raise RuntimeError(f"Cannot deserialize `{self._fmt.typ}.`")
         return self._input_kls(file=filepath).load()
 
-    def update_state(self, state: StateBase, input: InputBase, *, exc: Exception=None, **kwargs):
-        pass
-
-    def update_transition(self, source: StateBase, destination: StateBase, input: InputBase, *, state_changed: bool, exc: Exception=None, **kwargs):
-        pass
-
-    @ProfileFrequency('gens')
-    def generate(self, *args, **kwargs) -> InputBase:
-        return self.generate_internal(*args, **kwargs)
-
-    @abstractmethod
-    def generate_internal(self, state: StateBase, entropy) -> InputBase:
-        pass
-
     @property
-    def seeds(self) -> Iterable[InputBase]:
+    def seeds(self) -> Iterable[AbstractInput]:
         # the default behavior is to just expose the list of loaded inputs
         return self._seeds
 
     @property
-    def startup_input(self) -> InputBase:
+    def startup_input(self) -> AbstractInput:
         return self._startup
+
+    def update_state(self, state: AbstractState, input: AbstractInput, *, exc: Exception=None, **kwargs):
+        pass
+
+    def update_transition(self, source: AbstractState, destination: AbstractState, input: AbstractInput, *, state_changed: bool, exc: Exception=None, **kwargs):
+        pass
 
 def slugify(value, allow_unicode=False):
     """

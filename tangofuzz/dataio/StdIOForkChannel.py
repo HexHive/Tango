@@ -1,9 +1,9 @@
 from . import debug, info
 
-from dataio import (ChannelBase,
+from dataio import (AbstractChannel,
                       PtraceForkChannel,
                       StdIOChannel, StdIOChannelFactory,
-                      ChannelFactoryBase)
+                      AbstractChannelFactory)
 from subprocess import Popen
 from dataclasses import dataclass
 from functools import cached_property
@@ -15,7 +15,7 @@ import stat
 class StdIOForkChannelFactory(StdIOChannelFactory):
     work_dir: str = None
 
-    def create(self, pobj: Popen, *args, **kwargs) -> ChannelBase:
+    def create(self, pobj: Popen, *args, **kwargs) -> AbstractChannel:
         self._pobj = pobj
         ch = self.forkchannel
         ch.connect()

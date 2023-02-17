@@ -2,9 +2,9 @@ from   abc         import ABC, abstractmethod
 from   typing      import ByteString
 from   dataclasses import dataclass
 from   common      import async_property
-from   input       import FormatDescriptor
+from   dataio      import FormatDescriptor
 
-class ChannelBase(ABC):
+class AbstractChannel(ABC):
     def __init__(self, timescale: float):
         self._timescale = timescale
 
@@ -26,7 +26,7 @@ class ChannelBase(ABC):
         return self._timescale
 
 @dataclass
-class ChannelFactoryBase(ABC):
+class AbstractChannelFactory(ABC):
     """
     This class describes a channel's communication parameters and can be used to
     instantiate a new channel.
@@ -35,5 +35,5 @@ class ChannelFactoryBase(ABC):
     fmt: FormatDescriptor
 
     @abstractmethod
-    def create(self, *args, **kwargs) -> ChannelBase:
+    def create(self, *args, **kwargs) -> AbstractChannel:
         pass

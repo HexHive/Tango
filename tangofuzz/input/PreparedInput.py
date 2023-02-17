@@ -1,22 +1,22 @@
-from input       import InputBase
-from interaction import InteractionBase
+from input       import BaseInput
+from interaction import AbstractInteraction
 from typing      import Sequence
 
-class PreparedInput(InputBase):
+class PreparedInput(BaseInput):
     """
     A buffered input. All interactions are readily available and can be exported
     to a file.
     """
-    def __init__(self, *, interactions: Sequence[InteractionBase]=None, **kwargs):
+    def __init__(self, *, interactions: Sequence[AbstractInteraction]=None, **kwargs):
         super().__init__(**kwargs)
         self._interactions = []
         if interactions:
             self._interactions.extend(interactions)
 
-    def append(self, interaction: InteractionBase):
+    def append(self, interaction: AbstractInteraction):
         self._interactions.append(interaction)
 
-    def extend(self, interactions: Sequence[InteractionBase]):
+    def extend(self, interactions: Sequence[AbstractInteraction]):
         self._interactions.extend(interactions)
 
     def ___iter___(self):

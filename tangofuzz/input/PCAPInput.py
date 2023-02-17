@@ -1,14 +1,14 @@
-from input       import SerializedMetaInput
+from input       import SerializedInputMeta
 from scapy.all   import *
 from typing      import Tuple, Iterable
-from interaction import (InteractionBase,
+from interaction import (AbstractInteraction,
                         TransmitInteraction,
                         ReceiveInteraction,
                         DelayInteraction)
 import random
 import time
 
-class PCAPInput(metaclass=SerializedMetaInput, typ='pcap'):
+class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
     LAYER_SOURCE = {
         Ether: "src",
         IP: "src",
@@ -39,7 +39,7 @@ class PCAPInput(metaclass=SerializedMetaInput, typ='pcap'):
             raise RuntimeError("Could not identify endpoints in packet")
         return (tuple(sender), tuple(receiver))
 
-    def loadi(self) -> Iterable[InteractionBase]:
+    def loadi(self) -> Iterable[AbstractInteraction]:
         if self._fmt.protocol in ("tcp", "udp"):
             layer = Raw
         else:
@@ -80,7 +80,7 @@ class PCAPInput(metaclass=SerializedMetaInput, typ='pcap'):
                 interaction = ReceiveInteraction(data=payload)
             yield interaction
 
-    def dumpi(self, itr: Iterable[InteractionBase], /):
+    def dumpi(self, itr: Iterable[AbstractInteraction], /):
         if self._fmt.protocol == "tcp":
             layer = TCP
             cli = random.randint(40000, 65534)

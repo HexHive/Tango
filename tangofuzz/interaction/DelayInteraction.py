@@ -1,18 +1,18 @@
 from __future__ import annotations
-from interaction import InteractionBase
-from dataio   import ChannelBase
+from interaction import AbstractInteraction
+from dataio   import AbstractChannel
 from typing      import Sequence
 from math        import isclose
 from asyncio     import sleep
 
-class DelayInteraction(InteractionBase):
+class DelayInteraction(AbstractInteraction):
     def __init__(self, time: float):
         self._time = float(time)
         # a delay longer than 5 seconds is probably useless, but we'll keep this
         # configurable
         self._maxdelay = 5
 
-    async def perform_internal(self, channel: ChannelBase):
+    async def perform(self, channel: AbstractChannel):
         await sleep(self._time * (await channel.timescale))
 
     def __eq__(self, other: DelayInteraction):

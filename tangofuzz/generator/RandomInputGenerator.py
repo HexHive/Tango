@@ -1,12 +1,11 @@
-from generator import InputGeneratorBase
-from dataio   import ChannelFactoryBase
-from tracker import StateBase
-from input import InputBase, PreparedInput
+from generator import BaseInputGenerator
+from tracker import AbstractState
+from input import AbstractInput, PreparedInput
 from random import Random
 from mutator import HavocMutator
 
-class RandomInputGenerator(InputGeneratorBase):
-    def generate_internal(self, state: StateBase, entropy: Random) -> InputBase:
+class RandomInputGenerator(BaseInputGenerator):
+    def generate(self, state: AbstractState, entropy: Random) -> AbstractInput:
         out_edges = list(state.out_edges)
         if out_edges:
             _, dst, data = entropy.choice(out_edges)

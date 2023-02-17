@@ -1,4 +1,4 @@
-from loader import StateLoaderBase, Environment
+from loader import BaseStateLoader, Environment
 import ctypes
 from ptrace.binding import ptrace_traceme
 from pyroute2 import netns, IPRoute
@@ -8,7 +8,7 @@ import os
 from common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
 from concurrent.futures import ThreadPoolExecutor
 
-class ProcessLoader(StateLoaderBase):
+class ProcessLoader(BaseStateLoader):
     PROC_TERMINATE_RETRIES = 5
     PROC_TERMINATE_WAIT = 0.1 # seconds
 

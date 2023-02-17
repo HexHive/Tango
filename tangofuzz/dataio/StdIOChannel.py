@@ -1,7 +1,7 @@
 from . import debug, info
 
 from typing import ByteString
-from dataio import ChannelBase, ChannelFactoryBase, PtraceChannel
+from dataio import AbstractChannel, AbstractChannelFactory, PtraceChannel
 from   common      import (ChannelBrokenException,
                           ChannelSetupException)
 from subprocess import Popen
@@ -13,13 +13,13 @@ from dataclasses import dataclass
 from functools import partial
 from ptrace import PtraceError
 from common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
-from input import FormatDescriptor
+from dataio import FormatDescriptor
 
 @dataclass(kw_only=True)
-class StdIOChannelFactory(ChannelFactoryBase):
+class StdIOChannelFactory(AbstractChannelFactory):
     fmt: FormatDescriptor = FormatDescriptor('raw')
 
-    def create(self, pobj: Popen, *args, **kwargs) -> ChannelBase:
+    def create(self, pobj: Popen, *args, **kwargs) -> AbstractChannel:
         ch = StdIOChannel(pobj=pobj,
                           timescale=self.timescale)
         ch.connect()

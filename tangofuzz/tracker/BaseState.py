@@ -1,6 +1,6 @@
-from abc          import ABC, abstractmethod
+from tracker import AbstractState
 
-class StateBase(ABC):
+class BaseState(AbstractState):
     def __init__(self):
         self._last_input = None
         self._out_edges = None
@@ -14,10 +14,6 @@ class StateBase(ABC):
     @last_input.setter
     def last_input(self, value):
         self._last_input = value
-
-    @abstractmethod
-    def __hash__(self):
-        pass
 
     @property
     def out_edges(self):
@@ -44,15 +40,3 @@ class StateBase(ABC):
     @predecessor_transition.setter
     def predecessor_transition(self, transition):
         self._pred = transition
-
-    @property
-    def state_manager(self):
-        return self._sman
-
-    @state_manager.setter
-    def state_manager(self, sman):
-        self._sman = sman
-
-    @abstractmethod
-    def __eq__(self, other):
-        pass

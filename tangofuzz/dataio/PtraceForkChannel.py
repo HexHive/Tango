@@ -3,7 +3,7 @@ from . import debug, warning, info, error
 from abc import abstractmethod
 from dataio import PtraceChannel
 from   common      import ProcessCrashedException
-from profiler import ProfileCount
+from profiler import CountProfiler
 from ptrace import PtraceError
 from ptrace.debugger import   (PtraceProcess,
                                ProcessEvent,
@@ -111,7 +111,7 @@ class PtraceForkChannel(PtraceChannel):
             warning("Forked child died on entry, forkserver will be woken up")
             self._proc.syscall()
             self._proc_untrap = True
-            ProfileCount("infant_mortality")(1)
+            CountProfiler("infant_mortality")(1)
         except Exception as event:
             super().process_auxiliary_event(event, ignore_callback)
 

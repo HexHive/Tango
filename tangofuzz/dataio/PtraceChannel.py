@@ -1,7 +1,7 @@
 from . import debug, warning, info, critical
 
 from typing import Callable
-from dataio import ChannelBase
+from dataio import AbstractChannel
 from   common      import (ChannelTimeoutException,
                           ProcessCrashedException,
                           ProcessTerminatedException)
@@ -24,7 +24,7 @@ import traceback
 
 SOCKET_SYSCALL_NAMES = SOCKET_SYSCALL_NAMES.union(('read', 'write'))
 
-class PtraceChannel(ChannelBase):
+class PtraceChannel(AbstractChannel):
     def __init__(self, pobj: Popen, **kwargs):
         super().__init__(**kwargs)
         self._pobj = pobj

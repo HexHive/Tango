@@ -5,18 +5,18 @@ from common import (StabilityException, StateNotReproducibleException,
                     StatePrecisionException, CoroInterrupt)
 from typing import Callable
 from statemanager import StateMachine
-from statemanager.strategy import StrategyBase
-from tracker import StateBase, StateTrackerBase
-from input        import InputBase, DecoratorBase, MemoryCachingDecorator
-from generator    import InputGeneratorBase
-from loader       import StateLoaderBase # FIXME there seems to be a cyclic dep
-from profiler     import ProfileValue, ProfileFrequency, ProfileCount, ProfileLambda
+from statemanager.strategy import AbstractStrategy
+from tracker import AbstractState, AbstractStateTracker
+from input        import AbstractInput, BaseDecorator, MemoryCachingDecorator
+from generator    import AbstractInputGenerator
+from loader       import AbstractStateLoader # FIXME there seems to be a cyclic dep
+from profiler     import ValueProfiler, FrequencyProfiler, CountProfiler, LambdaProfiler
 import asyncio
 
 class StateManager:
-    def __init__(self, generator: InputGeneratorBase, loader: StateLoaderBase,
-            tracker: StateTrackerBase,
-            strategy_ctor: Callable[[StateMachine, StateBase], StrategyBase]):
+    def __init__(self, generator: AbstractInputGenerator, loader: AbstractStateLoader,
+            tracker: AbstractStateTracker,
+            strategy_ctor: Callable[[StateMachine, AbstractState], AbstractStrategy]):
         self._generator = generator
         self._loader = loader
         self._tracker = tracker
@@ -28,23 +28,23 @@ class StateManager:
         self._strategy = strategy_ctor(self._sm, self._last_state)
         self._current_path = []
 
-        ProfileLambda('global_cov')(lambda: sum(map(lambda x: x._set_count, filter(lambda x: x != self.state_tracker.entry_state, self._sm._graph.nodes))))
+        LambdaProfiler('global_cov')(lambda: sum(map(lambda x: x._set_count, filter(lambda x: x != self.state_tracker.entry_state, self._sm._graph.nodes))))
 
     @property
     def state_machine(self) -> StateMachine:
         return self._sm
 
     @property
-    def state_tracker(self) -> StateTrackerBase:
+    def state_tracker(self) -> AbstractStateTracker:
         return self._tracker
 
     def _reset_current_path(self):
         self._current_path.clear()
 
-    @ProfileFrequency('resets')
-    async def reset_state(self, state_or_path=None, dryrun=False) -> StateBase:
+    @FrequencyProfiler('resets')
+    async def reset_state(self, state_or_path=None, dryrun=False) -> AbstractState:
         if not dryrun:
-            ProfileValue('status')('reset_state')
+            ValueProfiler('status')('reset_state')
             self._reset_current_path()
             # must clear last state's input whenever a new state is
             # loaded
@@ -92,7 +92,7 @@ class StateManager:
                         # stitching may consume too much time and may bring the
                         # fuzzer to a halt (example: states = DOOM map locations)
                         self._sm.dissolve_state(faulty_state, stitch=True)
-                        ProfileCount("dissolved_states")(1)
+                        CountProfiler("dissolved_states")(1)
                     except KeyError as ex:
                         warning(f"Faulty state was not even valid")
                     self._strategy.update_state(faulty_state, input=None, exc=ex)
@@ -104,10 +104,10 @@ class StateManager:
         debug(f"Reloading target state {strategy_target}")
         await self.reset_state(strategy_target)
 
-    def get_context_input(self, input: InputBase, **kwargs) -> StateManagerContext:
+    def get_context_input(self, input: AbstractInput, **kwargs) -> StateManagerContext:
         return StateManagerContext(self, **kwargs)(input)
 
-    async def step(self, input: InputBase, **kwargs):
+    async def step(self, input: AbstractInput, **kwargs):
         """
         Executes the input and updates the state queues according to the
         scheduler. May need to receive information about the current state to
@@ -122,7 +122,7 @@ class StateManager:
                 break
             except StateNotReproducibleException as ex:
                 strategy_target = self._strategy.target
-                if isinstance(strategy_target, StateBase):
+                if isinstance(strategy_target, AbstractState):
                     # in case the selected state is unreachable, reset_state()
                     # would have already asked the strategy to invalidate the
                     # faulty state along its path
@@ -152,23 +152,23 @@ class StateManager:
         context_input = self.get_context_input(input, **kwargs)
         await self._loader.execute_input(context_input)
 
-    async def update(self, input_gen: Callable[..., InputBase],
-            minimize: bool=True, validate: bool=True) -> tuple(bool, InputBase):
+    async def update(self, input_gen: Callable[..., AbstractInput],
+            minimize: bool=True, validate: bool=True) -> tuple(bool, AbstractInput):
         """
         Updates the state machine in case of a state change.
 
         :param      input_gen:  A function that returns the input that may have
                       resulted in the state change
-        :type       input_gen:  Callable[..., InputBase]
+        :type       input_gen:  Callable[..., AbstractInput]
 
         :returns:   (state_changed?, accumulated input)
-        :rtype:     tuple(bool, InputBase)
+        :rtype:     tuple(bool, AbstractInput)
         """
 
         updated = False
         stable = True
 
-        # WARN the StateBase object returned by the state tracker may have the
+        # WARN the AbstractState object returned by the state tracker may have the
         # same hash(), but may be a different object. This means, any
         # modifications made to the state (or new attributes stored) may not
         # persist.
@@ -268,14 +268,14 @@ class StateManager:
 
         return updated, last_input
 
-    async def _minimize_transition(self, src: Union[list, StateBase], dst: StateBase, input: InputBase):
+    async def _minimize_transition(self, src: Union[list, AbstractState], dst: AbstractState, input: AbstractInput):
         if isinstance(src, list):
             src = src[-1][1]
 
         reduced = False
 
         # Phase 1: perform exponential back-off to find effective tail of input
-        ProfileValue('status')('minimize_exp_backoff')
+        ValueProfiler('status')('minimize_exp_backoff')
         end = len(input)
         begin = end - 1
         # we do not perform exponential backoff past the midpoint, because that
@@ -306,7 +306,7 @@ class StateManager:
         while step > 0:
             cur = 0
             while cur + step < end:
-                ProfileValue('status')(f'minimize_bin_search ({100*i/(2 * (len(input) - begin)):.1f}%)')
+                ValueProfiler('status')(f'minimize_bin_search ({100*i/(2 * (len(input) - begin)):.1f}%)')
                 success = True
                 await self.reset_state(src, dryrun=True)
                 tmp_lin_input = lin_input[:cur] + lin_input[cur + step:]
@@ -338,7 +338,7 @@ class StateManager:
         else:
             return input
 
-class StateManagerContext(DecoratorBase):
+class StateManagerContext(BaseDecorator):
     """
     This context object provides a wrapper around the input to be sent to the
     target. By wrapping the iterator method, the state manager is updated after
@@ -382,7 +382,7 @@ class StateManagerContext(DecoratorBase):
         self._start = self._stop = 0
         idx = -1
         for idx, interaction in enumerate(input):
-            ProfileValue('status')('fuzz')
+            ValueProfiler('status')('fuzz')
             self._stop = idx + 1
             yield interaction
             # the generator execution is suspended until next() is called so

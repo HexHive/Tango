@@ -1,15 +1,15 @@
 from . import debug, critical
 from typing import Sequence, Iterable
-from input import InputBase
-from mutator import MutatorBase
-from interaction import (InteractionBase, TransmitInteraction,
+from input import AbstractInput
+from mutator import BaseMutator
+from interaction import (AbstractInteraction, TransmitInteraction,
                         ReceiveInteraction, DelayInteraction)
 from random import Random
 from itertools import tee
 from enum import Enum
 from copy import deepcopy
 
-class ReactiveHavocMutator(MutatorBase):
+class ReactiveHavocMutator(BaseMutator):
     class RandomOperation(Enum):
         DELETE = 0
         PUSHORDER = 1
@@ -60,7 +60,7 @@ class ReactiveHavocMutator(MutatorBase):
         self._actions_taken = True
         return data
 
-    def _mutate(self, interaction: InteractionBase, reorder_buffer: Sequence, entropy: Random) -> Sequence[InteractionBase]:
+    def _mutate(self, interaction: AbstractInteraction, reorder_buffer: Sequence, entropy: Random) -> Sequence[AbstractInteraction]:
         if interaction is not None:
             low = 0
             for _ in range(entropy.randint(3, 7)):

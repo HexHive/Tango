@@ -1,10 +1,10 @@
 from abc import abstractmethod
-from input import DecoratorBase
+from input import BaseDecorator
 from random import Random
 from copy import deepcopy
 from contextlib import contextmanager
 
-class MutatorBase(DecoratorBase):
+class BaseMutator(BaseDecorator):
     def __init__(self, entropy: Random):
         self._entropy = entropy
         self._state0 = self._entropy.getstate()

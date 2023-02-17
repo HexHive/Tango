@@ -1,7 +1,7 @@
-from profiler import ProfilerBase
+from profiler import AbstractProfiler
 
-class ProfileValue(ProfilerBase):
-    def ___call___(self, obj):
+class ValueProfiler(AbstractProfiler):
+    def __call__(self, obj):
         self._value = obj
         return obj
 

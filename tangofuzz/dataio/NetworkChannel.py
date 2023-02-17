@@ -1,13 +1,13 @@
-from dataio import ChannelBase, ChannelFactoryBase
+from dataio import AbstractChannel, AbstractChannelFactory
 from   subprocess  import Popen
 from   dataclasses import dataclass
 from pyroute2.netns import setns
 import socket
 from os import getpid
 from common import async_property
-from input import FormatDescriptor
+from dataio import FormatDescriptor
 
-class NetworkChannel(ChannelBase):
+class NetworkChannel(AbstractChannel):
     def __init__(self, netns: str, **kwargs):
         super().__init__(**kwargs)
         self._netns = netns
@@ -92,7 +92,7 @@ class TransportFormatDescriptor(NetworkFormatDescriptor, _TransportFormatDescrip
         setattr(obj, '_fmt', fmt)
 
 @dataclass
-class NetworkChannelFactory(ChannelFactoryBase):
+class NetworkChannelFactory(AbstractChannelFactory):
     pass
 
 @dataclass(kw_only=True)

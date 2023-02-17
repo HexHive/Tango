@@ -4,8 +4,8 @@ from loader       import ProcessLoader
 from typing       import Union
 from common       import StabilityException, StateNotReproducibleException
 from statemanager import StateManager
-from tracker import StateBase
-from profiler import ProfileCount
+from tracker import AbstractState
+from profiler import CountProfiler
 from itertools import chain
 
 class ReplayStateLoader(ProcessLoader):
@@ -21,11 +21,11 @@ class ReplayStateLoader(ProcessLoader):
     def channel(self):
         return self._channel
 
-    async def load_state(self, state_or_path: Union[StateBase, list], sman: StateManager) -> StateBase:
+    async def load_state(self, state_or_path: Union[AbstractState, list], sman: StateManager) -> AbstractState:
         if self.state_tracker is None or state_or_path is None:
             # special case where the state tracker wants an initial state
             path_gen = ((),)
-        elif isinstance((state := state_or_path), StateBase):
+        elif isinstance((state := state_or_path), AbstractState):
             # WARN this path seems to lead the fuzzer to always fail to
             # reproduce some states. Disabled temporarily pending further
             # troubleshooting.
@@ -101,11 +101,11 @@ class ReplayStateLoader(ProcessLoader):
                     return destination
                 except StabilityException as ex:
                     warning(f"Failed to follow unstable path (reason = {ex.args[0]})! Retrying... ({paths_tried = })")
-                    ProfileCount('paths_failed')(1)
+                    CountProfiler('paths_failed')(1)
                     continue
                 except Exception as ex:
                     warning(f"Exception encountered following path ({ex = })! Retrying... ({paths_tried = })")
-                    ProfileCount('paths_failed')(1)
+                    CountProfiler('paths_failed')(1)
                     continue
                 finally:
                     if self._limit and paths_tried >= self._limit:

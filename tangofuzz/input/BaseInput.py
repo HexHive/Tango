@@ -1,21 +1,16 @@
 from __future__ import annotations
-from abc import ABC, ABCMeta, abstractmethod
+from input import AbstractInput
 from typing import Union
 from functools import partial, partialmethod
 import inspect
 from itertools import islice, chain
-from profiler import ProfileValueMean
+from profiler import ValueMeanProfiler
 import types
 
-class InputBase(ABC):
-    _COUNTER = 0
-
-    def __init__(self):
-        self.id = self.uniq_id
-
-    @abstractmethod
-    def ___iter___(self):
-        pass
+class BaseInput(AbstractInput):
+    async def ___aiter___(self):
+        for e in iter(self):
+            yield e
 
     def ___repr___(self):
         return f"{self.__class__.__name__}:0x{self.id:08X}"
@@ -26,12 +21,8 @@ class InputBase(ABC):
         return None
 
     def __bool__(self):
-        # we define this so that __len__ is not used to test truthiness
+        # we define this so that __len__ is not used to test for truthiness
         return True
-
-    async def ___aiter___(self):
-        for e in iter(self):
-            yield e
 
     def ___eq___(self, other):
         diff = False
@@ -60,46 +51,14 @@ class InputBase(ABC):
     def ___getitem___(self, idx: Union[int, slice]):
         return SlicingDecorator(idx)(self)
 
-    def ___add___(self, other: InputBase):
+    def ___add___(self, other: AbstractInput):
         return JoiningDecorator(other)(self)
-
-    @classmethod
-    @property
-    def uniq_id(cls):
-        cls._COUNTER += 1
-        return cls._COUNTER
 
     @property
     def decorated(self):
         return False
 
-    ## Decoratable functions ##
-    # These definitions are needed so that a decorator can override the behavior
-    # of "special methods". The python interpreter does not resolve special
-    # methods as it would other class attributes, so a level of indirection is
-    # needed to bypass this limitation.
-    def __iter__(self):
-        return self.___iter___()
-
-    def __repr__(self):
-        return self.___repr___()
-
-    def __len__(self):
-        return self.___len___()
-
-    def __aiter__(self):
-        return self.___aiter___()
-
-    def __eq__(self, other):
-        return self.___eq___(other)
-
-    def __getitem__(self, idx: Union[int, slice]):
-        return self.___getitem___(idx)
-
-    def __add__(self, other: InputBase):
-        return self.___add___(other)
-
-class DecoratorBaseMeta(ABCMeta):
+class BaseDecoratorMeta(type):
     ALL_DECORATABLE_METHODS = {'___iter___', '___aiter___', '___len___',
         '___add___', '___getitem___', '___repr___', '___eq___'}
 
@@ -113,10 +72,10 @@ class DecoratorBaseMeta(ABCMeta):
         kls = super().__new__(metacls, name, bases, namespace)
         return kls
 
-class DecoratorBase(ABC, metaclass=DecoratorBaseMeta):
+class BaseDecorator(metaclass=BaseDecoratorMeta):
     DECORATOR_MAX_DEPTH = 10
 
-    def __call__(self, input, copy=True) -> InputBase:
+    def __call__(self, input, copy=True) -> AbstractInput:
         self._handle_copy(input, copy)
 
         for name in self.DECORATABLE_METHODS:
@@ -130,14 +89,14 @@ class DecoratorBase(ABC, metaclass=DecoratorBaseMeta):
         else:
             return self._input
 
-    def _handle_copy(self, input, copy) -> InputBase:
+    def _handle_copy(self, input, copy) -> AbstractInput:
         self._input_id = input.id
         if input.decorated:
             depth = input.___decorator_depth___ + 1
         else:
             depth = 1
         self._input = DecoratedInput(self, depth)
-        ProfileValueMean("decorator_depth", samples=100)(depth)
+        ValueMeanProfiler("decorator_depth", samples=100)(depth)
         return self._input
 
     def ___repr___(self, input, orig):
@@ -170,7 +129,7 @@ class DecoratorBase(ABC, metaclass=DecoratorBaseMeta):
             method = getattr(method, '__func__', method)  # fallback to __qualname__ parsing
         return getattr(method, '__objclass__', None)  # handle special descriptor objects
 
-    def pop(self) -> InputBase:
+    def pop(self) -> AbstractInput:
         if not self.DECORATABLE_METHODS or not hasattr(self, '_input'):
             # an "empty" decorator decorates no inputs
             return None
@@ -182,7 +141,7 @@ class DecoratorBase(ABC, metaclass=DecoratorBaseMeta):
         owner = orig.__self__
         return owner
 
-class SlicingDecorator(DecoratorBase):
+class SlicingDecorator(BaseDecorator):
     def __init__(self, idx):
         self._idx = idx
         if isinstance(self._idx, slice):
@@ -194,7 +153,7 @@ class SlicingDecorator(DecoratorBase):
             self._stop = self._idx + 1
             self._step = 1
 
-    def __call__(self, input, copy=True): # -> InputBase:
+    def __call__(self, input, copy=True): # -> AbstractInput:
         if self._start == 0 and self._stop == None:
             return input
         elif input.decorated and isinstance(input.___decorator___, self.__class__) \
@@ -225,11 +184,11 @@ class SlicingDecorator(DecoratorBase):
             fmt = f'{self._start}:{self._stop}:{self._step}'
         return f'SlicedInput:0x{input.id:08X} (0x{self._input_id:08X}[{fmt}])'
 
-class JoiningDecorator(DecoratorBase):
+class JoiningDecorator(BaseDecorator):
     def __init__(self, *others):
         self._others = list(others)
 
-    def __call__(self, input, copy=True): # -> InputBase:
+    def __call__(self, input, copy=True): # -> AbstractInput:
         if input.decorated and isinstance(input.___decorator___, self.__class__):
             input, other = input.pop_decorator()
             self._others = other._others + self._others
@@ -243,8 +202,8 @@ class JoiningDecorator(DecoratorBase):
         ids = (f'0x{x.id:08X}' for x in self._others)
         return f'JoinedInput:0x{input.id:08X} ({" || ".join((id, *ids))})'
 
-class MemoryCachingDecorator(DecoratorBase):
-    def __call__(self, input, copy=True): # -> InputBase:
+class MemoryCachingDecorator(BaseDecorator):
+    def __call__(self, input, copy=True): # -> AbstractInput:
         new_input = self._handle_copy(input, copy)
 
         new_input._cached_repr = repr(input)
@@ -267,7 +226,7 @@ class MemoryCachingDecorator(DecoratorBase):
         self._input.___decorator___ = None
         self._input = None
 
-    def pop(self) -> InputBase:
+    def pop(self) -> AbstractInput:
         raise NotImplementedError("This should never be reachable!")
 
     def ___iter___(self):
@@ -279,8 +238,8 @@ class MemoryCachingDecorator(DecoratorBase):
     def ___len___(self):
         return self._cached_len
 
-class DecoratedInput(InputBase):
-    def __init__(self, decorator: DecoratorBase, depth: int=0):
+class DecoratedInput(BaseInput):
+    def __init__(self, decorator: BaseDecorator, depth: int=0):
         super().__init__()
         self.___decorator___ = decorator
         self.___decorator_depth___ = depth
@@ -296,11 +255,11 @@ class DecoratedInput(InputBase):
     def decorated(self):
         return (self.___decorator_depth___ > 0) or self.___decorator___
 
-    def pop_decorator(self) -> (InputBase, DecoratorBase):
+    def pop_decorator(self) -> (AbstractInput, BaseDecorator):
         decorator = self.___decorator___
         return decorator.pop(), decorator
 
-    def search_decorator_stack(self, select: Callable[[DecoratorBase], bool], max_depth: int=None) -> DecoratorBase:
+    def search_decorator_stack(self, select: Callable[[BaseDecorator], bool], max_depth: int=None) -> BaseDecorator:
         depth = 0
         input = self
         while True:

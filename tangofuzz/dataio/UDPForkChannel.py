@@ -1,6 +1,6 @@
 from . import debug, info
 
-from dataio import (ChannelBase,
+from dataio import (AbstractChannel,
                       PtraceForkChannel,
                       UDPChannel, UDPChannelFactory)
 from subprocess import Popen
@@ -13,7 +13,7 @@ import socket
 class UDPForkChannelFactory(UDPChannelFactory):
     fork_before_bind: bool
 
-    def create(self, pobj: Popen, netns: str, *args, **kwargs) -> ChannelBase:
+    def create(self, pobj: Popen, netns: str, *args, **kwargs) -> AbstractChannel:
         self._pobj = pobj
         self._netns = netns
         ch = self.forkchannel

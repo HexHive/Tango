@@ -3,7 +3,8 @@ logger = logging.getLogger("dataio")
 for func in ('debug', 'info', 'warning', 'error', 'critical'):
     setattr(sys.modules[__name__], func, getattr(logger, func))
 
-from .ChannelBase             import ChannelBase, ChannelFactoryBase
+from .Format                  import FormatDescriptor
+from .Channel                 import AbstractChannel, AbstractChannelFactory
 from .NetworkChannel          import (NetworkChannel, TransportChannelFactory,
                                       TransportFormatDescriptor)
 

@@ -1,14 +1,14 @@
 from typing import Sequence
-from input import InputBase
-from mutator import MutatorBase
-from interaction import (InteractionBase, TransmitInteraction,
+from input import AbstractInput
+from mutator import BaseMutator
+from interaction import (AbstractInteraction, TransmitInteraction,
                         ReceiveInteraction, DelayInteraction)
 from random import Random
 from itertools import tee
 from enum import Enum
 from copy import deepcopy
 
-class HavocMutator(MutatorBase):
+class HavocMutator(BaseMutator):
     class RandomOperation(Enum):
         DELETE = 0
         PUSHORDER = 1
@@ -36,9 +36,9 @@ class HavocMutator(MutatorBase):
     def ___repr___(self, input, orig):
         return f'HavocMutatedInput:0x{input.id:08X} (0x{self._input_id:08X})'
 
-    def _mutate(self, interaction: InteractionBase, reorder_buffer: Sequence, entropy: Random) -> Sequence[InteractionBase]:
+    def _mutate(self, interaction: AbstractInteraction, reorder_buffer: Sequence, entropy: Random) -> Sequence[AbstractInteraction]:
         if interaction is not None:
-            raise NotImplementedError("InteractionBase.mutate was removed!")
+            raise NotImplementedError("AbstractInteraction.mutate was removed!")
             interaction.mutate(self, entropy)
             # TODO perform random operation
             low = 0

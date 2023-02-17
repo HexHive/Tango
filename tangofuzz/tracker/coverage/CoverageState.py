@@ -1,14 +1,14 @@
 from __future__   import annotations
-from tracker import StateBase
+from tracker import BaseState
 from tracker.coverage import GlobalCoverage
-from input        import InputBase
+from input        import AbstractInput
 from typing       import Sequence
 from collections  import OrderedDict
 from functools    import cache, reduce, partial
 from ctypes       import POINTER as P, c_ubyte as B, c_size_t as S, cast as C
 import numpy as np
 
-class CoverageState(StateBase):
+class CoverageState(BaseState):
     _cache = {}
     _id = 0
 

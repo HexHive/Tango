@@ -1,19 +1,19 @@
 from . import error
 
 import profiler
-from profiler import ProfilerBase
+from profiler import AbstractProfiler
 from functools import partial
 import asyncio
 from asyncio import get_running_loop, run_coroutine_threadsafe
 from time import perf_counter as now
 from asyncio import iscoroutinefunction
+from functools import wraps
 
-class ProfileEvent(ProfilerBase):
-    def __init__(self, name, **kwargs):
-        super().__init__(name, **kwargs)
-        if not self._init_called:
-            self._args = None
-            self._listeners = {}
+class EventProfiler(AbstractProfiler):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._args = None
+        self._listeners = {}
 
     def _notify_listeners(self, argt, ret):
         for loop, contexts in self._listeners.items():
@@ -21,12 +21,14 @@ class ProfileEvent(ProfilerBase):
                 if not context.pending:
                     run_coroutine_threadsafe(context.notify(argt, ret), loop)
 
-    def ___call___(self, obj):
+    def __call__(self, obj):
+        @wraps(obj)
         def func(*args, **kwargs):
             ret = obj(*args, **kwargs)
             argt = (args, kwargs)
             self._notify_listeners(argt, ret)
             return ret
+        @wraps(obj)
         async def afunc(*args, **kwargs):
             ret = await obj(*args, **kwargs)
             argt = (args, kwargs)

@@ -1,6 +1,6 @@
 from . import debug, info, warning, critical, error
 
-from input         import (InputBase,
+from input         import (AbstractInput,
                           PreparedInput)
 from fuzzer        import FuzzerConfig
 from common        import (StabilityException,
@@ -18,10 +18,10 @@ import os
 import sys
 
 import profiler
-from profiler import (ProfileLambda,
-                     ProfileCount,
+from profiler import (LambdaProfiler,
+                     CountProfiler,
                      ProfiledObjects,
-                     ProfileTimeElapsed,
+                     TimeElapsedProfiler,
                      ProfilingTasks)
 
 from webui import WebRenderer
@@ -95,13 +95,13 @@ class FuzzerSession:
                         try:
                             raise ex.exception
                         except StabilityException:
-                            ProfileCount('unstable')(1)
+                            CountProfiler('unstable')(1)
                         except StatePrecisionException:
                             debug("Encountered imprecise state transition")
-                            ProfileCount('imprecise')(1)
+                            CountProfiler('imprecise')(1)
                         except ProcessCrashedException as pc:
                             error(f"Process crashed: {pc = }")
-                            ProfileCount('crash')(1)
+                            CountProfiler('crash')(1)
                             # TODO augment loader to dump stdout and stderr too
                             self._input_gen.save_input(ex.payload, self._sman._current_path, 'crash', repr(self._sman._current_state))
                         except ProcessTerminatedException as pt:
@@ -109,7 +109,7 @@ class FuzzerSession:
                         except ChannelTimeoutException:
                             # TODO save timeout input
                             warning("Received channel timeout exception")
-                            ProfileCount('timeout')(1)
+                            CountProfiler('timeout')(1)
                         except ChannelBrokenException as ex:
                             # TODO save crashing/breaking input
                             debug(f"Received channel broken exception ({ex = })")
@@ -156,7 +156,7 @@ class FuzzerSession:
         # reset state after the seed initialization stage
         await self._sman.reset_state()
 
-        ProfileTimeElapsed('elapsed')
+        TimeElapsedProfiler('elapsed')
 
         # launch fuzzing loop
         await self._loop()

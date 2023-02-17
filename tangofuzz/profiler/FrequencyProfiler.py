@@ -1,18 +1,20 @@
-from profiler import PeriodicProfiler
+from profiler import PeriodicProfiler, NumericalProfiler
 from inspect import iscoroutinefunction
+from functools import wraps
 
-class ProfileFrequency(PeriodicProfiler):
-    def __init__(self, name, **kwargs):
-        super().__init__(name, **kwargs)
-        if not self._init_called:
-            self._counter = 0
-            self._frequency = None
+class FrequencyProfiler(PeriodicProfiler, NumericalProfiler):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._counter = 0
+        self._frequency = None
 
-    def ___call___(self, obj):
-        obj = super().___call___(obj)
+    def __call__(self, obj):
+        obj = super().__call__(obj)
+        @wraps(obj)
         def func(*args, **kwargs):
             self._counter += 1
             return obj(*args, **kwargs)
+        @wraps(obj)
         async def afunc(*args, **kwargs):
             self._counter += 1
             return await obj(*args, **kwargs)
@@ -22,10 +24,10 @@ class ProfileFrequency(PeriodicProfiler):
         else:
             return func
 
-    def _task(self):
+    def do_task(self):
         self._frequency = self._counter / self._period
         self._counter = 0
 
     @property
-    def value(self):
-        return self.truncate(self._frequency)
+    def numerical_value(self):
+        return self._frequency
