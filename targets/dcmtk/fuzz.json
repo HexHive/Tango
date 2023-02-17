@@ -1,7 +1,7 @@
 {
 	"exec": {
 		"path": "./dcmqrscp",
-		"args": ["./dcmqrscp", "--single-process"],
+		"args": ["./dcmqrscp", "--single-process", "-c", "dcmqrscp.cfg"],
 		"cwd": "./",
 		"env": {
 			"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0",
@@ -28,7 +28,7 @@
 		"strategy": "uniform"
 	},
 	"fuzzer": {
-		"cwd": "./targets/dicom/",
+		"cwd": "./targets/dcmtk/",
 		"lib": "./lib/",
 		"seeds": "./seeds/",
 		"workdir": "./workdir/",
