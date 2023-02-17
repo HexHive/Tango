@@ -1,0 +1,95 @@
+diff --git a/src/src/EDITME b/src/Local/Makefile
+similarity index 99%
+rename from src/src/EDITME
+rename to src/Local/Makefile
+index 6344561d6..cd1fdeaa3 100644
+--- a/src/src/EDITME
++++ b/src/Local/Makefile
+@@ -117,7 +117,7 @@ BIN_DIRECTORY=/usr/exim/bin
+ # don't exist. It will also install a default runtime configuration if this
+ # file does not exist.
+ 
+-CONFIGURE_FILE=/usr/exim/configure
++CONFIGURE_FILE='"./exim.config"'
+ 
+ # It is possible to specify a colon-separated list of files for CONFIGURE_FILE.
+ # In this case, Exim will use the first of them that exists when it is run.
+@@ -205,7 +205,7 @@ SPOOL_DIRECTORY=/var/spool/exim
+ 
+ # Uncomment the following lines if you want
+ # to build Exim without any TLS support (either OpenSSL or GnuTLS):
+-# DISABLE_TLS=yes
++DISABLE_TLS=yes
+ # Unless you do this, you must define one of USE_OPENSSL or USE_GNUTLS
+ # below.
+ 
+@@ -480,7 +480,7 @@ PCRE2_CONFIG=yes
+ # SUPPORT_TLS (the default).  For DANE under GnuTLS we need an additional
+ # library.  See TLS_LIBS or USE_GNUTLS_PC below.
+ 
+-SUPPORT_DANE=yes
++# SUPPORT_DANE=yes
+ 
+ #------------------------------------------------------------------------------
+ # Additional libraries and include directories may be required for some
+@@ -572,19 +572,19 @@ DISABLE_MAL_MKS=yes
+ # do not support that bit, then set DISABLE_DNSSEC to "yes"
+ # Note: DNSSEC is required for DANE support.
+ 
+-# DISABLE_DNSSEC=yes
++DISABLE_DNSSEC=yes
+ 
+ # To disable support for Events set DISABLE_EVENT to "yes"
+-# DISABLE_EVENT=yes
++DISABLE_EVENT=yes
+ 
+ 
+ # Uncomment this line to remove support for early pipelining, per
+ # https://datatracker.ietf.org/doc/draft-harris-early-pipe/
+-# DISABLE_PIPE_CONNECT=yes
++DISABLE_PIPE_CONNECT=yes
+ 
+ 
+ # Uncomment the following to remove the fast-ramp two-phase-queue-run support
+-# DISABLE_QUEUE_RAMP=yes
++DISABLE_QUEUE_RAMP=yes
+ 
+ # Uncomment the following lines to add SRS (Sender Rewriting Scheme) support
+ # using only native facilities.
+@@ -666,8 +666,8 @@ DISABLE_MAL_MKS=yes
+ # DBMLIB = -ltdb
+ 
+ # Berkeley DB
+-# USE_DB = yes
+-# DBMLIB = -ldb
++USE_DB = yes
++DBMLIB = -ldb
+ 
+ 
+ #------------------------------------------------------------------------------
+@@ -940,7 +940,7 @@ HEADERS_CHARSET="ISO-8859-1"
+ # You can also configure Exim to use syslog, instead of or as well as log
+ # files, by settings such as these
+ 
+-# LOG_FILE_PATH=syslog
++LOG_FILE_PATH=syslog
+ # LOG_FILE_PATH=syslog:/var/log/exim_%slog
+ 
+ # The first of these uses only syslog; the second uses syslog and also writes
+@@ -960,7 +960,7 @@ HEADERS_CHARSET="ISO-8859-1"
+ # If you are not interested in the process identifier (pid) of the Exim that is
+ # making the call to syslog, then comment out the following line.
+ 
+-SYSLOG_LOG_PID=yes
++# SYSLOG_LOG_PID=yes
+ 
+ 
+ #------------------------------------------------------------------------------
+@@ -1520,6 +1520,6 @@ EXIM_TMPDIR="/tmp"
+ # For a very slightly smaller build, for constrained systems, uncomment this.
+ # The feature involved is purely for debugging.
+ 
+-# DISABLE_CLIENT_CMD_LOG=yes
++DISABLE_CLIENT_CMD_LOG=yes
+ 
+ # End of EDITME for Exim 4.
