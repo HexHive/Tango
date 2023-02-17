@@ -8,6 +8,7 @@ import asyncio
 import asynctempfile
 import logging
 import datetime
+import errno
 import os
 now = datetime.datetime.now
 
