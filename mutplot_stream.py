@@ -24,7 +24,7 @@ class Context:
     history = None
     ax_legend = None
     ax2_legend = None
-    ax2_max_features = 0. 
+    ax2_max_features = 0.
     ax2_max_cum_features = 0.
 
 @dataclass
