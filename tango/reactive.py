@@ -129,7 +129,7 @@ class ReactiveInputGenerator(BaseInputGenerator):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
-            config['input'].get('type') == 'reactive'
+            config['generator'].get('type') == 'reactive'
 
     def generate(self, state: AbstractState) -> AbstractInput:
         out_edges = list(state.out_edges)
@@ -343,8 +343,8 @@ class ReactiveInputGenerator(BaseInputGenerator):
 class StatelessReactiveInputGenerator(ReactiveInputGenerator):
     @classmethod
     def match_config(cls, config: dict) -> bool:
-        return super().match_config(config) and \
-            config['input'].get('type') == 'reactless'
+        return super(BaseInputGenerator, cls).match_config(config) and \
+            config['generator'].get('type') == 'reactless'
 
     def update_state(self, state: AbstractState, input: AbstractInput, *, orig_input: AbstractInput, exc: Exception=None, **kwargs):
         state = state.tracker._entry_state

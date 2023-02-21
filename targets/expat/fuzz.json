@@ -16,7 +16,7 @@
 	"channel": {
 		"type": "stdio"
 	},
-	"input": {
+	"generator": {
 		"type": "reactive"
 	},
 	"tracker": {

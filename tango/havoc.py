@@ -540,7 +540,7 @@ class RandomInputGenerator(BaseInputGenerator):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
-            config['input'].get('type') == 'random'
+            config['generator'].get('type') == 'random'
 
     def generate(self, state: AbstractState) -> AbstractInput:
         out_edges = list(state.out_edges)
