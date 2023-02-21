@@ -1,33 +1,34 @@
 {
-	"exec": {
-		"path": "./xmlwf",
-		"args": ["./xmlwf"],
-		"cwd": "./",
-		"env": {
-			"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0",
-			"LD_LIBRARY_PATH": "libexpat_repo/expat/lib/.libs/"
-		}
-	},
-	"channel": {
-		"type": "stdio",
-		"stdio": {
-		}
-	},
 	"loader": {
 		"type": "replay",
+		"exec": {
+			"path": "./xmlwf",
+			"args": ["./xmlwf"],
+			"cwd": "./",
+			"env": {
+				"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0",
+				"LD_LIBRARY_PATH": "libexpat_repo/expat/lib/.libs/"
+			}
+		},
 		"forkserver": true,
 		"disable_aslr": true
+	},
+	"channel": {
+		"type": "stdio"
 	},
 	"input": {
 		"type": "reactive"
 	},
-	"statemanager": {
+	"tracker": {
 		"type": "coverage",
-		"strategy": "uniform"
+		"native_lib": "/home/cysto/hexhive/repo/tangofuzz/lib/pytangofuzz.so"
+	},
+	"strategy": {
+		"type": "uniform"
 	},
 	"fuzzer": {
-		"lib": "./lib/",
 		"cwd": "./targets/expat/",
-		"workdir": "./workdir/"
+		"work_dir": "./workdir/",
+		"resume": true
 	}
 }

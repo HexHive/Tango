@@ -1,32 +1,33 @@
 {
-	"exec": {
-		"path": "./parse",
-		"args": ["./parse", "-b", "4", "-p", "-m", "-c"],
-		"cwd": "./",
-		"env": {
-			"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"
-		}
-	},
-	"channel": {
-		"type": "stdio",
-		"stdio": {
-		}
-	},
 	"loader": {
 		"type": "replay",
+		"exec": {
+			"path": "./parse",
+			"args": ["./parse", "-b", "4", "-p", "-m", "-c"],
+			"cwd": "./",
+			"env": {
+				"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"
+			}
+		},
 		"forkserver": true,
 		"disable_aslr": true
+	},
+	"channel": {
+		"type": "stdio"
 	},
 	"input": {
 		"type": "reactive"
 	},
-	"statemanager": {
+	"tracker": {
 		"type": "coverage",
-		"strategy": "uniform"
+		"native_lib": "/home/cysto/hexhive/repo/tangofuzz/lib/pytangofuzz.so"
+	},
+	"strategy": {
+		"type": "uniform"
 	},
 	"fuzzer": {
-		"lib": "./lib/",
 		"cwd": "./targets/yajl/",
-		"workdir": "./workdir/"
+		"work_dir": "./workdir/",
+		"resume": true
 	}
 }
