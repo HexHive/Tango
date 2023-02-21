@@ -36,8 +36,30 @@ class WebRenderer(Configurable, component_type='webui',
         self._http_host = http_host
         self._http_port = http_port
         self._www_path = www_path
+        self._hitcounter = defaultdict(int)
+
+    def setup_counters(self):
+        async def update(obj, *args, ret, **kwargs):
+            if isinstance(state := ret, tuple):
+                # StateGraph.update_state returns a tuple
+                state, _ = ret
+            self._hitcounter[state] += 1
+            min_hits = min(self._hitcounter.values())
+            self._hitcounter.update({
+                    state: state_hits - min_hits + 1
+                    for state, state_hits in self._hitcounter.items()
+                })
+
+        tg = get_session_task_group()
+        tg.create_task(
+            get_profiler('update_state').listener(period=0.1)(update)
+            )
+        tg.create_task(
+            get_profiler('reload_state').listener(period=1)(update)
+        )
 
     async def run(self):
+        self.setup_counters()
         await self._start_http_server(self._http_host, self._http_port)
         try:
             # dummy future object to await indefinitely
@@ -82,7 +104,7 @@ class WebRenderer(Configurable, component_type='webui',
             ws = web.WebSocketResponse(compress=False)
             await ws.prepare(request)
 
-            data_loader = WebDataLoader(ws, self._session)
+            data_loader = WebDataLoader(ws, self._session, self._hitcounter)
             gather_tasks = asyncio.gather(*data_loader.tasks)
             try:
                 await gather_tasks
@@ -114,9 +136,10 @@ class WebDataLoader:
     DEFAULT_EDGE_COLOR = (0, 0, 0)
     LAST_UPDATE_EDGE_COLOR = (202, 225, 255)
 
-    def __init__(self, websocket, session, last_update_fade_out=1.0):
+    def __init__(self, websocket, session, hitcounter, last_update_fade_out=1.0):
         self._ws = websocket
         self._session = session
+        self._hitcounter = hitcounter
         self._fade = last_update_fade_out
 
         self.tasks = []
@@ -132,9 +155,6 @@ class WebDataLoader:
                 get_profiler('perform_interaction').listener(period=0.1)(self.update_stats)
             )
         )
-
-        self._sm = None
-        self._hitcounter = defaultdict(int)
 
     @classmethod
     def format_color(cls, r, g, b, a=None):
@@ -160,17 +180,6 @@ class WebDataLoader:
         # * color graph nodes and edges based on last_visit and added
         # * dump a DOT representation of the graph
         # * send over WS
-
-        if isinstance(state := ret, tuple):
-            # StateGraph.update_state returns a tuple
-            state, _ = ret
-
-        self._hitcounter[state] += 1
-        min_hits = min(self._hitcounter.values())
-        self._hitcounter.update({
-                state: state_hits - min_hits + 1
-                for state, state_hits in self._hitcounter.items()
-            })
 
         # first we get a copy so that we can re-assign node and edge attributes
         G = self._session._explorer._sg._graph.copy()
