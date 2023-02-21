@@ -460,24 +460,22 @@ class TopLevelSingletonConfigurable:
     @staticmethod
     def find_path(path: str, config: dict, *, expand_globs: bool=True):
         def find_path_rec(parts: list, subdict: dict, *, expand_glob=True):
-            lli = len(parts) - 1
-            for idx, part in enumerate(parts):
-                if part == '*' and expand_glob:
-                    for key, value in subdict.items():
-                        parts = [key] + parts[idx + 1:]
-                        yield from find_path(parts, subdict, expand_glob=False)
+            part = parts[0]
+            if part == '*' and expand_glob:
+                for key, value in subdict.items():
+                    parts = [key] + parts[1:]
+                    yield from find_path_rec(parts, subdict, expand_glob=False)
+            else:
+                if not part in subdict:
+                    return
+                elif len(parts) == 1:
+                    yield part, subdict[part]
                 else:
-                    if not part in subdict:
-                        return
-                    elif idx == lli:
-                        yield part, subdict[part]
-                    else:
-                        yield from find_path_rec(parts[idx + 1:], subdict[part],
-                            expand_glob=expand_globs)
+                    yield from find_path_rec(parts[1:], subdict[part],
+                        expand_glob=expand_globs)
 
         parts = path.split('.')
-        subdict = config
-        yield from find_path_rec(parts, subdict)
+        yield from find_path_rec(parts, config, expand_glob=expand_globs)
 
 Configurable = TopLevelSingletonConfigurable
 AnnotatedComponentCapture: TypeAlias = set[tuple[
