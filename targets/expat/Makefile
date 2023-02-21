@@ -1,6 +1,5 @@
 .PHONY: libexpat
 
-export CFLAGS := $(CFLAGS)
 export LDFLAGS := $(LDFLAGS) $(LDLIBS)
 
 libexpat:
@@ -10,11 +9,15 @@ libexpat:
 	patch -p1 < ../hashsalt.patch && \
 	patch -p1 < ../bufsize.patch && \
 	cd expat && \
-	./buildconf.sh && \
-	./configure \
-		--without-examples \
-		--without-tests \
-		--without-docbook \
-		--with-pic && \
+	mkdir build && cd build && \
+	cmake \
+		-DEXPAT_BUILD_TOOLS=ON \
+		-DEXPAT_BUILD_EXAMPLES=OFF \
+		-DEXPAT_BUILD_TESTS=OFF \
+		-DEXPAT_SHARED_LIBS=OFF \
+		-DEXPAT_BUILD_DOCS=OFF \
+		-DEXPAT_BUILD_PKGCONFIG=OFF \
+		-DEXPAT_DEV_URANDOM=OFF \
+		.. && \
 	$(MAKE) && \
-	cp xmlwf/.libs/xmlwf ../../xmlwf
+	cp xmlwf/xmlwf ../../../xmlwf
