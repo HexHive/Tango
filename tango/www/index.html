@@ -1,0 +1,285 @@
+<html>
+<head>
+	<script src="/js/viz.js"></script>
+	<script src="/js/full.render.js"></script>
+
+	<link rel="stylesheet" href="/css/jquery-ui.css">
+	<script src="/js/jquery-1.12.4.js"></script>
+	<script src="/js/jquery-ui.js"></script>
+
+	<link rel="stylesheet" href="/css/materialize.min.css">
+	<script src="/js/materialize.min.js"></script>
+
+	<link href="/css/style.css" rel="stylesheet" type="text/css">
+</head>
+<body>
+	<header>
+		<nav class="top-nav">
+				<div class="nav-wrapper z-depth-0">
+					<h2 class='header center'>TangoFuzz</h2>
+				</div>
+		</nav>
+	</header>
+	<main>
+		<div class="dashboard">
+			<div class="left-pane">
+				<div class="statistics">
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Target</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="target_name"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Status</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="status"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Time elapsed</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="elapsed"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Resets per second</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="resets"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Interactions per second</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="interactions"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Inputs per second</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="execs"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Generated inputs per second</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="gens"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Total interactions</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="total_interactions"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Average interactions per input</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="input_len"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Total states covered</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="coverage"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Average transition length</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="transition_length"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Average minimized length</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="minimized_length"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Unstable executions</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="unstable"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Imprecise executions</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="imprecise"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Crashes</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="crash"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">Timeouts</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="timeout"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">DEBUG: Avg. Dec. Depth</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="decorator_depth"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">DEBUG: Strat counter</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="strat_counter"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">DEBUG: Dissolved states</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="dissolved_states"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">DEBUG: Infant mortality</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="infant_mortality"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">DEBUG: Bytes sent</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="bytes_sent"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">DEBUG: Undecorated Inputs</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="undecorated_inputs"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">DEBUG: Log counter</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="log_counter"></a>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col s8">
+							<a class="left">DEBUG: Labels covered</a>
+						</div>
+						<div class="col s4">
+							<a class="right" id="global_cov"></a>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="right-pane">
+				<svg id="dgsvg" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"></svg>
+			</div>
+		</div>
+	</main>
+
+	<script>
+		'use strict';
+		const socket = new WebSocket("ws://" + location.hostname + ":" + parseInt(location.port) + "/ws");
+		const svg = $('#dgsvg')[0]
+		let viz = new Viz();
+		let parser = new DOMParser();
+		var msg;
+		var resolved = true;
+
+		async function processCmd(event) {
+			if (resolved) {
+				resolved = false;
+				try {
+					msg = JSON.parse(event.data);
+				} catch(e) {
+					location.reload();
+					return;
+				}
+				switch(msg.cmd) {
+				case "update_graph":
+					// await viz.renderString(msg.items.dot)
+					// .then(function(element) {
+					// 	element = parser.parseFromString(element, "image/svg+xml").documentElement;
+					// 	svg.innerHTML = element.innerHTML;
+					// 	svg.setAttribute('viewBox', element.getAttribute('viewBox'));
+					// })
+					// .catch(error => {
+					// 	viz = new Viz();
+					// 	console.error(error);
+					// });
+					let element = parser.parseFromString(msg.items.svg, "image/svg+xml").documentElement;
+					svg.innerHTML = element.innerHTML;
+					svg.setAttribute('viewBox', element.getAttribute('viewBox'));
+					break;
+				case "update_stats":
+					for await (const [stat, value] of Object.entries(msg.items)) {
+						$('[id="'+stat+'"]').html(value)
+					}
+					break;
+				default:
+					break;
+				}
+				resolved = true;
+			} else {
+				console.log("ignoring request");
+			}
+		}
+
+		socket.onmessage = processCmd;
+	</script>
+	<script>
+		$(function() {
+			$('.dashboard .left-pane').resizable({
+				handles: 'e'
+			});
+		});
+	</script>
+</body>
+</html>

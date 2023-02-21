@@ -24,8 +24,8 @@ static uint8_t *edge_cnt;
 static size_t edge_sz;
 
 void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
-    const char *name = getenv("REFUZZ_COVERAGE");
-    const char *szname = getenv("REFUZZ_SIZE");
+    const char *name = getenv("TANGO_COVERAGE");
+    const char *szname = getenv("TANGO_SIZE");
     if (!name) {
         for (uint32_t *x = start; x < stop; x++)
             *x = 0;  // disable all guards
