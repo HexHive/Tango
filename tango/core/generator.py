@@ -88,7 +88,11 @@ class BaseInputGenerator(AbstractInputGenerator,
         if self._input_kls is None:
             return
 
-        prefix = reduce(operator.add, (x[2] for x in prefix_path))
+        if prefix_path:
+            prefix = reduce(operator.add, (x[2] for x in prefix_path))
+        else:
+            # FIXME use EmptyInput; + would then be a NOP
+            prefix = PreparedInput()
         full_input = self.startup_input + prefix + input
         long_name = f'[{label}] {repr(input)}'
 
