@@ -47,6 +47,3 @@ class StateNotReproducibleException(RuntimeError):
     def __init__(self, msg, faulty_state):
         super().__init__(msg)
         self._faulty_state = faulty_state
-
-class CoroInterrupt(Exception):
-    pass

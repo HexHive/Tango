@@ -411,20 +411,6 @@ class BaseExplorer(AbstractExplorer,
                     critical("Current state is not in state graph! Launching interactive debugger...")
                     import ipdb; ipdb.set_trace()
                 self._last_state = current_state
-        except CoroInterrupt:
-            # if an interrupt is received while loading a state (e.g. death),
-            # self._last_state is not set to the current state because of the
-            # exception. Instead, at the next input step, a transition is
-            # "discovered" between the last state and the new state, which is
-            # wrong
-            # FIXME this should be handled by whomever interrupted the coroutine
-            # in the first place
-            if not dryrun:
-                if (current_state := self._tracker.current_state) not in self._sg._graph:
-                    critical("Current state is not in state graph! Launching interactive debugger...")
-                    import ipdb; ipdb.set_trace()
-                self._last_state = current_state
-            raise
         except StateNotReproducibleException as ex:
             if not dryrun:
                 faulty_state = ex._faulty_state
