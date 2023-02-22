@@ -3,17 +3,17 @@ class LoadedException(RuntimeError):
         if isinstance(ex, LoadedException):
             new = super(LoadedException, cls).__new__(cls)
             new._ex = ex._ex
-            new._payload = payload
+            new._payload_ctor = payload
             return new
         else:
             new = super(LoadedException, cls).__new__(cls)
             new._ex = ex
-            new._payload = payload
+            new._payload_ctor = payload
             return new
 
     @property
     def payload(self):
-        return self._payload
+        return self._payload_ctor()
 
     @property
     def exception(self):

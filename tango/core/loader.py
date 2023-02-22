@@ -55,12 +55,12 @@ class BaseStateLoader(AbstractStateLoader,
                     during execution, along with the input that caused it.
         """
         try:
-            idx = -1
+            idx = 0
             async for interaction in input:
                 idx += 1
                 await interaction.perform(self.channel)
         except Exception as ex:
-            raise LoadedException(ex, input[:idx + 1]) from ex
+            raise LoadedException(ex, lambda: input[:idx]) from ex
         finally:
-            ValueMeanProfiler("input_len", samples=100)(idx + 1)
-            CountProfiler("total_interactions")(idx + 1)
+            ValueMeanProfiler("input_len", samples=100)(idx)
+            CountProfiler("total_interactions")(idx)
