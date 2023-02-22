@@ -1,9 +1,8 @@
 from . import debug
 
-from tango.core.dataio import (AbstractChannel, AbstractChannelFactory,
-    FormatDescriptor, AbstractInstruction, TransmitInstruction)
-from tango.core.input import SerializedInputMeta
-from tango.core.profiler import CountProfiler
+from tango.core import (AbstractChannel, AbstractChannelFactory,
+    FormatDescriptor, AbstractInstruction, TransmitInstruction,
+    SerializedInputMeta, CountProfiler)
 from tango.ptrace.syscall import SYSCALL_REGISTER
 from tango.unix import PtraceChannel, PtraceForkChannel
 from tango.exceptions import ChannelBrokenException

@@ -1,10 +1,7 @@
 from . import debug, info, warning, critical, error
 
-from tango.core.loader import BaseStateLoader
-from tango.core.tracker import AbstractState
-from tango.core.types import Transition, LoadableTarget
-from tango.core.profiler import ValueProfiler, CountProfiler
-from tango.core.dataio import AbstractChannel
+from tango.core import (BaseStateLoader, AbstractState, Transition,
+    LoadableTarget, ValueProfiler, CountProfiler, AbstractChannel)
 from tango.ptrace.binding import ptrace_traceme
 from tango.ptrace.cpu_info import CPU_WORD_SIZE
 from tango.ptrace.binding.cpu import CPU_INSTR_POINTER, CPU_STACK_POINTER
@@ -59,7 +56,7 @@ class ProcessLoader(BaseStateLoader,
     PROC_TERMINATE_RETRIES = 5
     PROC_TERMINATE_WAIT = 0.1 # seconds
 
-    def __init__(self, /, *, exec: dict, disable_aslr: bool, work_dir:str, **kwargs):
+    def __init__(self, *, exec: dict, disable_aslr: bool, work_dir:str, **kwargs):
         super().__init__(**kwargs)
         self._work_dir = work_dir
         self._exec_env = self.setup_execution_environment(exec)

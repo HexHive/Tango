@@ -1,13 +1,10 @@
 from . import debug, critical
-from tango.core.dataio import (AbstractInstruction, TransmitInstruction,
-    ReceiveInstruction, DelayInstruction)
-from tango.core.input import AbstractInput, PreparedInput, BaseDecorator
-from tango.core.tracker import AbstractState
-from tango.core.mutator import BaseMutator
-from tango.core.generator import BaseInputGenerator
-from tango.core.profiler import CountProfiler, ValueProfiler
-from tango.havoc import havoc_handlers
-import tango.havoc as havoc
+
+from tango.core import (AbstractInstruction, TransmitInstruction,
+    ReceiveInstruction, DelayInstruction, AbstractInput, PreparedInput,
+    BaseDecorator, AbstractState, BaseMutator, BaseInputGenerator,
+    CountProfiler, ValueProfiler)
+from tango.havoc import havoc_handlers, RAND, MUT_HAVOC_STACK_POW2
 
 from typing import Sequence, Iterable
 from random import Random
@@ -151,7 +148,7 @@ class ReactiveInputGenerator(BaseInputGenerator):
 
         havoc_actions = self._entropy.choices(havoc_handlers,
             weights=map(lambda t: model['actions'][t][1], havoc_handlers), # we use probabilities as weights
-            k=havoc.RAND(havoc.MUT_HAVOC_STACK_POW2, self._entropy) + 1
+            k=RAND(MUT_HAVOC_STACK_POW2, self._entropy) + 1
         )
 
         return ReactiveHavocMutator(self._entropy, havoc_actions)(candidate)

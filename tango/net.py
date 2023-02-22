@@ -1,8 +1,7 @@
 from . import debug, info
-from tango.core.dataio import (AbstractChannel, AbstractChannelFactory,
+from tango.core import (AbstractChannel, AbstractChannelFactory,
     FormatDescriptor, AbstractInstruction, TransmitInstruction,
-    ReceiveInstruction, DelayInstruction)
-from tango.core.input import SerializedInputMeta
+    ReceiveInstruction, DelayInstruction, SerializedInputMeta)
 from tango.ptrace.syscall import SYSCALL_REGISTER
 from tango.unix import PtraceChannel, PtraceForkChannel
 from tango.common import sync_to_async, GLOBAL_ASYNC_EXECUTOR

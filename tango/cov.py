@@ -1,8 +1,8 @@
 from __future__   import annotations
 from . import debug, info
 
-from tango.core.tracker import AbstractState, BaseState, AbstractStateTracker
-from tango.core.input import AbstractInput
+from tango.core import (AbstractState, BaseState, AbstractStateTracker,
+    AbstractInput)
 from tango.common import ComponentType
 from tango.unix import ProcessLoader
 
@@ -331,13 +331,13 @@ class NPGlobalCoverage(GlobalCoverage):
 
 class LoaderDependentTracker(AbstractStateTracker,
         capture_components={ComponentType.loader}):
-    def __init__(self, /, *, loader: ProcessLoader, **kwargs):
+    def __init__(self, *, loader: ProcessLoader, **kwargs):
         super().__init__(**kwargs)
         self._loader = loader
 
 class CoverageStateTracker(LoaderDependentTracker,
         capture_paths=['tracker.native_lib']):
-    def __init__(self, /, *, native_lib=None, **kwargs):
+    def __init__(self, *, native_lib=None, **kwargs):
         super().__init__(**kwargs)
 
         if native_lib:

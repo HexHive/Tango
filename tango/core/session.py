@@ -20,8 +20,7 @@ from tango.exceptions import (StabilityException,
                           ChannelSetupException,
                           ProcessCrashedException,
                           ProcessTerminatedException,
-                          StateNotReproducibleException,
-                          CoroInterrupt)
+                          StateNotReproducibleException)
 from contextvars import ContextVar
 
 import asyncio

@@ -1,9 +1,7 @@
 from . import info, warning
 
-from tango.core.config import FuzzerConfig
-from tango.core.session import FuzzerSession
-from tango.core.profiler import \
-    initialize as initialize_profiler, TimeElapsedProfiler
+from tango.core import (FuzzerConfig, FuzzerSession,
+    initialize as initialize_profiler, TimeElapsedProfiler)
 from tango.common import (Suspendable,
     create_session_context, get_session_task_group)
 from tango.webui import WebRenderer

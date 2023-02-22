@@ -2,12 +2,12 @@ from __future__ import annotations
 from . import debug, info, warning, critical
 
 from tango.exceptions import (StabilityException, StateNotReproducibleException,
-    StatePrecisionException, CoroInterrupt)
+    StatePrecisionException)
 from tango.core.tracker import AbstractState, AbstractStateTracker
-from tango.core.input     import (AbstractInput, BaseInput, PreparedInput,
+from tango.core.input import (AbstractInput, BaseInput, PreparedInput,
     BaseDecorator)
-from tango.core.loader    import AbstractStateLoader
-from tango.core.profiler  import (ValueProfiler, FrequencyProfiler,
+from tango.core.loader import AbstractStateLoader
+from tango.core.profiler import (ValueProfiler, FrequencyProfiler,
     CountProfiler, LambdaProfiler, EventProfiler, NumericalProfiler,
     AbstractProfilerMeta as create_profiler)
 from tango.core.types import (Path, PathGenerator, LoadableTarget,

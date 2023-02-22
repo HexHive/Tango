@@ -17,7 +17,7 @@ import os
 __all__ = [
     'AbstractInput', 'BaseInput', 'BaseDecorator', 'SlicingDecorator',
     'JoiningDecorator', 'MemoryCachingDecorator', 'PreparedInput',
-    'SerializedInput', 'Serializer'
+    'SerializedInput', 'SerializedInputMeta', 'Serializer'
 ]
 
 class AbstractInput(ABC):

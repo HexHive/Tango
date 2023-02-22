@@ -1,9 +1,6 @@
-from tango.core.input import AbstractInput, PreparedInput
-from tango.core.mutator import BaseMutator
-from tango.core.dataio import (AbstractInstruction, TransmitInstruction,
-    ReceiveInstruction, DelayInstruction)
-from tango.core.generator import BaseInputGenerator
-from tango.core.tracker import AbstractState
+from tango.core import (AbstractInput, PreparedInput, BaseMutator,
+    AbstractInstruction, TransmitInstruction, ReceiveInstruction,
+    DelayInstruction, BaseInputGenerator, AbstractState)
 
 from array import array
 from typing import Sequence

@@ -1,7 +1,6 @@
 from . import info, debug
 
-from tango.core.profiler import get_profiler, get_all_profilers
-from tango.core.session import FuzzerSession
+from tango.core import (FuzzerSession, get_profiler, get_all_profilers)
 from tango.common import Configurable, get_session_task_group
 
 from collections import defaultdict
