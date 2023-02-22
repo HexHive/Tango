@@ -1,4 +1,4 @@
-from . import info, warning
+from . import info, warning, critical
 
 from tango.core.tracker import AbstractState
 from tango.core.input     import AbstractInput
@@ -7,7 +7,7 @@ from tango.core.explorer import BaseExplorer
 from tango.core.generator import AbstractInputGenerator, BaseInputGenerator
 from tango.core.profiler import LambdaProfiler, EventProfiler
 from tango.common import Configurable, ComponentType
-from tango.exceptions import LoadedException
+from tango.exceptions import LoadedException, StateNotReproducibleException
 
 from abc import ABC, abstractmethod
 from random import Random
@@ -100,14 +100,24 @@ class BaseStrategy(AbstractStrategy,
         self._explorer = explorer
         self._minimize_transitions = minimize_transitions
         self._validate_transitions = validate_transitions
+        self._step_interrupted = True
 
     async def step(self, input: Optional[AbstractInput]=None):
-        if not input:
+        if self._step_interrupted:
+            current_state = await self.reload_target()
+        elif not input:
             current_state = self._explorer.tracker.current_state
+        if not input:
             input = self._generator.generate(current_state)
-        await self._explorer.follow(input,
-            minimize=self._minimize_transitions,
-            validate=self._validate_transitions)
+
+        try:
+            await self._explorer.follow(input,
+                minimize=self._minimize_transitions,
+                validate=self._validate_transitions)
+            self._step_interrupted = False
+        except Exception:
+            self._step_interrupted = True
+            raise
 
     @EventProfiler('reload_target')
     async def _reload_target_once(self) -> AbstractState:
@@ -205,7 +215,7 @@ class RolloverCounterStrategy(AbstractStrategy,
         self._counter %= self._rollover
 
         if should_reset:
-            await self._explorer.reload_state(self._target)
+            await self.reload_target()
         await super().step(input)
 
     @abstractmethod

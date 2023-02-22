@@ -63,75 +63,51 @@ class FuzzerSession(Configurable, component_type=ComponentType.session,
         self._explorer.register_transition_update_callback(self._transition_update_cb)
 
     async def _loop(self):
-        # FIXME is there ever a proper terminating condition for fuzzing?
         while True:
             try:
-                # reset to StateManager's current target state
-                # FIXME this should probably be done by the exploration strategy
-                await self._strategy.reload_target()
-                while True:
-                    try:
-                        await self._strategy.step()
-                    except LoadedException as ex:
-                        try:
-                            raise ex.exception
-                        except StabilityException:
-                            CountProfiler('unstable')(1)
-                        except StatePrecisionException:
-                            debug("Encountered imprecise state transition")
-                            CountProfiler('imprecise')(1)
-                        except ProcessCrashedException as pc:
-                            error(f"Process crashed: {pc = }")
-                            CountProfiler('crash')(1)
-                            # TODO augment loader to dump stdout and stderr too
-                            self._generator.save_input(ex.payload, self._explorer._current_path, 'crash', repr(self._explorer._current_state))
-                        except ProcessTerminatedException as pt:
-                            debug(f"Process terminated unexpectedtly? ({pt = })")
-                        except ChannelTimeoutException:
-                            # TODO save timeout input
-                            warning("Received channel timeout exception")
-                            CountProfiler('timeout')(1)
-                        except ChannelBrokenException as ex:
-                            # TODO save crashing/breaking input
-                            debug(f"Received channel broken exception ({ex = })")
-                        except ChannelSetupException:
-                            # TODO save broken setup input
-                            warning("Received channel setup exception")
-                        except (CoroInterrupt, StateNotReproducibleException, asyncio.CancelledError):
-                            # we pass these over to the next try-catch
-                            raise
-                        except Exception as ex:
-                            # everything else, we probably need to debug
-                            critical(f"Encountered unhandled loaded exception {ex = }")
-                            import ipdb; ipdb.set_trace()
-                            raise
-                        # reset to StateManager's current target state
-                        # FIXME may need to incorporate this decision into the
-                        # strategy
-                        await self._strategy.reload_target()
-                    except CoroInterrupt:
-                        # the input generator cancelled an execution
-                        warning("Received interrupt, continuing!")
-                        continue
-                    except (StateNotReproducibleException, asyncio.CancelledError):
-                        # we pass these over to the next try-catch
-                        raise
-                    except Exception as ex:
-                        # everything else, we probably need to debug
-                        critical(f"Encountered weird exception {ex = }")
-                        import ipdb; ipdb.set_trace()
-                        raise
-            except CoroInterrupt:
-                # the input generator cancelled an execution
-                warning("Received interrupt while reloading target")
-                continue
-            except StateNotReproducibleException as ex:
-                warning(f"Target state {ex._faulty_state} not reachable anymore!")
+                await self._strategy.step()
+            except LoadedException as ex:
+                # only raised by the loader, after the strategy target is
+                # already reached, i.e., in reaction to a generated input
+                try:
+                    raise ex.exception
+                except StabilityException:
+                    debug("Encountered unstable path")
+                    CountProfiler('unstable')(1)
+                except StatePrecisionException:
+                    debug("Encountered imprecise tail state transition")
+                    CountProfiler('imprecise')(1)
+                except ProcessCrashedException as pc:
+                    error(f"Process crashed: {pc = }")
+                    CountProfiler('crash')(1)
+                    # TODO augment loader to dump stdout and stderr too
+                    self._generator.save_input(ex.payload,
+                        self._explorer._current_path, 'crash',
+                        repr(self._explorer._current_state))
+                except ProcessTerminatedException as pt:
+                    debug(f"Process terminated unexpectedtly? ({pt = })")
+                except ChannelTimeoutException:
+                    # TODO save timeout input
+                    warning("Received channel timeout exception")
+                    CountProfiler('timeout')(1)
+                except ChannelBrokenException as ex:
+                    # TODO save crashing/breaking input
+                    debug(f"Received channel broken exception ({ex = })")
+                except ChannelSetupException:
+                    # TODO save broken setup input
+                    warning("Received channel setup exception")
+                except StateNotReproducibleException as ex:
+                    warning(f"Failed to reach loadable target")
+
+                # other loaded exceptions will bubble up into the outer handler
+                # for inspection
             except asyncio.CancelledError:
                 return
             except Exception as ex:
+                # everything else, we probably need to debug
+                critical(f"Encountered weird exception {ex = }")
                 import ipdb; ipdb.set_trace()
-                critical(f"Encountered exception while resetting state! {ex = }")
+                raise
 
     async def _state_reload_cb(self,
             loadable: LoadableTarget, *, exc: Optional[Exception]=None):
