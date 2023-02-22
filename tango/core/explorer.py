@@ -500,6 +500,10 @@ class BaseExplorer(AbstractExplorer,
                     # Minimization failed, again probably due to an
                     # indeterministic target
                     warning(f"Minimization failed {ex=}")
+                    if is_new_state:
+                        debug(f"Dissolving {self._current_state = }")
+                        self._sg.dissolve_state(self._current_state)
+                        CountProfiler("dissolved_states")(1)
                     raise
                 last_input = last_input.flatten(inplace=True)
             elif validate:
@@ -517,8 +521,7 @@ class BaseExplorer(AbstractExplorer,
                     if self._current_state != actual_state:
                         raise StatePrecisionException(
                         f"The path to {self._current_state} is imprecise")
-                except (StabilityException,
-                        StateNotReproducibleException,
+                except (StateNotReproducibleException,
                         StatePrecisionException):
                     # * StatePrecisionException:
                     #   This occurs when the predecessor state was reached
@@ -536,12 +539,14 @@ class BaseExplorer(AbstractExplorer,
                     if is_new_state:
                         debug(f"Dissolving {self._current_state = }")
                         self._sg.dissolve_state(self._current_state)
+                        CountProfiler("dissolved_states")(1)
                     raise
                 except Exception as ex:
                     warning(f'{ex}')
                     if is_new_state:
                         debug(f"Dissolving {self._current_state = }")
                         self._sg.dissolve_state(self._current_state)
+                        CountProfiler("dissolved_states")(1)
                     raise
             if minimize or validate:
                 debug(f"{self._current_state} is reproducible!")
