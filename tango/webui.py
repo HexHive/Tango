@@ -54,7 +54,7 @@ class WebRenderer(Configurable, component_type='webui',
             get_profiler('update_state').listener(period=0.1)(update)
             )
         tg.create_task(
-            get_profiler('reload_state').listener(period=1)(update)
+            get_profiler('reload_target').listener(period=1)(update)
         )
 
     async def run(self):
@@ -147,7 +147,7 @@ class WebDataLoader:
             )
         )
         self.tasks.append(asyncio.create_task(
-                get_profiler('reload_state').listener(period=1)(self.update_graph)
+                get_profiler('reload_target').listener(period=1)(self.update_graph)
             )
         )
         self.tasks.append(asyncio.create_task(

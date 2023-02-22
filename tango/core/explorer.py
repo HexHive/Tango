@@ -385,7 +385,6 @@ class BaseExplorer(AbstractExplorer,
         except StopAsyncIteration:
             return current
 
-    @EventProfiler('reload_state')
     @FrequencyProfiler('resets')
     async def reload_state(self, state_or_path: LoadableTarget=None, *,
             dryrun=False) -> AbstractState:

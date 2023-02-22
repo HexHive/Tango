@@ -101,7 +101,6 @@ class BaseStrategy(AbstractStrategy,
         self._minimize_transitions = minimize_transitions
         self._validate_transitions = validate_transitions
 
-    @EventProfiler('strategy_step')
     async def step(self, input: Optional[AbstractInput]=None):
         if not input:
             current_state = self._explorer.tracker.current_state
@@ -110,9 +109,25 @@ class BaseStrategy(AbstractStrategy,
             minimize=self._minimize_transitions,
             validate=self._validate_transitions)
 
-    async def reload_target(self) -> AbstractState:
+    @EventProfiler('reload_target')
+    async def _reload_target_once(self) -> AbstractState:
         state = await self._explorer.reload_state(self.target)
         self.update_state(state, input=None)
+        return state
+
+    async def reload_target(self) -> AbstractState:
+        while True:
+            try:
+                return await self._reload_target_once()
+            except StateNotReproducibleException as ex:
+                warning(f"Target state {ex._faulty_state} not reachable anymore!")
+            except (asyncio.CancelledError, LoadedException):
+                # LoadedExceptions can bubble up the exception handlers because
+                # they only concern the loader/channel
+                raise
+            except Exception as ex:
+                import ipdb; ipdb.set_trace()
+                critical(f"Encountered exception while reloading target! {ex = }")
 
 class SeedableStrategy(BaseStrategy,
         capture_paths=['strategy.minimize_seeds', 'strategy.validate_seeds']):
