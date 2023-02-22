@@ -8,8 +8,11 @@ from concurrent.futures import ThreadPoolExecutor
 from enum import Enum, EnumType, auto
 from collections import defaultdict
 from typing import (Hashable, Optional, Mapping, Sequence, Type, TypeAlias,
-    get_type_hints)
+    Awaitable, Callable, Coroutine, AsyncIterable, AsyncIterator, Any,
+    TypeVar, ParamSpec, get_type_hints)
 from contextvars import ContextVar, Context, Token, copy_context
+from concurrent.futures import Future, Executor
+import types
 import asyncio
 import inspect
 import time
@@ -22,97 +25,301 @@ __all__ = [
     'get_session_context', 'get_session_task_group'
 ]
 
+T = TypeVar("T")
+P = ParamSpec("P")
+R = TypeVar("R")
+
 session_context_var: ContextVar[Context] = ContextVar('session_context')
 session_task_group_var: ContextVar[asyncio.TaskGroup] = ContextVar('session_task_group')
 
 def create_session_context(tg: Optional[asyncio.TaskGroup]=None) -> Context:
+    """
+    Copies the current `~contextvars.Context` and sets the value of two
+    `~contextvars.ContextVar` instances:
+        * 'session_context': Contains a reference to the context itself. Since
+          tasks created within a context get a copy of the context rather than a
+          reference to it, this mechanism allows them to access variables in the
+          root context. This comes in handy with
+          :py:mod:`<profilers tango.core.profiler>`: a profiler may be
+          instantiated within an arbitrary task, but at the root of that
+          task's creation is a parent session to which all profiled values
+          belong. Use :py:func:`get_session_context` to access the current
+          context.
+        * 'session_task_group': Contains a reference to the task group created
+          by the :py:class:`~tango.fuzzer.Fuzzer`, which is passed as the
+          optional parameter `tg` to this function.
+
+    Args:
+        tg (Optional[asyncio.TaskGroup], optional): If set, a
+          `~asyncio.TaskGroup` object which awaits session-specific
+          tasks. The caller is responsible for managing the ``TaskGroup``.
+
+    Returns:
+        Context: The session-local context.
+
+    See Also:
+        :py:func:`get_session_context`
+    """
     ctx = copy_context()
     ctx.run(session_context_var.set, ctx)
-    ctx.run(session_task_group_var.set, tg)
+    if tg:
+        ctx.run(session_task_group_var.set, tg)
     return ctx
 
 def get_session_context() -> Context:
+    """
+    Gets a reference to the session-local `~contextvars.Context`, which acts as
+    a mapping of `~contextvars.ContextVar`s to context-specific values. These
+    would serve as session-local variables, accessible within any ``Task`` in
+    this session.
+
+    Returns:
+        Context: The session-local context.
+
+    Raises:
+        RuntimeError: The function was called outside a session context.
+
+    See Also:
+        :py:func:`create_session_context`
+    """
     try:
         return session_context_var.get()
     except LookupError as ex:
         raise RuntimeError("Not running within a session context!") from ex
 
 def get_session_task_group() -> TaskGroup:
+    """
+    Gets a reference to the session-local `~asyncio.TaskGroup`, if set within
+    the current session context.
+
+    Returns:
+        TaskGroup: The `~asyncio.TaskGroup` object set at context creation.
+
+    Raises:
+        RuntimeError: The function was called outside a session context, or the
+          session context was never assigned a ``TaskGroup``.
+    """
     try:
         return session_task_group_var.get()
     except LookupError as ex:
         raise RuntimeError("Not running within a session context!") from ex
 
-# This is a single-threaded executor to be used for wrapping sync methods into
-# async coroutines. It is single-threaded because, for ptrace to work correctly,
-# the tracer must be the same thread that launched the process.
-# Since ProcessLoader uses sync_to_async for _launch_target, then the parent is
-# this single thread in the thread pool, and all following calls to ptrace also
-# use the same thread pool (see {TCP,UDP}Channel.{send,receive}).
-GLOBAL_ASYNC_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix='AsyncWrapper')
+
+GLOBAL_ASYNC_EXECUTOR = ThreadPoolExecutor(thread_name_prefix='AsyncWrapper',
+    max_workers=1)
+"""concurrent.futures.ThreadPoolExecutor:
+
+This is a single-threaded executor to be used for wrapping sync methods into
+async coroutines, using :py:func:`sync_to_async`. It is single-threaded because,
+for ``ptrace`` to work correctly, the tracer must be the same thread that
+launched the process. Since :py:class:`tango.unix.ProcessLoader` uses
+:py:func:`sync_to_async` to launch a process, then the parent is this single
+thread in the thread pool, and all following calls to ``ptrace`` also use the
+same thread pool.
+
+See Also:
+    :py:func:`tango.net.TCPChannel.send`
+    :py:func:`tango.net.UDPChannel.send`
+    :py:func:`tango.raw.StdIOChannel.send`
+"""
 
 class Suspendable:
+
     """
-    Adapted from:
-    https://stackoverflow.com/questions/66687549/is-it-possible-to-suspend-and-restart-tasks-in-async-python
+    An async awaitable object that wraps another awaitable object and supports
+    suspending and resuming its execution. When multiple :py:class:`Suspendable`
+    objects are awaited within the same `~asyncio.Task`, they form a chain of
+    parent-child suspendables, where a suspension or resumption of the parent
+    recurses on its children too. When a :py:class:`Suspendable` executing
+    within a task creates another task, the latter inherits a copy of the
+    former's `~asyncio.Context`, and any :py:class:`Suspendable` running withing
+    the new task would continue the ancestry chain. The difference is that the
+    parent task may create multiple tasks, thus forming an ancestry tree.
+
+    Calling :py:func:`suspend` or `:py:func:resume:` first recurses into
+    children, then calls the :py:class:`Suspendable`'s own suspension or
+    resumption callbacks.
+
+    Conversely, "sleeping" and "waking up" refer to the instants when the
+    :py:class:`Suspendable` has control of the event loop, around the time its
+    suspension status was modified (through :py:func:`suspend` or
+    :py:func:`resume`). After suspension is requested, and as soon as the
+    wrapped awaitable yields, the "sleeping" phase begins, where a sleep task,
+    if specified, is awaited. Similarly, after resumption is requested, and as
+    soon as the awaitable is given control of the event loop, the "waking up"
+    phase begins, where the wake-up task, if specified, is awaited. This can
+    come in handy in situations where suspension and resumption callbacks need
+    to run asynchronously or within the context of the task (rather than the
+    context of the suspender/resumer).
+
+    Implementation was adapted from an answer to `this StackOverflow question`_.
+
+    Args:
+        aw (Awaitable): The awaitable object to be wrapped.
+        suspend_cb (Optional[Callable[[], Any]], optional): The suspension
+          callback to be executed in the context of the suspender.
+        resume_cb (Optional[Callable[[], Any]], optional): The resumption
+          callback to be executed in the context of the resumer.
+        sleep_task (Optional[Awaitable], optional): The awaitable to be awaited
+          during the sleeping phase, within the context of the
+          :py:class:`Suspendable` itself
+        wakeup_task (Optional[Awaitable], optional): The awaitable to be awaited
+          during the waking up phase, within the context of the
+          :py:class:`Suspendable` itself
+
+    .. _this StackOverflow question: https://stackoverflow.com/q/66687549
     """
+
     parent: ContextVar[Suspendable] = ContextVar('suspendable_parent')
 
-    def __init__(self, target, /, **kwargs):
-        self._target = target
+    def __init__(self, aw: Awaitable, /, **kwargs):
+        self._aw = aw
         self._init_kwargs = kwargs
 
-    def _initialize(self, *, suspend_cb=None, resume_cb=None,
-            sleep_task=None, wakeup_task=None):
+    def set_callbacks(self, *args, **kwargs):
+        """
+        Set or change the callbacks. To set one without modifying the other,
+        only the keyword argument for the callback to be changed should be
+        specified. If both callbacks need to be changed, it suffices to use
+        positional arguments, in the order of (`suspend_cb`, `resume_cb`).
+        If a callback needs to be cleared, a value of `None` should be passed.
+        To clear both callbacks, it suffices to call :py:func:`set_callbacks`()
+        without any arguments.
+
+        Args:
+            suspend_cb (Optional[Callable[[], Any]], optional): The suspension
+              callback to be executed in the context of the suspender.
+            resume_cb (Optional[Callable[[], Any]], optional): The resumption
+              callback to be executed in the context of the resumer.
+        """
+        self._set_attrs(('suspend_cb', 'resume_cb'), *args, **kwargs)
+
+    def set_tasks(self, *args, **kwargs):
+        """
+        Set or change the awaitable tasks. To set one without modifying the
+        other, only the keyword argument for the task to be changed should be
+        specified. If both tasks need to be changed, it suffices to use
+        positional arguments, in the order of (`sleep_task`, `wakeup_task`). If
+        a task needs to be cleared, a value of `None` should be passed. To clear
+        both tasks, it suffices to call :py:func:`set_tasks`() without any
+        arguments.
+
+        Args:
+            sleep_task (Optional[Awaitable], optional): The awaitable to be
+              awaited during the sleeping phase, within the context of the
+              :py:class:`Suspendable` itself
+            wakeup_task (Optional[Awaitable], optional): The awaitable to be
+              awaited during the waking up phase, within the context of the
+              :py:class:`Suspendable` itself
+        """
+        self._set_attrs(('sleep_task', 'wakeup_task'), *args, **kwargs)
+
+    @property
+    def tasks(self) \
+            -> tuple[Optional[Awaitable], Optional[Awaitable]]:
+        """
+        Get the current sleep and wake-up tasks, if set. `None` is returned to
+        indicate unset tasks.
+
+        Returns:
+            tuple[Optional[Awaitable], Optional[Awaitable]]:
+              A tuple of (`sleep_task`, `wakeup_task`).
+        """
+        return self._sleep_task, self._wakeup_task
+
+    @property
+    def callbacks(self) \
+            -> tuple[Optional[Callable[[], Any]], Optional[Callable[[], Any]]]:
+        """
+        Get the current suspension and resumption callbacks, if set. `None` is
+        returned to indicate unset callbacks.
+
+        Returns:
+            tuple[Optional[Callable[[], Any]], Optional[Callable[[], Any]]]:
+              A tuple of (`suspend_cb`, `resume_cb`).
+        """
+        return self._suspend_cb, self._resume_cb
+
+    def suspend(self):
+        """
+        Suspends the current awaitable target and recurses into children of the
+        current :py:class:`Suspendable`, then calls its suspension callback.
+        """
+        for child in self.child_suspendables[::-1]:
+            child.suspend()
+        if self._suspend_cb:
+            self._suspend_cb()
+        self._can_run.clear()
+        warning(f"Suspended all children {self._aw}")
+
+    def resume(self):
+        """
+        Resumes the current awaitable target and recurses into children of the
+        current :py:class:`Suspendable`, then calls its resumption callback.
+        """
+        self._can_run.set()
+        if self._resume_cb:
+            self._resume_cb()
+        for child in self.child_suspendables:
+            child.resume()
+        warning(f"Resumed all children {self._aw}")
+
+    async def as_coroutine(self) -> Coroutine:
+        """
+        The :py:class:`Suspendable` itself is just an awaitable object, i.e., it
+        cannot be used as an argument to `asyncio.create_task`.
+        :py:func:`as_coroutine` is thus a coroutine function that awaits on it,
+        to enable such use-cases.
+
+        Returns:
+            Coroutine: an awaitable coroutine object.
+        """
+        return await self
+
+    @property
+    def suspended(self) -> bool:
+        """
+        bool: Indicates whether or not the awaitable target is suspended.
+        """
+        return not self._can_run.is_set()
+
+    def _initialize(self, *,
+            suspend_cb: Optional[Callable[[], Any]]=None,
+            resume_cb: Optional[Callable[[], Any]]=None,
+            sleep_task: Optional[Awaitable]=None,
+            wakeup_task: Optional[Awaitable]=None):
         self._can_run = asyncio.Event()
         self._can_run.set()
         self.set_callbacks(suspend_cb=suspend_cb, resume_cb=resume_cb)
         self.set_tasks(sleep_task=sleep_task, wakeup_task=wakeup_task)
         self.child_suspendables = []
 
-    def set_callbacks(self, **kwargs):
-        def set_suspend_cb(cb):
-            self._suspend_cb = cb
-        def set_resume_cb(cb):
-            self._resume_cb = cb
-        try:
-            set_suspend_cb(kwargs['suspend_cb'])
-        except KeyError:
-            pass
-        try:
-            set_resume_cb(kwargs['resume_cb'])
-        except KeyError:
-            pass
+    def _set_attrs(self, names, *args, **kwargs):
+        if len(args) == len(names):
+            for name, value in zip(names, args):
+                setattr(self, f'_{name}', value)
+        elif not args and not kwargs:
+            for name in names:
+                setattr(self, f'{_name}', None)
+        elif not args and kwargs:
+            for name in names:
+                try:
+                    setattr(self, f'_{name}', kwargs[name])
+                except KeyError:
+                    pass
+        else:
+            raise ValueError("Attributes can only be specified entirely as"
+                " positional arguments, or partially as keyword arguments."
+                " Using partial positional arguments or mixing the two is not"
+                " supported!")
 
-    def set_tasks(self, **kwargs):
-        def set_sleep_task(task):
-            self._sleep_task = task
-        def set_wakeup_task(task):
-            self._wakeup_task = task
-        try:
-            set_sleep_task(kwargs['sleep_task'])
-        except KeyError:
-            pass
-        try:
-            set_wakeup_task(kwargs['wakeup_task'])
-        except KeyError:
-            pass
-
-    @property
-    def tasks(self):
-        return self._sleep_task, self._wakeup_task
-
-    @property
-    def callbacks(self):
-        return self._suspend_cb, self._resume_cb
-
-    def push_cbs(self):
+    def _push_cbs(self):
         self._parent_token = self.parent.set(self)
         self._parent = self._parent_token.old_value
         if self._parent is not Token.MISSING:
             self._parent.child_suspendables.append(self)
 
-    def pop_cbs(self):
+    def _pop_cbs(self):
         if self._parent is not Token.MISSING:
             self._parent.child_suspendables.remove(self)
         assert self.parent.get() == self, "Parent finished without awaiting a" \
@@ -121,15 +328,15 @@ class Suspendable:
 
     def __await__(self):
         self._initialize(**self._init_kwargs)
-        self.push_cbs()
+        self._push_cbs()
 
         try:
-            target_iter = self._target.__await__()
+            target_iter = self._aw.__await__()
             iter_send, iter_throw = target_iter.send, target_iter.throw
             send, message = iter_send, None
             # This "while" emulates yield from.
             while True:
-                # wait for can_run before resuming execution of self._target
+                # wait for can_run before resuming execution of self._aw
                 slept = False
                 try:
                     while not self._can_run.is_set():
@@ -155,91 +362,238 @@ class Suspendable:
                 except BaseException as err:
                     send, message = iter_throw, err
         finally:
-            self.pop_cbs()
+            self._pop_cbs()
 
-    def suspend(self):
-        for child in self.child_suspendables[::-1]:
-            child.suspend()
-        if self._suspend_cb:
-            self._suspend_cb()
-        self._can_run.clear()
-        warning(f"Suspended all children {self._target=}")
+class OwnableDecorator(ABC):
 
-    def is_suspended(self):
-        return not self._can_run.is_set()
+    """
+    An abstract class for function decorators that can also decorate class
+    methods where, in such cases, would require access to the class in which the
+    function exists, henceforth referred to as ``owner``. Optionally, the
+    decorator can specify, at construction, that it is not decorating a class
+    method, in which case, it behaves as a normal function wrapper.
 
-    def resume(self):
-        self._can_run.set()
-        if self._resume_cb:
-            self._resume_cb()
-        for child in self.child_suspendables:
-            child.resume()
-        warning(f"Resumed all children {self._target=}")
+    Such a decorator is useful where the owner's namespace is partially
+    populated at decoration time (i.e. the body of the class is still being
+    built) but the decorator requires access to the owner itself or the complete
+    namespace.
 
-    async def as_coroutine(self):
-        await self
+    Stacking :py:class:`OwnableDecorator`s results in an intermediate state
+    where decorated objects are not actual functions, but instances of the
+    decorator itself. Once the owner is constructed, it calls ``__set_name__``
+    on the decorator, which propagates a reference to the former and the name of
+    the latter in its namespace into the stack, resolving the wrapped functions
+    and finally updating the owner's namespace with the decorated method.
 
-class OwnerDecorator(ABC):
-    _is_coroutine = asyncio.coroutines._is_coroutine
+    Args:
+        owned (bool, optional): Whether or not the decorator should behave as
+          a class method decorator (:py:code:`owned==True`) or as a normal
+          function decorator otherwise.
 
-    def __init__(self, *, owned=True):
+    See Also:
+        :py:class:`async_suspendable`
+        :py:class:`sync_to_async`
+    """
+
+    def __init__(self, *, owned: bool=True):
         self._owned = owned
+        self._applied = False
 
-    def __call__(self, fn):
-        self._fn = fn
-        if self._owned:
-            return self
+    @abstractmethod
+    def wrap(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """
+        Performs the actual wrapping mechanism of the decorator.
+
+        Args:
+            fn (Callable[..., Any]): The function to be decorated.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def apply(self, owner: Type, name: str):
+        """
+        Propagates the owner information to the decorator, giving it access to
+        any attributes that would otherwise have not been accessible at
+        decoration time.
+
+        Args:
+            owner (Type): A reference to the owning class.
+            name (str): The name of the decorated function in the owner's
+              namespace.
+        """
+        raise NotImplementedError()
+
+    def __call__(self, *args, **kwargs):
+        if not self._owned:
+            # must only receive one function as an argument
+            assert len(args) == 1 and not kwargs
+            return self.wrap(args[0])
+        elif self._applied:
+            # forward the call to our wrapped function
+            return self._obj(*args, **kwargs)
         else:
-            return self.wrap(self._fn)
+            if hasattr(self, '_obj'):
+                raise RuntimeError("Attempted to call an un-applied decorator"
+                    f" {self} of {self._obj} ({args=},{kwargs=})")
+            self._obj = args[0]
+            # return in intermediate state until __set_name__ is called
+            return self
 
-    def set_name_and_update(self, owner, name):
-        if hasattr(self._fn, '__set_name__'):
+    def _propagate_name(self, owner: Type, name: str):
+        # if the wrapped object was already an OwnableDecorator or another
+        # object that implements __set_name__, we need to inform it
+        if hasattr(self._obj, '__set_name__'):
             # depth-first propagation of set_name to match decorator call order
-            self._fn.__set_name__(owner, name)
-            # update self._fn in case other OwnerDecorators modified it
-            self._fn = getattr(owner, name)
+            self._obj.__set_name__(owner, name)
 
-    def __set_name__(self, owner, name):
-        self.set_name_and_update(owner, name)
-        self.set_name(owner, name)
-        wrapped_fn = self.wrap(self._fn)
-        setattr(owner, name, wrapped_fn)
+    def __set_name__(self, owner: Type, name: str):
+        self._propagate_name(owner, name)
+        self.apply(owner, name)
+        self._applied = True
+        self._obj = self.wrap(self._obj)
 
-    @abstractmethod
-    def wrap(self, fn):
-        raise NotImplementedError()
+    def __get__(self, obj, owner):
+        if obj:
+            return types.MethodType(self._obj, obj)
+        else:
+            return self
 
-    @abstractmethod
-    def set_name(self, owner, name):
-        raise NotImplementedError()
+class LazyReferenceDecorator(OwnableDecorator):
 
-class async_suspendable(OwnerDecorator):
-    def __init__(self, *, suspend_cb=None, resume_cb=None, **kwargs):
+    """
+    An :py:class:`OwnableDecorator` that accepts `str` references to owner
+    attributes at decoration time, then resolves them to actual object
+    references at apply time, i.e. when the owner's namespace is
+    complete.
+
+    Subclasses must implement the :py:func:`attributes` property that returns a
+    list or iterable of attribute names to capture from the constructor at
+    decoration time, then resolve from owner and assign to `self` at apply time.
+    """
+
+    def __init__(self, **kwargs):
+        for attr in self.attributes:
+            try:
+                setattr(self, attr, kwargs.pop(attr))
+            except KeyError:
+                # ask for forgiveness, not permission
+                pass
         super().__init__(**kwargs)
-        self._suspend_cb = suspend_cb or (lambda *a, **k: None)
-        self._resume_cb = resume_cb or (lambda *a, **k: None)
+
+    @classmethod
+    @property
+    @abstractmethod
+    def attributes(cls) -> Iterable[str]:
+        pass
+
+    def _apply_attr(self, attr, owner):
+        if isinstance(v := getattr(self, attr), str):
+            setattr(self, attr, getattr(owner, v))
+
+    def apply(self, owner, name):
+        for attr in self.attributes:
+            self._apply_attr(attr, owner)
+
+class async_suspendable(LazyReferenceDecorator):
+
+    """
+    An :py:class:`OwnableDecorator` that wraps the underlying coroutine
+    function in a :py:class:`Suspendable`. The specified callbacks and tasks
+    receive the calling arguments of the wrapped function (including a
+    reference to an instance's ``self`` variable as the first positional
+    argument); they must have a call signature that is a superset of that of
+    the wrapped function. Addionally, tasks must be callable coroutine
+    functions; it is no longer enough for the tasks to be awaitable, they
+    must instead be callables that return an awaitable.
+
+    Callbacks and tasks can directly refer to functions within the class
+    body of the owner, or can be specified as the name of the object to be
+    resolved from the owner when its namespace is complete.
+
+    Args:
+        suspend_cb (Optional[Callable[..., Any] | str], optional):
+          The suspension callback.
+        resume_cb (Optional[Callable[..., Any] | str], optional):
+          The resumption callback.
+        sleep_task (Optional[Callable[..., Coroutine] | str], optional):
+          The sleep task coroutine function.
+        wakeup_task (Optional[Callable[..., Coroutine] | str], optional):
+          The wake-up task coroutine function.
+        **kwargs: Passed to :py:func:`LazyReferenceDecorator.__init__`
+    """
+
+    _attrs = ('suspend_cb', 'resume_cb', 'sleep_task', 'wakeup_task')
+
+    def __init__(self, *,
+            suspend_cb: Optional[Callable[..., Any] | str]=None,
+            resume_cb: Optional[Callable[..., Any] | str]=None,
+            sleep_task: Optional[Callable[..., Coroutine] | str]=None,
+            wakeup_task: Optional[Callable[..., Coroutine] | str]=None,
+            **kwargs):
+        # this is kept for potential type-checking in the future
+        super().__init__(suspend_cb=suspend_cb, resume_cb=resume_cb,
+            sleep_task=sleep_task, wakeup_task=wakeup_task, **kwargs)
+
+    @classmethod
+    @property
+    def attributes(cls) -> tuple[str]:
+        return cls._attrs
 
     def wrap(self, fn):
         @wraps(fn)
         async def suspendable_coroutine(*args, **kwargs):
             return await Suspendable(fn(*args, **kwargs),
-                suspend_cb=partial(self._suspend_cb, *args, **kwargs),
-                resume_cb=partial(self._resume_cb, *args, **kwargs)
+                **self._construct_partials(*args, **kwargs)
             )
         return suspendable_coroutine
 
-    def set_name(self, owner, name):
-        if isinstance(self._suspend_cb, str):
-            self._suspend_cb = getattr(owner, self._suspend_cb)
-        if isinstance(self._resume_cb, str):
-            self._resume_cb = getattr(owner, self._resume_cb)
+    def _construct_partials(self, *args, **kwargs):
+        kw = {}
+        for attr in self.attributes:
+            if (v := getattr(self, attr, None)):
+                kw[attr] = partial(v, *args, **kwargs)
+        return kw
 
-class sync_to_async(OwnerDecorator):
-    def __init__(self, *, get_future_cb=None, done_cb=None, executor=None, **kwargs):
-        super().__init__(**kwargs)
-        self._get_future_cb = get_future_cb
-        self._done_cb = done_cb
+class sync_to_async(LazyReferenceDecorator):
+
+    """
+    An :py:class:`OwnableDecorator` that wraps the underlying synchronous
+    function in a call to `asyncio.run_in_executor`, with the added feature of
+    calling `set_future_cb` with the `~asyncio.Future` as argument, to allow
+    other parties to await or inspect it. It also calls `done_cb` when the
+    function returns. The callbacks receive the calling arguments of the wrapped
+    function (including a reference to an instance's ``self`` variable as the
+    first positional argument); they must have a call signature that is a
+    superset of that of the wrapped function
+
+    Args:
+        executor (Optional[Executor], optional):
+          The `~concurrent.futures.Executor` to use for scheduling the function.
+          If unspecified, the default `asyncio` loop executor will be used.
+        set_future_cb (Optional[Callable[[..., Future], None] | str], optional):
+          The callback to receive the `Future` object as returned from
+          `loop.run_in_executor`, before it is awaited.
+        done_cb (Optional[Callable[[..., Future], None] | str], optional):
+          The callback which is called once the result of the `Future` is ready,
+          i.e. once the wrapped function has finished execution.
+        **kwargs: Passed to :py:func:`LazyReferenceDecorator.__init__`
+    """
+
+    _attrs = ('set_future_cb', 'done_cb')
+
+    def __init__(self, *,
+            executor: Optional[Executor]=None,
+            set_future_cb: Optional[Callable[[..., Future], None] | str]=None,
+            done_cb: Optional[Callable[[..., Future], None] | str]=None,
+            **kwargs):
         self._executor = executor
+        # this is kept for potential type-checking in the future
+        super().__init__(set_future_cb=set_future_cb, done_cb=done_cb, **kwargs)
+
+    @classmethod
+    @property
+    def attributes(cls) -> tuple[str]:
+        return cls._attrs
 
     def wrap(self, fn):
         @wraps(fn)
@@ -247,22 +601,26 @@ class sync_to_async(OwnerDecorator):
             loop = asyncio.get_running_loop()
             p_func = partial(fn, *args, **kwargs)
             future = loop.run_in_executor(self._executor, p_func)
-            if self._get_future_cb:
-                self._get_future_cb(*args, **kwargs, future=future)
-            if self._done_cb:
-                done_cb = lambda f: self._done_cb(*args, **kwargs, future=f)
+            if self.set_future_cb:
+                self.set_future_cb(*args, **kwargs, future=future)
+            if self.done_cb:
+                done_cb = lambda f: self.done_cb(*args, **kwargs, future=f)
                 future.add_done_callback(done_cb)
             return await future
         return run_in_executor
 
-    def set_name(self, owner, name):
-        if isinstance(self._get_future_cb, str):
-            self._get_future_cb = getattr(owner, self._get_future_cb)
-        if isinstance(self._done_cb, str):
-            self._done_cb = getattr(owner, self._done_cb)
+async def async_enumerate(asequence: AsyncIterable[T], start: int=0) \
+        -> AsyncIterator[tuple[int, T]]:
+    """
+    Asynchronously enumerate an async iterable from a given start value
 
-async def async_enumerate(asequence, start=0):
-    """Asynchronously enumerate an async iterator from a given start value"""
+    Args:
+        asequence (AsyncIterable[T]): The async iterable to enumerate.
+        start (int, optional): The index corresponding to the first element.
+
+    Yields:
+        AsyncIterator[tuple[int, T]]: An async-equivalent enumerate() iterator.
+    """
     n = start
     async for elem in asequence:
         yield n, elem
@@ -440,9 +798,8 @@ class TopLevelSingletonConfigurable:
                 component = \
                     await owner.instantiate(component_type, config, deps | {typ})
             if not component._initialized:
-                error(f"{typ} attempted to capture uninitialized compononent"
-                    f" {component}")
-                import ipdb; ipdb.set_trace()
+                raise TypeError(f"{typ} attempted to capture uninitialized"
+                    f" compononent `{component}`")
             if not isinstance(component, requested_type):
                 raise TypeError(f"{owner} instantiated a {component_type} as an"
                     f" instance of {type(component)}, but {cls} captured an"
