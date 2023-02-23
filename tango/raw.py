@@ -353,16 +353,16 @@ class RawInput(metaclass=SerializedInputMeta, typ='raw'):
         data = self._file.read()
         unpack_len = len(data) - (len(data) % self.CHUNKSIZE)
         for s, in struct.iter_unpack(f'{self.CHUNKSIZE}s', data[:unpack_len]):
-            interaction = TransmitInstruction(data=s)
-            yield interaction
+            instruction = TransmitInstruction(data=s)
+            yield instruction
         if unpack_len < len(data):
-            interaction = TransmitInstruction(data=data[unpack_len:])
-            yield interaction
+            instruction = TransmitInstruction(data=data[unpack_len:])
+            yield instruction
 
     def dumpi(self, itr: Iterable[AbstractInstruction], /):
-        for interaction in itr:
-            if isinstance(interaction, TransmitInstruction):
-                self._file.write(interaction._data)
+        for instruction in itr:
+            if isinstance(instruction, TransmitInstruction):
+                self._file.write(instruction._data)
 
     def __repr__(self):
         return f"RawInput({self._file})"

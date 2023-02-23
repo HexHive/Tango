@@ -151,7 +151,7 @@ class WebDataLoader:
             )
         )
         self.tasks.append(asyncio.create_task(
-                get_profiler('perform_interaction').listener(period=0.1)(self.update_stats)
+                get_profiler('perform_instruction').listener(period=0.1)(self.update_stats)
             )
         )
 

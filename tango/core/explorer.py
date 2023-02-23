@@ -591,7 +591,7 @@ class BaseExplorer(AbstractExplorer,
                 break
             begin = 0 if (diff := end - (end - begin) * 2) < 0 else diff
 
-        # Phase 2: prune out dead interactions
+        # Phase 2: prune out dead instructions
         if reduced:
             lin_input = input[begin:]
         else:
@@ -643,7 +643,7 @@ class BaseExplorerContext(BaseDecorator):
     """
     This context object provides a wrapper around the input to be sent to the
     target. By wrapping the iterator method, the explorer is updated after
-    every interaction in the input. If a state change happens within an input
+    every instruction in the input. If a state change happens within an input
     sequence, the input is split, where the first part is used as the transition
     and the second part continues to build up state for any following
     transition.
@@ -680,12 +680,12 @@ class BaseExplorerContext(BaseDecorator):
     async def ___aiter___(self, input, orig):
         self._start = self._stop = 0
         idx = -1
-        for idx, interaction in enumerate(input):
+        for idx, instruction in enumerate(input):
             ValueProfiler('status')('fuzz')
             self._stop = idx + 1
-            yield interaction
+            yield instruction
             # the generator execution is suspended until next() is called so
-            # the BaseExplorer update is only called after the interaction
+            # the BaseExplorer update is only called after the instruction
             # is executed by the loader
 
             try:

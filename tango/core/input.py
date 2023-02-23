@@ -365,26 +365,26 @@ class DecoratedInput(BaseInput):
 
 class PreparedInput(BaseInput):
     """
-    A buffered input. All interactions are readily available and can be exported
+    A buffered input. All instructions are readily available and can be exported
     to a file.
     """
-    def __init__(self, *, interactions: Sequence[AbstractInstruction]=None, **kwargs):
+    def __init__(self, *, instructions: Sequence[AbstractInstruction]=None, **kwargs):
         super().__init__(**kwargs)
-        self._interactions = []
-        if interactions:
-            self._interactions.extend(interactions)
+        self._instructions = []
+        if instructions:
+            self._instructions.extend(instructions)
 
-    def append(self, interaction: AbstractInstruction):
-        self._interactions.append(interaction)
+    def append(self, instruction: AbstractInstruction):
+        self._instructions.append(instruction)
 
-    def extend(self, interactions: Sequence[AbstractInstruction]):
-        self._interactions.extend(interactions)
+    def extend(self, instructions: Sequence[AbstractInstruction]):
+        self._instructions.extend(instructions)
 
     def ___iter___(self):
-        return iter(self._interactions)
+        return iter(self._instructions)
 
     def ___len___(self):
-        return len(self._interactions)
+        return len(self._instructions)
 
 class SerializedInputMeta(ABCMeta):
     def __new__(metacls, name, bases, namespace, *, typ):
@@ -470,7 +470,7 @@ class SerializedInput(PreparedInput):
             self._write_magic()
             self._write_long_name(name)
             self._name = f'{self._name}::{name}'
-        self.dumpi(itr or self._interactions)
+        self.dumpi(itr or self._instructions)
         os.ftruncate(self._file.fileno(), self._file.tell())
         self._file.close()
 

@@ -463,9 +463,9 @@ class HavocMutator(BaseMutator):
         with self.entropy_ctx as entropy:
             i = -1
             reorder_buffer = []
-            for i, interaction in enumerate(orig()):
-                new_interaction = deepcopy(interaction)
-                seq = self._mutate(new_interaction, reorder_buffer, entropy)
+            for i, instruction in enumerate(orig()):
+                new_instruction = deepcopy(instruction)
+                seq = self._mutate(new_instruction, reorder_buffer, entropy)
                 yield from seq
             else:
                 if i == -1:
@@ -474,10 +474,10 @@ class HavocMutator(BaseMutator):
     def ___repr___(self, input, orig):
         return f'HavocMutatedInput:0x{input.id:08X} (0x{self._input_id:08X})'
 
-    def _mutate(self, interaction: AbstractInstruction, reorder_buffer: Sequence, entropy: Random) -> Sequence[AbstractInstruction]:
-        if interaction is not None:
+    def _mutate(self, instruction: AbstractInstruction, reorder_buffer: Sequence, entropy: Random) -> Sequence[AbstractInstruction]:
+        if instruction is not None:
             raise NotImplementedError("AbstractInstruction.mutate was removed!")
-            interaction.mutate(self, entropy)
+            instruction.mutate(self, entropy)
             # TODO perform random operation
             low = 0
             for _ in range(entropy.randint(1, 4)):
@@ -488,13 +488,13 @@ class HavocMutator(BaseMutator):
                 if oper == self.RandomOperation.DELETE:
                     return
                 elif oper == self.RandomOperation.PUSHORDER:
-                    reorder_buffer.append(interaction)
+                    reorder_buffer.append(instruction)
                     return
                 elif oper == self.RandomOperation.POPORDER:
                     if reorder_buffer:
                         yield reorder_buffer.pop()
                 elif oper == self.RandomOperation.REPEAT:
-                    yield from (interaction for _ in range(2))
+                    yield from (instruction for _ in range(2))
                 elif oper == self.RandomOperation.CREATE:
                     # FIXME use range(3) to enable delays, but they affect throughput
                     inter = self.RandomInteraction(entropy.choices(
@@ -528,7 +528,7 @@ class HavocMutator(BaseMutator):
                     new = DelayInstruction(delay)
                 yield new
 
-            # when interaction is None, we should flush the reorder buffer
+            # when instruction is None, we should flush the reorder buffer
             yield from entropy.sample(reorder_buffer, k=len(reorder_buffer))
             reorder_buffer.clear()
 

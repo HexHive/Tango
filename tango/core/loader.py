@@ -46,7 +46,7 @@ class BaseStateLoader(AbstractStateLoader,
 
     async def execute_input(self, input: AbstractInput):
         """
-        Executes the sequence of interactions specified by the input.
+        Executes the sequence of instructions specified by the input.
 
         :param      input:  An object derived from the AbstractInput abstract class.
         :type       input:  AbstractInput
@@ -56,11 +56,11 @@ class BaseStateLoader(AbstractStateLoader,
         """
         try:
             idx = 0
-            async for interaction in input:
+            async for instruction in input:
                 idx += 1
-                await interaction.perform(self.channel)
+                await instruction.perform(self.channel)
         except Exception as ex:
             raise LoadedException(ex, lambda: input[:idx]) from ex
         finally:
             ValueMeanProfiler("input_len", samples=100)(idx)
-            CountProfiler("total_interactions")(idx)
+            CountProfiler("total_instructions")(idx)

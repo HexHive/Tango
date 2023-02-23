@@ -1098,10 +1098,10 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
                 yield DelayInstruction(float(delay))
 
             if src == endpoints[0]:
-                interaction = TransmitInstruction(data=payload)
+                instruction = TransmitInstruction(data=payload)
             else:
-                interaction = ReceiveInstruction(data=payload)
-            yield interaction
+                instruction = ReceiveInstruction(data=payload)
+            yield instruction
 
     def dumpi(self, itr: Iterable[AbstractInstruction], /):
         if self._fmt.protocol == "tcp":
@@ -1118,21 +1118,21 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
         cur_time = time.time()
         writer = PcapWriter(self._file)
         client_sent = False
-        for interaction in ite:
-            if isinstance(interaction, DelayInstruction):
-                if interaction._time >= self.DELAY_THRESHOLD:
-                    cur_time += interaction._time
+        for instruction in ite:
+            if isinstance(instruction, DelayInstruction):
+                if instruction._time >= self.DELAY_THRESHOLD:
+                    cur_time += instruction._time
                 continue
-            elif isinstance(interaction, TransmitInstruction):
+            elif isinstance(instruction, TransmitInstruction):
                 src, dst = cli, srv
                 client_sent = True
-            elif isinstance(interaction, ReceiveInstruction):
+            elif isinstance(instruction, ReceiveInstruction):
                 if not client_sent:
                     continue
                 src, dst = srv, cli
             p = Ether(src='aa:aa:aa:aa:aa:aa', dst='aa:aa:aa:aa:aa:aa') / IP() / \
                     layer(**{self.LAYER_SOURCE[layer]: src, self.LAYER_DESTINATION[layer]: dst}) / \
-                        Raw(load=interaction._data)
+                        Raw(load=instruction._data)
             p.time = cur_time
             writer.write(p)
 

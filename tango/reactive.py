@@ -44,9 +44,9 @@ class ReactiveHavocMutator(BaseMutator):
         with self.entropy_ctx as entropy:
             i = -1
             reorder_buffer = []
-            for i, interaction in enumerate(orig()):
-                new_interaction = deepcopy(interaction)
-                seq = self._mutate(new_interaction, reorder_buffer, entropy)
+            for i, instruction in enumerate(orig()):
+                new_instruction = deepcopy(instruction)
+                seq = self._mutate(new_instruction, reorder_buffer, entropy)
                 yield from seq
             if i == -1:
                 yield from self._mutate(None, reorder_buffer, entropy)
@@ -57,8 +57,8 @@ class ReactiveHavocMutator(BaseMutator):
 
     def ___iter___(self, input, orig):
         self._actions_taken = False
-        for interaction in self._iter_helper(orig):
-            yield interaction
+        for instruction in self._iter_helper(orig):
+            yield instruction
             self._actions_taken = False
 
     def ___repr___(self, input, orig):
@@ -72,8 +72,8 @@ class ReactiveHavocMutator(BaseMutator):
         self._actions_taken = True
         return data
 
-    def _mutate(self, interaction: AbstractInstruction, reorder_buffer: Sequence, entropy: Random) -> Sequence[AbstractInstruction]:
-        if interaction is not None:
+    def _mutate(self, instruction: AbstractInstruction, reorder_buffer: Sequence, entropy: Random) -> Sequence[AbstractInstruction]:
+        if instruction is not None:
             low = 0
             for _ in range(entropy.randint(3, 7)):
                 if low > 5:
@@ -83,24 +83,24 @@ class ReactiveHavocMutator(BaseMutator):
                 if oper == self.RandomOperation.DELETE:
                     return
                 elif oper == self.RandomOperation.PUSHORDER:
-                    reorder_buffer.append(interaction)
+                    reorder_buffer.append(instruction)
                     return
                 elif oper == self.RandomOperation.POPORDER:
-                    yield interaction
+                    yield instruction
                     if reorder_buffer:
                         yield from self._mutate(reorder_buffer.pop(), reorder_buffer, entropy)
                 elif oper == self.RandomOperation.REPEAT:
-                    yield from (interaction for _ in range(2))
+                    yield from (instruction for _ in range(2))
                 elif oper == self.RandomOperation.CREATE:
                     buffer = entropy.randbytes(entropy.randint(1, 256))
                     yield TransmitInstruction(buffer)
                 elif oper == self.RandomOperation.MUTATE:
-                    if isinstance(interaction, TransmitInstruction):
-                        interaction._data = self._apply_actions(interaction._data, entropy)
+                    if isinstance(instruction, TransmitInstruction):
+                        instruction._data = self._apply_actions(instruction._data, entropy)
                     else:
-                        # no mutations on other interaction types for now
+                        # no mutations on other instruction types for now
                         pass
-                    yield interaction
+                    yield instruction
         else:
             buffer = entropy.randbytes(entropy.randint(1, 256))
             yield TransmitInstruction(buffer)

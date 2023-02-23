@@ -80,8 +80,8 @@ class AbstractInstruction(ABC):
     def __init_subclass__(cls, *args, **kwargs):
         super().__init_subclass__(*args, **kwargs)
         if (target := cls.__dict__.get('perform')):
-            wrapped = EventProfiler('perform_interaction')(
-                FrequencyProfiler('interactions', period=1)(target))
+            wrapped = EventProfiler('perform_instruction')(
+                FrequencyProfiler('instructions', period=1)(target))
             setattr(cls, 'perform', wrapped)
 
     @abstractmethod
