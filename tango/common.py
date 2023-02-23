@@ -709,7 +709,7 @@ class ComponentType(Enum, metaclass=ComponentTypeMeta):
     loader = auto()
     tracker = auto()
     explorer = auto()
-    input_generator = auto()
+    generator = auto()
     strategy = auto()
     session = auto()
 

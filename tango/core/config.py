@@ -116,9 +116,9 @@ class FuzzerConfig(ComponentOwner):
         return await self.instantiate(ComponentType.explorer)
 
     @async_cached_property
-    async def input_generator(self) -> AbstractInputGenerator:
+    async def generator(self) -> AbstractInputGenerator:
         fmt = (await self.channel_factory).fmt
-        return await self.instantiate(ComponentType.input_generator, fmt=fmt)
+        return await self.instantiate(ComponentType.generator, fmt=fmt)
 
     @async_cached_property
     async def strategy(self) -> AbstractStrategy:

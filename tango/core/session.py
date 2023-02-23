@@ -40,12 +40,12 @@ def set_current_session(session: FuzzerSession):
 
 class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
         capture_components={ComponentType.explorer,
-            ComponentType.input_generator, ComponentType.strategy}):
+            ComponentType.generator, ComponentType.strategy}):
     """
     This class initializes and tracks the global state of the fuzzer.
     """
     def __init__(self, *, explorer: BaseExplorer,
-            input_generator: BaseInputGenerator, strategy: BaseStrategy):
+            generator: BaseInputGenerator, strategy: BaseStrategy):
         """
         FuzzerSession initializer.
         Takes the fuzzer configuration, initial seeds, and other parameters as
@@ -53,7 +53,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
         Initializes the target and establishes a communication channel.
         """
         self._explorer = explorer
-        self._generator = input_generator
+        self._generator = generator
         self._strategy = strategy
 
     async def initialize(self):

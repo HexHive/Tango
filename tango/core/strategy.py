@@ -20,9 +20,9 @@ __all__ = [
 
 class AbstractStrategy(AsyncComponent, ABC,
         component_type=ComponentType.strategy,
-        capture_components={ComponentType.input_generator}):
-    def __init__(self, *, input_generator: AbstractInputGenerator):
-        self._generator = input_generator
+        capture_components={ComponentType.generator}):
+    def __init__(self, *, generator: AbstractInputGenerator):
+        self._generator = generator
 
     @abstractmethod
     def update_state(self, state: AbstractState, *, input: AbstractInput, exc: Exception=None, **kwargs):
@@ -142,11 +142,11 @@ class BaseStrategy(AbstractStrategy,
 class SeedableStrategy(BaseStrategy,
         capture_paths=['strategy.minimize_seeds', 'strategy.validate_seeds']):
     def __init__(self, *,
-            input_generator: BaseInputGenerator, # must have attr `seeds`
+            generator: BaseInputGenerator, # must have attr `seeds`
             minimize_seeds: bool=False,
             validate_seeds: bool=False,
             **kwargs):
-        super().__init__(input_generator=input_generator, **kwargs)
+        super().__init__(generator=generator, **kwargs)
         self._minimize_seeds = minimize_seeds
         self._validate_seeds = validate_seeds
 
