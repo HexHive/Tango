@@ -1,8 +1,8 @@
 # one of: edge, bb, func
 export COVERAGE=bb
 
-export CC=clang
-export CXX=clang++
+export CC=clang-13
+export CXX=clang++-13
 
 CFLAGS := -fsanitize-coverage=$(COVERAGE),trace-pc-guard
 CFLAGS += -O3 -fPIC

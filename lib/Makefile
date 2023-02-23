@@ -1,4 +1,4 @@
-CC=clang
+CC=clang-13
 CFLAGS := -fsanitize-coverage=$(COVERAGE),trace-pc-guard
 ifdef USE_ASAN
 	CFLAGS += -fsanitize=address
