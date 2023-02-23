@@ -400,7 +400,7 @@ class OwnableDecorator(ABC):
         self._applied = False
 
     @abstractmethod
-    def wrap(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+    def wrap(self, fn: Callable[P, Any]) -> Callable[P, Any]:
         """
         Performs the actual wrapping mechanism of the decorator.
 
@@ -626,9 +626,21 @@ async def async_enumerate(asequence: AsyncIterable[T], start: int=0) \
         yield n, elem
         n += 1
 
-def timeit(func):
+def timeit(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+    """
+    A simple performance timing wrapper for coroutine functions. The wrapped
+    coroutine function measures the time it takes for the underlying coroutine
+    to finish execution, then prints out the time it took on the `root` logger,
+    with a logging.INFO level.
+
+    Args:
+        func (Callable[P, Awaitable[R]]): The coroutine function to wrap.
+
+    Returns:
+        Callable[P, Awaitable[R]]: The wrapped coroutine function.
+    """
     @wraps(func)
-    async def wrapper(*args, **kwargs):
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         start_time = time.perf_counter()
         try:
             return await func(*args, **kwargs)
