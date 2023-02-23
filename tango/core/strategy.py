@@ -12,6 +12,7 @@ from tango.exceptions import LoadedException, StateNotReproducibleException
 from abc import ABC, abstractmethod
 from random import Random
 from typing import Optional
+import asyncio
 
 __all__ = [
     'AbstractStrategy', 'BaseStrategy', 'SeedableStrategy',
