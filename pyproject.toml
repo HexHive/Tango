@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tango"
+authors = [
+    {name = "Ahmad Hazimeh", email = "ahmad@hazimeh.dev"},
+]
+description = "A state-aware fuzzing framework."
+requires-python = ">=3.11"
+dependencies = [
+    'networkx==2.5.1',
+    'websockets==10.0',
+    'pydot==1.4.2',
+    'async-property==0.2.1',
+    'ipdb==0.13.9',
+    'aioconsole==0.5.1',
+    'aiohttp==3.8.4',
+    'asynctempfile==0.5.0',
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+network = [
+    'scapy==2.4.5',
+    'pyroute2==0.7.3',
+    'pyelftools==0.29',
+    'pyroute2==0.7.3',
+    'lru-dict==1.1.8',
+]
+coverage = [
+    'posix-ipc==1.0.5',
+    'numpy==1.23.4',
+]
+
+[tool.setuptools]
+packages = ["tango"]
+
+[tool.setuptools.dynamic]
+version = {attr = "tango.VERSION"}
