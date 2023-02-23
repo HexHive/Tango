@@ -1,4 +1,4 @@
-Only seems to work with -DSKIP_COUNTS in pytangofuzz.c and COVERAGE=func.
+Only seems to work with -DSKIP_COUNTS in coverage.c and COVERAGE=func.
 
 This is most likely due to the async event loop they implement: the main program
 schedules tasks and polls them for completion in a loop. While waiting for a

@@ -7,7 +7,7 @@ CFLAGS += -O3 -g -fPIC
 
 .PHONY: all clean
 
-all: libtangofuzz.o pytangofuzz.so
+all: libtangofuzz.o coverage.so
 
 clean:
 	rm -f *.o *.so
@@ -15,6 +15,6 @@ clean:
 libtangofuzz.o: libtangofuzz.c clean
 
 # -march=skylake-avx512 -mprefer-vector-width=512
-pytangofuzz.so: pytangofuzz.c clean
+coverage.so: coverage.c clean
 	$(CC) -O3 \
 		-fPIC -fPIE -shared $< -o $@

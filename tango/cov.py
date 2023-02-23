@@ -24,6 +24,7 @@ from ctypes       import (POINTER as P,
                           byref)
 import numpy as np
 import sys
+import os
 import mmap
 import posix_ipc
 import numpy as np
@@ -342,6 +343,8 @@ class CoverageStateTracker(LoaderDependentTracker,
 
         if native_lib:
             self._bind_lib = CDLL(native_lib)
+        elif (lib := os.getenv("TANGO_LIBDIR")):
+            self._bind_lib = CDLL(os.path.join(lib, "coverage.so"))
         else:
             self._bind_lib = None
 

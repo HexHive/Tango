@@ -20,8 +20,7 @@
 		"type": "reactive"
 	},
 	"tracker": {
-		"type": "coverage",
-		"native_lib": "/home/cysto/hexhive/repo/tangofuzz/lib/pytangofuzz.so"
+		"type": "coverage"
 	},
 	"strategy": {
 		"type": "uniform"
