@@ -922,6 +922,10 @@ class AsyncComponent(Component):
         if (typ := cls._component_type) in deps:
             raise RuntimeError(f"{typ.name} has a cyclical dependency!")
 
+        if (new_component := owner.get(cls._component_type)):
+            assert new_component._initialized
+            return new_component
+
         for path in cls._capture_paths:
             for kw, value in cls.find_path(path, config):
                 # WARN might overwrite values in case of globbing
