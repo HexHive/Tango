@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from tango.core.input import AbstractInput
-from tango.common import Configurable, ComponentType
+from tango.common import AsyncComponent, ComponentType
 
 from abc          import ABC, abstractmethod
 
@@ -90,7 +90,7 @@ class BaseState(AbstractState):
     def predecessor_transition(self, transition: Transition):
         self._pred = transition
 
-class AbstractStateTracker(Configurable, ABC,
+class AbstractStateTracker(AsyncComponent, ABC,
         component_type=ComponentType.tracker):
     @property
     @abstractmethod

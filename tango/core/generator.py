@@ -3,7 +3,7 @@ from tango.core.profiler import FrequencyProfiler
 from tango.core.tracker  import AbstractState
 from tango.core.dataio   import FormatDescriptor
 from tango.core.input import AbstractInput, Serializer, PreparedInput
-from tango.common import Configurable, ComponentType
+from tango.common import AsyncComponent, ComponentType
 
 from abc import ABC, abstractmethod
 from random import Random
@@ -32,8 +32,8 @@ def slugify(value, allow_unicode=False):
     value = re.sub(r'[^\w\s\.-]', '', value.lower())
     return re.sub(r'[-\s]+', '-', value).strip('-_')
 
-class AbstractInputGenerator(Configurable, ABC,
-        component_type=ComponentType.input_generator):
+class AbstractInputGenerator(AsyncComponent, ABC,
+        component_type=ComponentType.generator):
     def __init_subclass__(cls, *args, **kwargs):
         super().__init_subclass__(*args, **kwargs)
         if (target := cls.__dict__.get('generate')):

@@ -8,7 +8,7 @@ from tango.core.generator import AbstractInputGenerator
 from tango.core.strategy import AbstractStrategy
 from tango.core.session import FuzzerSession
 from tango.common       import (async_cached_property, cached_property,
-    Configurable, ComponentOwner, ComponentType, ComponentKey)
+    AsyncComponent, ComponentOwner, ComponentType, ComponentKey)
 
 from random import Random
 from pathlib import Path
@@ -45,7 +45,7 @@ class FuzzerConfig(ComponentOwner):
         self.setup_workdir()
 
     async def instantiate(self, component_type: ComponentKey, config=None,
-            *args, **kwargs) -> Configurable:
+            *args, **kwargs) -> AsyncComponent:
         factory = None
         component_type = ComponentType(component_type)
         if config is not None:
@@ -97,7 +97,7 @@ class FuzzerConfig(ComponentOwner):
         seed = self._config["fuzzer"].get("entropy")
         return Random(seed)
 
-    ### Configurable components ###
+    ### AsyncComponent components ###
 
     @async_cached_property
     async def channel_factory(self) -> AbstractChannelFactory:

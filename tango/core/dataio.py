@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tango.common      import async_property, Configurable, ComponentType
+from tango.common      import async_property, AsyncComponent, ComponentType
 from tango.core.profiler import FrequencyProfiler, EventProfiler, CountProfiler
 
 from abc         import ABC, abstractmethod
@@ -62,7 +62,7 @@ class TimescaleDescriptor:
         setattr(obj, '_timescale', fval)
 
 @dataclass
-class AbstractChannelFactory(Configurable, ABC,
+class AbstractChannelFactory(AsyncComponent, ABC,
         component_type=ComponentType.channel_factory,
         capture_paths=['fuzzer.timescale']):
     """

@@ -1,7 +1,7 @@
 from . import info, debug
 
 from tango.core import (FuzzerSession, get_profiler, get_all_profilers)
-from tango.common import Configurable, get_session_task_group
+from tango.common import AsyncComponent, get_session_task_group
 
 from collections import defaultdict
 from aiohttp import web, web_urldispatcher
@@ -26,7 +26,7 @@ __all__ = ['WebRenderer']
 
 WWW_PATH = os.path.join(os.path.dirname(__file__), 'www')
 
-class WebRenderer(Configurable, component_type='webui',
+class WebRenderer(AsyncComponent, component_type='webui',
         capture_paths=['webui.*'], capture_components={'session'}):
     def __init__(self, session: FuzzerSession, *,
             http_host: str='localhost', http_port: int=8080,

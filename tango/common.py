@@ -21,8 +21,8 @@ __all__ = [
     'GLOBAL_ASYNC_EXECUTOR', 'async_property', 'cached_property',
     'async_cached_property', 'async_enumerate', 'async_suspendable',
     'sync_to_async', 'timeit', 'Suspendable', 'ComponentType', 'ComponentOwner',
-    'ComponentKey', 'Configurable', 'create_session_context',
-    'get_session_context', 'get_session_task_group'
+    'ComponentKey', 'Component', 'AsyncComponent',
+    'create_session_context', 'get_session_context', 'get_session_task_group'
 ]
 
 T = TypeVar("T")
@@ -652,6 +652,7 @@ def timeit(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
 ###
 
 class ComponentTypeMeta(EnumType):
+    _fake_component_cache = {}
     class FakeComponentType:
         def __init__(self, value):
             self._value = value
@@ -673,9 +674,37 @@ class ComponentTypeMeta(EnumType):
             try:
                 return super().__getitem__(value)
             except KeyError:
-                return cls.FakeComponentType(value)
+                default = cls.FakeComponentType(value)
+                cached = cls._fake_component_cache.setdefault(value, default)
+                if cached is default:
+                    warning(f"Using non-standard component type `{value}`")
+                return cached
 
 class ComponentType(Enum, metaclass=ComponentTypeMeta):
+
+    """
+    An Enum of core configurable components, used for component discovery and
+    instantiation. It also supports resolving string literals to instances of
+    :py:class:`ComponentType` by calling `ComponentType(str_lit)`. String
+    literals should match the `name` attribute of instances of
+    py:class:`ComponentType`. Otherwise, a string-based `ComponentType`-like
+    object is returned, and a warning is logged on the `root` logger.
+
+    Attributes:
+        channel_factory
+        explorer
+        generator
+        loader
+        session
+        strategy
+        tracker
+
+    See Also:
+        :py:class:`ComponentOwner`
+        :py:class:`Component`
+        :py:class:`AsyncComponent`
+    """
+
     channel_factory = auto()
     loader = auto()
     tracker = auto()
@@ -684,49 +713,148 @@ class ComponentType(Enum, metaclass=ComponentTypeMeta):
     strategy = auto()
     session = auto()
 
-cls_hierarchy = lambda: defaultdict(cls_hierarchy)
-ComponentRegistry: Mapping[ComponentKey, Mapping] = cls_hierarchy()
 ComponentKey = ComponentType | str
+"""TypeAlias:
+
+This type alias represents the data type that can be used for specifying
+component types, for registration or for capture.
+"""
+
 ComponentCapture = Optional[set[ComponentKey]]
+"""TypeAlias:
+
+This type alias represents the data type that component capture parameters must
+have in the :py:func:`AsyncComponent.__init_subclass__` function.
+"""
+
 PathCapture = Optional[Sequence[str]]
+"""TypeAlias:
 
-# TODO make it return sets of compatible configurations instead of finding the
-# first matching one
-def match_component(
-        component_type: ComponentKey, config: dict) -> Configurable:
-    def match_component_dfs(reg) -> Optional[Configurable]:
-        for base, classes in reg.items():
-            match = match_component_dfs(classes)
-            if match is not None:
-                return match
-            if base.match_config(config):
-                return base
-    match = match_component_dfs(ComponentRegistry[component_type])
-    if match is None:
-        raise LookupError(f"No valid component for `{component_type.name}`")
-    return match
+This type alias represents the data type that path capture parameters must have
+in the :py:func:`AsyncComponent.__init_subclass__` function.
+"""
 
-class ComponentOwner(ABC):
+recursive_dict = lambda: defaultdict(recursive_dict)
+ComponentRegistry: Mapping[ComponentKey, Mapping] = recursive_dict()
+
+
+class ComponentOwner(dict, ABC):
+
+    """
+    A component owner is an object that holds singleton instances of main fuzzer
+    components for use throughout the lifetime of a session. It provides the
+    configuration dict, which components can inspect to match against the chosen
+    parameters. Subclasses of :py:class:`ComponentOwner` can provide the config
+    dict through other means or override :py:func:`match_component` to implement
+    more complex matching criteria (e.g. compatible type annotations).
+
+    For successful component discovery, the configuration dict should contain
+    keys and values that match and satisfy those defined by
+    :py:func:`Component.match_config`. Furthermore, components can specify
+    configuration parameters through captured paths within the dict. A path is a
+    dot-separated sequence of nested dict keys (e.g. 'channel.tcp.port' ===
+    config['channel']['tcp']['port']). A configuration dict must thus provide
+    these values for proper instantiation of the matched component, unless the
+    component defines defaults otherwise.
+
+    Args:
+        config (dict): A dict (or mapping) of keys to values or other
+            sub-dicts of configuration.
+
+    See Also:
+        :py:class:`tango.fuzzer.FuzzerConfig`
+    """
+
     def __init__(self, config: dict):
-        self.singletons = {}
-        self._config = config
+        self._config = recursive_dict()
+        self._config.update(config)
 
     @property
-    def component_classes(self):
+    def component_classes(self) -> dict[ComponentKey, Component]:
+        """dict:
+        A lazy-evaluated dict mapping :py:obj:`ComponentKey` to
+        :py:class:`Component` classes, to be used as instance factories.
+        Lazy evaluation is used since some components may be registered after
+        the :py:class:`ComponentOwner` instance had been created (e.g. late
+        import), in which case a greedy evaluation would miss the newly-added
+        components.
+        """
         return {
-            component_type: match_component(component_type, self._config)
+            component_type: self.match_component(component_type, self._config)
             for component_type in ComponentRegistry
         }
 
     async def instantiate(self, component_type: ComponentKey,
-            config=None, *args, **kwargs) -> TopLevelSingletonConfigurable:
+            config: Optional[dict]=None, *args, **kwargs) -> AsyncComponent:
+        """
+        Calls the :py:func:`Component.instantiate` couroutine, supplying `self`
+        as the owner, and `self._config` as the configuration dict if left
+        unspecified. Passing a reference to `self` allows components to query
+        the owner for dependencies. For example, if `strategy` and `session`
+        both depend on `generator`, then `generator` must be instantiated while
+        one of its dependents is being instantiated. Meanwhile, when the other
+        dependent queries the owner, it finds an existing instance of
+        `generator`, ready to be captured.
+
+        Args:
+            component_type (ComponentKey): The component type to instantiate.
+            config (Optional[dict], optional): The configuration dict.
+            *args: Positional arguments to pass to the component constructor.
+            **kwargs: Keyword argumentsto pass to the component constructor,
+              in addition to those from the captured paths.
+
+        Returns:
+            AsyncComponent: A singleton instance of the requested component.
+        """
         config = config or self._config
         component_type = ComponentType(component_type)
         component = await self.component_classes[component_type].instantiate( \
                         self, config, *args, **kwargs)
         return component
 
-class TopLevelSingletonConfigurable:
+    @staticmethod
+    def match_component(
+            component_type: ComponentKey, config: dict) -> Component:
+        """
+        Todo:
+            * Make it return sets of compatible configurations instead of
+              finding the first matching one
+        """
+        def match_component_dfs(reg) -> Optional[Component]:
+            for base, classes in reg.items():
+                match = match_component_dfs(classes)
+                if match is not None:
+                    return match
+                if base.match_config(config):
+                    return base
+        match = match_component_dfs(ComponentRegistry[component_type])
+        if match is None:
+            raise LookupError(f"No valid component for `{component_type.name}`")
+        return match
+
+class Component:
+    """
+    Todo:
+        * Implement a non-async version of configurable components
+    """
+
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        """
+        Inspects the configuration dict and returns whether or not the requested
+        parameters match the current component. If matched, the component class
+        is added as a possible candidate for instantiation of its component
+        type.
+
+        Args:
+            config (dict): The configuration dict.
+
+        Returns:
+            bool: Whether or not the configuration matches the component.
+        """
+        return True
+
+class AsyncComponent(Component):
     _capture_components: AnnotatedComponentCapture
     _capture_paths: PathCapture
 
@@ -737,9 +865,6 @@ class TopLevelSingletonConfigurable:
         super().__init_subclass__(*args, **kwargs)
         if component_type:
             component_type = ComponentType(component_type)
-            if isinstance(component_type, str):
-                warning(f'Using non-standard component type'
-                    f' {component_type} for {cls}')
 
         base_type = getattr(cls, '_component_type', None)
         component_type = component_type or base_type
@@ -773,8 +898,8 @@ class TopLevelSingletonConfigurable:
             capture_paths = list(capture_paths)
         cls._capture_paths = capture_paths or list()
         for base in mro:
-            if issubclass(base, TopLevelSingletonConfigurable) and \
-                    base is not TopLevelSingletonConfigurable:
+            if issubclass(base, AsyncComponent) and \
+                    base is not AsyncComponent:
                 if not inspect.isabstract(base):
                     reg = reg[base]
                 # FIXME may be useful to keep track of where captures were
@@ -786,17 +911,13 @@ class TopLevelSingletonConfigurable:
             # finally, we add ourselves to the leaf of the defaultdict
             reg = reg[cls]
 
-    @classmethod
-    def match_config(cls, config: dict) -> bool:
-        return True
-
     async def initialize(self):
         info(f'Initializing {self}')
 
     @classmethod
     async def instantiate(cls, owner: ComponentOwner, config: dict,
             deps: set=None, initialize: bool=True, *args, **kwargs) \
-            -> TopLevelSingletonConfigurable:
+            -> AsyncComponent:
         deps = deps if deps is not None else set()
         if (typ := cls._component_type) in deps:
             raise RuntimeError(f"{typ.name} has a cyclical dependency!")
@@ -806,7 +927,7 @@ class TopLevelSingletonConfigurable:
                 # WARN might overwrite values in case of globbing
                 kwargs[kw] = value
         for component_type, requested_type in cls._capture_components:
-            if (component := owner.singletons.get(component_type)) is None:
+            if (component := owner.get(component_type)) is None:
                 component = \
                     await owner.instantiate(component_type, config, deps | {typ})
             if not component._initialized:
@@ -820,7 +941,7 @@ class TopLevelSingletonConfigurable:
 
         new_component = cls(*args, **kwargs)
         new_component._initialized = False
-        owner.singletons[typ] = new_component
+        owner[typ] = new_component
         if initialize:
             await new_component.initialize()
             new_component._initialized = True
@@ -846,6 +967,5 @@ class TopLevelSingletonConfigurable:
         parts = path.split('.')
         yield from find_path_rec(parts, config, expand_glob=expand_globs)
 
-Configurable = TopLevelSingletonConfigurable
-AnnotatedComponentCapture: TypeAlias = set[tuple[
-        ComponentKey, Optional[Type[Configurable]]]]
+AnnotatedComponentCapture = set[tuple[
+        ComponentKey, Optional[Type[AsyncComponent]]]]

@@ -10,7 +10,7 @@ from tango.core.types import LoadableTarget
 from tango.core.explorer import BaseExplorer
 from tango.core.generator import BaseInputGenerator
 from tango.core.strategy import BaseStrategy
-from tango.common import (Configurable, ComponentType, Suspendable,
+from tango.common import (AsyncComponent, ComponentType, Suspendable,
     get_session_context)
 from tango.exceptions import (StabilityException,
                           StatePrecisionException,
@@ -38,7 +38,7 @@ def get_current_session():
 def set_current_session(session: FuzzerSession):
     get_session_context().run(current_session.set, session)
 
-class FuzzerSession(Configurable, component_type=ComponentType.session,
+class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
         capture_components={ComponentType.explorer,
             ComponentType.input_generator, ComponentType.strategy}):
     """

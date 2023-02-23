@@ -6,7 +6,7 @@ from tango.core.types import LoadableTarget
 from tango.core.explorer import BaseExplorer
 from tango.core.generator import AbstractInputGenerator, BaseInputGenerator
 from tango.core.profiler import LambdaProfiler, EventProfiler
-from tango.common import Configurable, ComponentType
+from tango.common import AsyncComponent, ComponentType
 from tango.exceptions import LoadedException, StateNotReproducibleException
 
 from abc import ABC, abstractmethod
@@ -18,7 +18,7 @@ __all__ = [
     'RolloverCounterStrategy', 'RandomStrategy', 'UniformStrategy'
 ]
 
-class AbstractStrategy(Configurable, ABC,
+class AbstractStrategy(AsyncComponent, ABC,
         component_type=ComponentType.strategy,
         capture_components={ComponentType.input_generator}):
     def __init__(self, *, input_generator: AbstractInputGenerator):

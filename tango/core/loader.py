@@ -4,7 +4,7 @@ from tango.core.profiler import (FrequencyProfiler, EventProfiler,
                        ValueMeanProfiler, CountProfiler)
 from tango.core.dataio    import AbstractChannelFactory, AbstractChannel
 from tango.core.types import Transition
-from tango.common import Configurable, ComponentType
+from tango.common import AsyncComponent, ComponentType
 from tango.exceptions import LoadedException
 
 from abc          import ABC, abstractmethod
@@ -12,7 +12,7 @@ from typing       import Union, AsyncGenerator
 
 __all__ = ['AbstractStateLoader', 'BaseStateLoader']
 
-class AbstractStateLoader(Configurable, ABC,
+class AbstractStateLoader(AsyncComponent, ABC,
         component_type=ComponentType.loader):
     """
     The state loader maintains a running target and provides the capability of

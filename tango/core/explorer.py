@@ -13,7 +13,7 @@ from tango.core.profiler import (ValueProfiler, FrequencyProfiler,
 from tango.core.types import (Path, PathGenerator, LoadableTarget,
     ExplorerStateUpdateCallback, ExplorerTransitionUpdateCallback,
     ExplorerStateReloadCallback)
-from tango.common import Configurable, ComponentType
+from tango.common import AsyncComponent, ComponentType
 
 from abc import ABC, abstractmethod
 from typing import Callable
@@ -269,7 +269,7 @@ class StateGraph:
             for input in data['transition']:
                 yield src, dst, input
 
-class AbstractExplorer(Configurable, ABC,
+class AbstractExplorer(AsyncComponent, ABC,
         component_type=ComponentType.explorer):
     def __init__(self):
         self._state_reload_cb = self._nop_cb
