@@ -8,7 +8,7 @@ authors = [
     {name = "Ahmad Hazimeh", email = "ahmad@hazimeh.dev"},
 ]
 description = "A state-aware fuzzing framework."
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     'networkx==2.5.1',
     'websockets==10.0',
