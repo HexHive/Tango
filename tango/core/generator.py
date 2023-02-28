@@ -1,8 +1,8 @@
 from . import warning
 from tango.core.profiler import FrequencyProfiler
-from tango.core.tracker  import AbstractState
+from tango.core.tracker  import AbstractState, IUpdateCallback
 from tango.core.dataio   import FormatDescriptor
-from tango.core.input import AbstractInput, Serializer, PreparedInput
+from tango.core.input import AbstractInput, Serializer, EmptyInput
 from tango.common import AsyncComponent, ComponentType
 
 from abc import ABC, abstractmethod
@@ -32,20 +32,12 @@ def slugify(value, allow_unicode=False):
     value = re.sub(r'[^\w\s\.-]', '', value.lower())
     return re.sub(r'[-\s]+', '-', value).strip('-_')
 
-class AbstractInputGenerator(AsyncComponent, ABC,
+class AbstractInputGenerator(AsyncComponent, IUpdateCallback, ABC,
         component_type=ComponentType.generator):
     def __init_subclass__(cls, *args, **kwargs):
         super().__init_subclass__(*args, **kwargs)
         if (target := cls.__dict__.get('generate')):
             setattr(cls, 'generate', FrequencyProfiler('gens')(target))
-
-    @abstractmethod
-    def update_state(self, state: AbstractState, *, input: AbstractInput, exc: Exception=None, **kwargs):
-        pass
-
-    @abstractmethod
-    def update_transition(self, source: AbstractState, destination: AbstractState, input: AbstractInput, *, state_changed: bool, exc: Exception=None, **kwargs):
-        pass
 
     @abstractmethod
     def generate(self, state: AbstractState, entropy: Random) -> AbstractInput:
@@ -58,8 +50,7 @@ class BaseInputGenerator(AbstractInputGenerator,
         self._seed_dir = seeds
         self._work_dir = work_dir
 
-        # FIXME maybe add an EmptyInput class
-        self._startup = PreparedInput()
+        self._startup = EmptyInput()
         self._seeds = []
 
         self._fmt = fmt
@@ -91,8 +82,7 @@ class BaseInputGenerator(AbstractInputGenerator,
         if prefix_path:
             prefix = reduce(operator.add, (x[2] for x in prefix_path))
         else:
-            # FIXME use EmptyInput; + would then be a NOP
-            prefix = PreparedInput()
+            prefix = EmptyInput()
         full_input = self.startup_input + prefix + input
         long_name = f'[{label}] {repr(input)}'
 
@@ -115,8 +105,11 @@ class BaseInputGenerator(AbstractInputGenerator,
     def startup_input(self) -> AbstractInput:
         return self._startup
 
-    def update_state(self, state: AbstractState, input: AbstractInput, *, exc: Exception=None, **kwargs):
+    def update_state(self, state: AbstractState, /, *, input: AbstractInput,
+            exc: Exception=None, **kwargs):
         pass
 
-    def update_transition(self, source: AbstractState, destination: AbstractState, input: AbstractInput, *, state_changed: bool, exc: Exception=None, **kwargs):
+    def update_transition(self, source: AbstractState,
+            destination: AbstractState, input: AbstractInput, /, *,
+            state_changed: bool, exc: Exception=None, **kwargs):
         pass

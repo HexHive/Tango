@@ -141,9 +141,18 @@ class WebDataLoader:
         self._hitcounter = hitcounter
         self._fade = last_update_fade_out
 
+        self._node_added = {}
+        self._node_visited = {}
+        self._edge_added = {}
+        self._edge_visited = {}
+
         self.tasks = []
         self.tasks.append(asyncio.create_task(
-                get_profiler('update_state').listener(period=0.1)(self.update_graph)
+                get_profiler('update_state').listener(period=0.1)(self.track_node)
+            )
+        )
+        self.tasks.append(asyncio.create_task(
+                get_profiler('update_transition').listener(period=0.1)(self.track_edge)
             )
         )
         self.tasks.append(asyncio.create_task(
@@ -174,14 +183,31 @@ class WebDataLoader:
     def fade_coeff(cls, fade, value):
         return max(0, (fade - value) / fade)
 
-    async def update_graph(self, *args, ret, **kwargs):
+    async def track_node(self, *args, ret, **kwargs):
+        state, new = ret
+        now = datetime.datetime.now()
+        if new:
+            self._node_added[state] = now
+        self._node_visited[state] = now
+        await self.update_graph()
+
+    async def track_edge(self, *args, ret, **kwargs):
+        src, dst, new = ret
+        now = datetime.datetime.now()
+        if new:
+            self._edge_added[(src, dst)] = now
+        self._edge_visited[(src, dst)] = now
+        await self.update_graph()
+
+    async def update_graph(self, *args, **kwargs):
         # update graph representation to be sent over WS
         # * color graph nodes and edges based on last_visit and added
         # * dump a DOT representation of the graph
         # * send over WS
 
         # first we get a copy so that we can re-assign node and edge attributes
-        G = self._session._explorer._sg._graph.copy()
+        H = self._session._explorer.tracker.state_graph
+        G = H.copy(fresh=True)
 
         to_delete = []
         for node, data in G.nodes(data=True):
@@ -189,7 +215,7 @@ class WebDataLoader:
                     and len(G.out_edges(node)) == 0:
                 to_delete.append(node)
                 continue
-            age = (now() - data.get('last_visit', self.NA_DATE)).total_seconds()
+            age = (now() - self._node_visited.get(node, self.NA_DATE)).total_seconds()
             coeff = self.fade_coeff(self._fade, age)
             lerp = self.lerp_color(
                 self.DEFAULT_NODE_COLOR,
@@ -197,14 +223,13 @@ class WebDataLoader:
                 coeff)
             fillcolor = self.format_color(*lerp)
 
-            age = (now() - data.get('added', self.NA_DATE)).total_seconds()
+            age = (now() - self._node_added.get(node, self.NA_DATE)).total_seconds()
             coeff = self.fade_coeff(self._fade, age)
             penwidth = self.lerp(
                 self.DEFAULT_NODE_PEN_WIDTH,
                 self.NEW_NODE_PEN_WIDTH,
                 coeff)
 
-            state = data['node_obj']
             data.clear()
             data['fillcolor'] = fillcolor
             data['penwidth'] = penwidth
@@ -213,16 +238,16 @@ class WebDataLoader:
                 data['penwidth'] = self.NEW_NODE_PEN_WIDTH
             else:
                 data['color'] = self.format_color(*self.NODE_LINE_COLOR)
-            data['width'] = 0.75 * self._hitcounter[state]
-            data['height'] = 0.5 * self._hitcounter[state]
-            data['fontsize'] = 14 * self._hitcounter[state]
-            data['penwidth'] *= self._hitcounter[state]
+            data['width'] = 0.75 * self._hitcounter[node]
+            data['height'] = 0.5 * self._hitcounter[node]
+            data['fontsize'] = 14 * self._hitcounter[node]
+            data['penwidth'] *= self._hitcounter[node]
 
         for node in to_delete:
             G.remove_node(node)
 
         for src, dst, data in G.edges(data=True):
-            age = (now() - data.get('last_visit', self.NA_DATE)).total_seconds()
+            age = (now() - self._edge_visited.get((src, dst), self.NA_DATE)).total_seconds()
             coeff = self.fade_coeff(self._fade, age)
             lerp = self.lerp_color(
                 self.DEFAULT_EDGE_COLOR,
@@ -230,13 +255,13 @@ class WebDataLoader:
                 coeff)
             color = self.format_color(*lerp)
 
-            age = (now() - data.get('added', self.NA_DATE)).total_seconds()
+            age = (now() - self._edge_added.get((src, dst), self.NA_DATE)).total_seconds()
             coeff = self.fade_coeff(self._fade, age)
             penwidth = self.lerp(
                 self.DEFAULT_EDGE_PEN_WIDTH,
                 self.NEW_EDGE_PEN_WIDTH,
                 coeff)
-            label = f"min={len(data['minimized'].flatten())}"
+            label = f"min={len(H.edges[src, dst]['minimized'].flatten())}"
 
             state = dst
             data.clear()

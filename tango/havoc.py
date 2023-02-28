@@ -1,4 +1,4 @@
-from tango.core import (AbstractInput, PreparedInput, BaseMutator,
+from tango.core import (AbstractInput, EmptyInput, BaseMutator,
     AbstractInstruction, TransmitInstruction, ReceiveInstruction,
     DelayInstruction, BaseInputGenerator, AbstractState)
 
@@ -552,6 +552,6 @@ class RandomInputGenerator(BaseInputGenerator):
             elif self.seeds:
                 candidate = self._entropy.choice(self.seeds)
             else:
-                candidate = PreparedInput()
+                candidate = EmptyInput()
 
         return HavocMutator(self._entropy)(candidate)

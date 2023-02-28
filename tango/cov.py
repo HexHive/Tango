@@ -1,13 +1,13 @@
 from __future__   import annotations
 from . import debug, info
 
-from tango.core import (AbstractState, BaseState, AbstractStateTracker,
-    AbstractInput)
+from tango.core import (AbstractState, BaseState, BaseStateTracker,
+    AbstractInput, LambdaProfiler)
 from tango.common import ComponentType
 from tango.unix import ProcessLoader
 
 from abc import ABC, abstractmethod
-from typing       import Sequence, Callable
+from typing       import Sequence, Callable, Optional
 from collections  import OrderedDict
 from functools    import cache
 from string import ascii_letters, digits
@@ -71,41 +71,22 @@ for i in range(len(CLASS_LUT)):
     CLASS_LUT[i] = _count_class_lookup(i)
 
 class CoverageState(BaseState):
-    _cache = {}
-    _id = 0
+    __slots__ = '_parent', '_set_map', '_set_count', '_context'
 
-    def __new__(cls, parent: CoverageState, set_map: Sequence, set_count: int, map_hash: int, global_cov: GlobalCoverage, do_not_cache: bool=False, **kwargs):
-        _hash = map_hash
-        if not do_not_cache and (cached := cls._cache.get(_hash)):
-            return cached
-        new = super(CoverageState, cls).__new__(cls)
-        new._parent = parent
-        new._set_map = set_map
-        new._set_count = set_count
-        new._hash = _hash
-        new._context = global_cov.clone()
-        # to obtain the context from the current global map, we revert the bits
-        new._context.revert(set_map, map_hash)
-        if not do_not_cache:
-            cls._cache[_hash] = new
-            new._id = cls._id
-            cls._id += 1
-        else:
-            new._id = '(local)'
-        super(CoverageState, new).__init__(**kwargs)
-        return new
-
-    def __init__(self, parent: CoverageState, set_map: Sequence, set_count: int, map_hash: int, global_cov: GlobalCoverage, do_not_cache: bool=False, **kwargs):
+    def __init__(self, parent: CoverageState, set_map: Sequence, set_count: int,
+            global_cov: GlobalCoverage, **kwargs):
         super().__init__(**kwargs)
-
-    def __hash__(self):
-        return self._hash
+        self._parent = parent
+        self._set_map = set_map
+        self._set_count = set_count
+        self._context = global_cov.clone()
+        self._context.revert(set_map, hash(self))
 
     def __eq__(self, other):
         # return hash(self) == hash(other)
         return isinstance(other, CoverageState) and \
-               hash(self) == hash(other)
-               # self._set_count == other._set_count and \
+               hash(self) == hash(other) and \
+               self._set_count == other._set_count
                # np.array_equal(self._set_map, other._set_map) and \
                # self._context == other._context
 
@@ -330,7 +311,7 @@ class NPGlobalCoverage(GlobalCoverage):
     def __hash__(self):
         return hash(self._set_arr.data.tobytes())
 
-class LoaderDependentTracker(AbstractStateTracker,
+class LoaderDependentTracker(BaseStateTracker,
         capture_components={ComponentType.loader}):
     def __init__(self, *, loader: ProcessLoader, **kwargs):
         super().__init__(**kwargs)
@@ -365,7 +346,6 @@ class CoverageStateTracker(LoaderDependentTracker,
             config['tracker'].get('type') == 'coverage'
 
     async def initialize(self):
-        await super().initialize()
         load = self._loader.load_state(None)
         try:
             await load.asend(None)
@@ -382,11 +362,21 @@ class CoverageStateTracker(LoaderDependentTracker,
         self._local_state = None
         self._current_state = None
         # the update creates a new initial _current_state
-        self.update(None, None)
+        self.update_state(None, input=None)
         self._entry_state = self._current_state
+
+        await super().initialize()
 
         # initialize local map and local state
         self.reset_state(self._current_state)
+
+        LambdaProfiler('global_cov')(lambda: sum(
+            map(lambda x: x._set_count,
+                filter(lambda x: x != self._entry_state,
+                    self._state_graph.nodes
+                )
+            )
+        ))
 
     @property
     def entry_state(self) -> CoverageState:
@@ -401,38 +391,38 @@ class CoverageStateTracker(LoaderDependentTracker,
         coverage_map = self._reader.array
         set_map, set_count, map_hash = global_map.update(coverage_map)
         if set_count or allow_empty:
-            return CoverageState(parent_state, set_map, set_count, map_hash,
-                global_map, do_not_cache=local_state, tracker=self)
+            return CoverageState(parent_state, set_map, set_count, global_map,
+                state_hash=map_hash, do_not_cache=local_state, tracker=self)
         else:
             return None
 
-    def update(self, source: AbstractState, input: AbstractInput, peek_result: AbstractState=None) -> AbstractState:
-        if peek_result is None:
-            next_state = self._diff_global_to_state(self._global, parent_state=source,
-                allow_empty=source is None)
-        else:
-            # if peek_result was specified, we can skip the recalculation
-            next_state = peek_result
-            self._global.copy_from(next_state._context)
-            # we un-revert the bitmaps to obtain the actual global context
-            self._global.revert(next_state._set_map, next_state._hash)
+    def update_state(self, source: AbstractState, /, *, input: AbstractInput,
+            exc: Exception=None, peek_result: Optional[AbstractState]=None) \
+            -> AbstractState:
+        source = super().update_state(source, input=input, exc=exc,
+                peek_result=peek_result)
+        if not exc:
+            if peek_result is None:
+                next_state = self._diff_global_to_state(self._global,
+                    parent_state=source, allow_empty=source is None)
+            else:
+                # if peek_result was specified, we can skip the recalculation
+                next_state = peek_result
+                self._global.copy_from(next_state._context)
+                # we un-revert the bitmaps to obtain the actual global context
+                self._global.revert(next_state._set_map, next_state._hash)
 
-        if not next_state or (same := next_state == source):
-            next_state = source
-            same = True
-        else:
+            if not next_state:
+                next_state = source
             self._current_state = next_state
 
-        # we maintain _a_ path to each new state we encounter so that
-        # reproducing the state is more path-aware and does not invoke a graph
-        # search every time
-        if input is not None and not same and next_state.predecessor_transition is None:
-            next_state.predecessor_transition = (source, input)
-
-        # update local coverage
-        self._update_local()
-
-        return next_state
+            # update local coverage
+            self._update_local()
+            return next_state
+        else:
+            if source:
+                self._global.revert(source._set_map, source._hash)
+            return source
 
     def peek(self, default_source: AbstractState=None, expected_destination: AbstractState=None) -> AbstractState:
         glbl = self._scratch
@@ -451,6 +441,7 @@ class CoverageStateTracker(LoaderDependentTracker,
         return next_state
 
     def reset_state(self, state: AbstractState):
+        super().reset_state(state)
         self._current_state = state
 
         # reset local map

@@ -10,7 +10,8 @@ authors = [
 description = "A state-aware fuzzing framework."
 requires-python = ">=3.11,<3.12"
 dependencies = [
-    'networkx==2.5.1',
+    'networkx==3.0',
+    'nptyping==2.5.0',
     'websockets==10.0',
     'pydot==1.4.2',
     'async-property==0.2.1',

@@ -1,7 +1,7 @@
 from . import debug, critical
 
 from tango.core import (AbstractInstruction, TransmitInstruction,
-    ReceiveInstruction, DelayInstruction, AbstractInput, PreparedInput,
+    ReceiveInstruction, DelayInstruction, AbstractInput, EmptyInput,
     BaseDecorator, AbstractState, BaseMutator, BaseInputGenerator,
     CountProfiler, ValueProfiler)
 from tango.havoc import havoc_handlers, RAND, MUT_HAVOC_STACK_POW2
@@ -141,7 +141,7 @@ class ReactiveInputGenerator(BaseInputGenerator):
             elif self.seeds:
                 candidate = self._entropy.choice(self.seeds)
             else:
-                candidate = PreparedInput()
+                candidate = EmptyInput()
 
         if (model := self._state_model.get(state)) is None:
             model = self._init_state_model(state)

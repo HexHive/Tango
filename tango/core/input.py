@@ -17,7 +17,8 @@ import os
 __all__ = [
     'AbstractInput', 'BaseInput', 'BaseDecorator', 'SlicingDecorator',
     'JoiningDecorator', 'MemoryCachingDecorator', 'PreparedInput',
-    'SerializedInput', 'SerializedInputMeta', 'Serializer'
+    'SerializedInput', 'SerializedInputMeta', 'Serializer',
+    'EmptyInput'
 ]
 
 class AbstractInput(ABC):
@@ -145,6 +146,34 @@ class BaseInput(AbstractInput):
     @property
     def decorated(self):
         return False
+
+class EmptyInput(BaseInput):
+    singleton: EmptyInput = None
+
+    def __new__(cls):
+        if not cls.singleton:
+            cls.singleton = super().__new__(cls)
+        return cls.singleton
+
+    def ___iter___(self):
+        return
+        yield
+
+    async def ___aiter___(self):
+        return
+        yield
+
+    def ___repr___(self) -> str:
+        return "EmptyInput"
+
+    def ___len___(self) -> int:
+        return 0
+
+    def ___getitem___(self, idx: Union[int, slice]) -> EmptyInput:
+        return self
+
+    def ___add___(self, other: AbstractInput) -> AbstractInput:
+        return other
 
 class BaseDecoratorMeta(type):
     ALL_DECORATABLE_METHODS = {'___iter___', '___aiter___', '___len___',
@@ -277,7 +306,7 @@ class SlicingDecorator(BaseDecorator):
 
 class JoiningDecorator(BaseDecorator):
     def __init__(self, *others):
-        self._others = list(others)
+        self._others = [o for o in others if not isinstance(o, EmptyInput)]
 
     def __call__(self, input, inplace=False): # -> AbstractInput:
         if input.decorated and isinstance(input.___decorator___, self.__class__):

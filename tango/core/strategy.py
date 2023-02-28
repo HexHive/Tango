@@ -1,6 +1,6 @@
 from . import info, warning, critical
 
-from tango.core.tracker import AbstractState
+from tango.core.tracker import AbstractState, IUpdateCallback
 from tango.core.input     import AbstractInput
 from tango.core.types import LoadableTarget
 from tango.core.explorer import BaseExplorer
@@ -12,6 +12,7 @@ from tango.exceptions import LoadedException, StateNotReproducibleException
 from abc import ABC, abstractmethod
 from random import Random
 from typing import Optional
+from collections import defaultdict
 import asyncio
 
 __all__ = [
@@ -19,44 +20,11 @@ __all__ = [
     'RolloverCounterStrategy', 'RandomStrategy', 'UniformStrategy'
 ]
 
-class AbstractStrategy(AsyncComponent, ABC,
+class AbstractStrategy(AsyncComponent, IUpdateCallback, ABC,
         component_type=ComponentType.strategy,
         capture_components={ComponentType.generator}):
     def __init__(self, *, generator: AbstractInputGenerator):
         self._generator = generator
-
-    @abstractmethod
-    def update_state(self, state: AbstractState, *, input: AbstractInput, exc: Exception=None, **kwargs):
-        """
-        Updates the internal strategy parameters related to the state. In case a
-        state is invalidated, it should remain so until it is revalidated in a
-        following call to update_state(). Otherwise, invalidated states must not
-        be selected at the target state.
-
-        :param      state:  The current state of the target.
-        :type       state:  AbstractState
-        :param      exc:    An exception that occured while processing the input.
-        :type       exc:    Exception
-        """
-        pass
-
-    @abstractmethod
-    def update_transition(self, source: AbstractState, destination: AbstractState, input: AbstractInput, *, state_changed: bool, exc: Exception=None, **kwargs):
-        """
-        Similar to update_state(), but for transitions.
-
-        :param      source:       The source state of the transition.
-        :type       source:       AbstractState
-        :param      destination:  The destination state. This can be assumed to
-                                  be the current state of the target too.
-        :type       destination:  AbstractState
-        :param      input:        The input associated with the transition.
-        :type       input:        AbstractInput
-        :param      exc:          An exception that occured while processing the
-                                  input.
-        :type       exc:          Exception
-        """
-        pass
 
     @abstractmethod
     async def step(self, input: Optional[AbstractInput]=None):
@@ -242,7 +210,8 @@ class RandomStrategy(RolloverCounterStrategy, SeedableStrategy):
 
     def recalculate_target(self) -> AbstractState:
         self._counter = 0
-        filtered = [x for x in self._explorer.state_graph._graph.nodes if x not in self._invalid_states]
+        filtered = [x for x in self._explorer.tracker.state_graph.nodes
+            if x not in self._invalid_states]
         if not filtered:
             return None
         else:
@@ -268,6 +237,7 @@ class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._invalid_states = set()
+        self._energy_map = defaultdict(lambda: 0)
 
         self._exp_weights = (0.64, 0.23, 0.09, 0.03, 0.01)
         self._calc_weights = lambda n: (
@@ -281,11 +251,12 @@ class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
             config['strategy'].get('type') == 'uniform'
 
     def recalculate_target(self) -> AbstractState:
-        filtered = [x for x in self._explorer.state_graph._graph.nodes if x not in self._invalid_states]
+        filtered = [x for x in self._explorer.tracker.state_graph.nodes
+            if x not in self._invalid_states]
         if not filtered:
             return None
         else:
-            filtered.sort(key=lambda x: getattr(x, '_energy', 0))
+            filtered.sort(key=self._energy_map.get)
             return self._entropy.choices(filtered,
                         weights=self._calc_weights(len(filtered)),
                         k=1)[0]
@@ -300,10 +271,7 @@ class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
                 self._recalculate_target()
         else:
             self._invalid_states.discard(state)
-            if not hasattr(state, '_energy'):
-                state._energy = 1
-            else:
-                state._energy += 1
+            self._energy_map[state] += 1
 
     def update_transition(self, *args, **kwargs):
         pass
