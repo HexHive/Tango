@@ -53,7 +53,7 @@ class AbstractProfilerMeta(ABCMeta):
         if cls.ProfilingNOP:
             return cls.nop
         if (p := ProfiledObjects.get(name)) is None:
-            p = super().__call__(*args, name=name, **kwargs)
+            p = super().__call__(*args, **kwargs)
             object.__setattr__(p, 'name', name)
             if session_local:
                 context = get_session_context()

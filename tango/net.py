@@ -203,14 +203,14 @@ class TCPChannel(PtraceChannel, NetworkChannel):
         self._setup_address = address
         self._setup_accepting = False
 
-        self.monitor_syscalls(None, self._setup_ignore_callback, \
-            self._setup_break_callback, self._setup_syscall_callback, \
-            fds={}, listeners=self._setup_listeners, address=address, \
+        self.monitor_syscalls(None, self._setup_ignore_callback,
+            self._setup_break_callback, self._setup_syscall_callback,
+            fds={}, listeners=self._setup_listeners, address=address,
             timeout=self._connect_timeout)
 
-        self.monitor_syscalls(None, self._setup_ignore_callback_accept, \
-            self._setup_break_callback_accept, self._setup_syscall_callback_accept, \
-            timeout=self._connect_timeout, break_on_entry=True, \
+        self.monitor_syscalls(None, self._setup_ignore_callback_accept,
+            self._setup_break_callback_accept, self._setup_syscall_callback_accept,
+            timeout=self._connect_timeout, break_on_entry=True,
             listenfd=self._listenfd)
 
         del self._setup_listeners
@@ -223,9 +223,9 @@ class TCPChannel(PtraceChannel, NetworkChannel):
         ## Listen for a call to accept() to get the connected socket fd
         self._connect_address = address
         self._sockfd.clear()
-        self._accept_process, _ = self.monitor_syscalls( \
-            self._connect_monitor_target, self._connect_ignore_callback, \
-            self._connect_break_callback, self._connect_syscall_callback, \
+        self._accept_process, _ = self.monitor_syscalls(
+            self._connect_monitor_target, self._connect_ignore_callback,
+            self._connect_break_callback, self._connect_syscall_callback,
             listenfd=self._listenfd, timeout=self._connect_timeout)
         del self._connect_address
         debug(f"Socket is now connected ({self._sockfd = })!")
@@ -236,8 +236,8 @@ class TCPChannel(PtraceChannel, NetworkChannel):
 
     def _poll_sync(self):
         self._poll_server_waiting = False
-        self.monitor_syscalls(None, self._poll_ignore_callback, \
-            self._poll_break_callback, self._poll_syscall_callback, \
+        self.monitor_syscalls(None, self._poll_ignore_callback,
+            self._poll_break_callback, self._poll_syscall_callback,
             break_on_entry=True, timeout=self._data_timeout)
         del self._poll_server_waiting
 
@@ -268,8 +268,8 @@ class TCPChannel(PtraceChannel, NetworkChannel):
         self._send_barrier_passed = False
 
         self._send_data = data
-        _, ret = self.monitor_syscalls(self._send_send_monitor, \
-            self._send_ignore_callback, self._send_break_callback, \
+        _, ret = self.monitor_syscalls(self._send_send_monitor,
+            self._send_ignore_callback, self._send_break_callback,
             self._send_syscall_callback, timeout=self._data_timeout)
 
         del self._send_server_received
@@ -481,7 +481,7 @@ class TCPChannel(PtraceChannel, NetworkChannel):
 
     def _poll_ignore_callback(self, syscall):
         # TODO add support for epoll?
-        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg', \
+        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg',
                                 'poll', 'ppoll', 'select', 'close', 'shutdown',
                                 'dup', 'dup2', 'dup3')
 
@@ -502,7 +502,7 @@ class TCPChannel(PtraceChannel, NetworkChannel):
                 raise ChannelBrokenException("Channel closed while waiting for server to read")
 
     def _send_ignore_callback(self, syscall):
-        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg', \
+        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg',
                                     'close', 'shutdown')
 
     def _send_break_callback(self):
@@ -687,10 +687,10 @@ class UDPChannel(PtraceChannel, NetworkChannel):
         self._setup_binds = {}
         self._setup_address = address
 
-        self.monitor_syscalls(None, \
-            self._setup_ignore_callback, \
-            self._setup_break_callback, self._setup_syscall_callback, \
-            timeout=self._connect_timeout, break_on_entry=True, \
+        self.monitor_syscalls(None,
+            self._setup_ignore_callback,
+            self._setup_break_callback, self._setup_syscall_callback,
+            timeout=self._connect_timeout, break_on_entry=True,
             fds={}, binds=self._setup_binds, address=address)
 
         del self._setup_binds
@@ -701,9 +701,9 @@ class UDPChannel(PtraceChannel, NetworkChannel):
         self._refcounter = 0
         self._sockconnected = False
         self._connect_address = address
-        self._bind_process, _ = self.monitor_syscalls( \
-            self._connect_monitor_target, self._connect_ignore_callback, \
-            self._connect_break_callback, self._connect_syscall_callback, \
+        self._bind_process, _ = self.monitor_syscalls(
+            self._connect_monitor_target, self._connect_ignore_callback,
+            self._connect_break_callback, self._connect_syscall_callback,
             timeout=self._connect_timeout)
         del self._connect_address
 
@@ -715,8 +715,8 @@ class UDPChannel(PtraceChannel, NetworkChannel):
 
     def _poll_sync(self):
         self._poll_server_waiting = False
-        proc, _ = self.monitor_syscalls(None, self._poll_ignore_callback, \
-            self._poll_break_callback, self._poll_syscall_callback, \
+        proc, _ = self.monitor_syscalls(None, self._poll_ignore_callback,
+            self._poll_break_callback, self._poll_syscall_callback,
             break_on_entry=True, timeout=self._data_timeout)
         del self._poll_server_waiting
 
@@ -748,8 +748,8 @@ class UDPChannel(PtraceChannel, NetworkChannel):
         self._send_barrier_passed = False
 
         self._send_data = data
-        _, ret = self.monitor_syscalls(self._send_send_monitor, \
-            self._send_ignore_callback, self._send_break_callback, \
+        _, ret = self.monitor_syscalls(self._send_send_monitor,
+            self._send_ignore_callback, self._send_break_callback,
             self._send_syscall_callback, timeout=self._data_timeout)
 
         del self._send_server_received
@@ -864,7 +864,7 @@ class UDPChannel(PtraceChannel, NetworkChannel):
 
     def _poll_ignore_callback(self, syscall):
         # TODO add support for epoll?
-        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg', \
+        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg',
                                 'poll', 'ppoll', 'select', 'close', 'shutdown')
 
     def _poll_break_callback(self):
@@ -901,7 +901,7 @@ class UDPChannel(PtraceChannel, NetworkChannel):
                 raise ChannelBrokenException("Channel closed while waiting for server to read")
 
     def _send_ignore_callback(self, syscall):
-        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg', \
+        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg',
                                     'close', 'shutdown')
 
     def _send_break_callback(self):

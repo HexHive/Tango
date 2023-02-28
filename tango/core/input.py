@@ -5,7 +5,7 @@ from tango.core.profiler import ValueMeanProfiler
 from tango.core.dataio import FormatDescriptor, AbstractInstruction
 
 from abc import ABC, ABCMeta, abstractmethod
-from typing import Union, Sequence, Iterable, BinaryIO
+from typing import Union, Sequence, Iterable, Iterator, AsyncIterator, BinaryIO
 from functools import partial, partialmethod
 from itertools import islice, chain
 import inspect
@@ -29,42 +29,42 @@ class AbstractInput(ABC):
 
     @classmethod
     @property
-    def uniq_id(cls):
+    def uniq_id(cls) -> int:
         cls._COUNTER += 1
         return cls._COUNTER
 
     ## Abstract methods ##
     @property
     @abstractmethod
-    def decorated(self):
+    def decorated(self) -> bool:
         pass
 
     @abstractmethod
-    def ___iter___(self):
+    def ___iter___(self) -> Iterator[AbstractInstruction]:
         pass
 
     @abstractmethod
-    async def ___aiter___(self):
+    async def ___aiter___(self) -> AsyncIterator[AbstractInstruction]:
         pass
 
     @abstractmethod
-    def ___repr___(self):
+    def ___repr___(self) -> str:
         pass
 
     @abstractmethod
-    def ___len___(self):
+    def ___len___(self) -> Optional[int]:
         pass
 
     @abstractmethod
-    def ___eq___(self, other: AbstractInput):
+    def ___eq___(self, other: AbstractInput) -> bool:
         pass
 
     @abstractmethod
-    def ___getitem___(self, idx: Union[int, slice]):
+    def ___getitem___(self, idx: Union[int, slice]) -> AbstractInput:
         pass
 
     @abstractmethod
-    def ___add___(self, other: AbstractInput):
+    def ___add___(self, other: AbstractInput) -> AbstractInput:
         pass
 
     ## Decoratable functions ##
@@ -94,23 +94,23 @@ class AbstractInput(ABC):
         return self.___add___(other)
 
 class BaseInput(AbstractInput):
-    async def ___aiter___(self):
+    async def ___aiter___(self) -> AsyncIterator[AbstractInstruction]:
         for e in iter(self):
             yield e
 
-    def ___repr___(self):
+    def ___repr___(self) -> str:
         return f"{self.__class__.__name__}:0x{self.id:08X}"
 
-    def ___len___(self):
+    def ___len___(self) -> None:
         # if NotImplementedError is raised, then tuple(input) fails;
         # if None is returned, tuple resorts to dynamic allocation
         return None
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         # we define this so that __len__ is not used to test for truthiness
         return True
 
-    def ___eq___(self, other):
+    def ___eq___(self, other: AbstractInput) -> bool:
         diff = False
 
         def zip_strict(*iterators):
@@ -134,13 +134,13 @@ class BaseInput(AbstractInput):
                     for x, y in eq(iter(self), iter(other))) and \
                not diff
 
-    def ___getitem___(self, idx: Union[int, slice]):
+    def ___getitem___(self, idx: Union[int, slice]) -> BaseInput:
         return SlicingDecorator(idx)(self)
 
-    def ___add___(self, other: AbstractInput):
+    def ___add___(self, other: AbstractInput) -> BaseInput:
         return JoiningDecorator(other)(self)
 
-    def flatten(self, inplace: bool=False):
+    def flatten(self, inplace: bool=False) -> BaseInput:
         return MemoryCachingDecorator()(self, inplace=inplace)
 
     @property

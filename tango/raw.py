@@ -68,8 +68,8 @@ class StdIOChannel(PtraceChannel):
 
     def _poll_sync(self):
         self._poll_server_waiting = False
-        proc, _ = self.monitor_syscalls(None, self._poll_ignore_callback, \
-            self._poll_break_callback, self._poll_syscall_callback, \
+        proc, _ = self.monitor_syscalls(None, self._poll_ignore_callback,
+            self._poll_break_callback, self._poll_syscall_callback,
             break_on_entry=True)
         del self._poll_server_waiting
         return proc
@@ -106,8 +106,8 @@ class StdIOChannel(PtraceChannel):
         self._send_barrier_passed = False
 
         self._send_data = data
-        _, ret = self.monitor_syscalls(self._send_send_monitor, \
-            self._send_ignore_callback, self._send_break_callback, \
+        _, ret = self.monitor_syscalls(self._send_send_monitor,
+            self._send_ignore_callback, self._send_break_callback,
             self._send_syscall_callback)
 
         del self._send_server_received
@@ -202,7 +202,7 @@ class StdIOChannel(PtraceChannel):
 
     def _poll_ignore_callback(self, syscall):
         # TODO add support for epoll?
-        return syscall.name not in {'read', 'poll', 'ppoll', 'select', 'close', \
+        return syscall.name not in {'read', 'poll', 'ppoll', 'select', 'close',
                                 'dup', 'dup2', 'dup3'}
 
     def _poll_break_callback(self):
@@ -282,9 +282,9 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
             # FIXME it is preferred that this be part of PtraceForkChannel, but
             # it can only be done outside the call frame of an existing
             # monitor_syscalls call.
-            self.monitor_syscalls(None, \
-                self._invoke_forkserver_ignore_callback, \
-                self._invoke_forkserver_break_callback, \
+            self.monitor_syscalls(None,
+                self._invoke_forkserver_ignore_callback,
+                self._invoke_forkserver_break_callback,
                 self._invoke_forkserver_syscall_callback, process=self._proc)
             self._awaited = True
             self._poll_sync()
@@ -334,8 +334,8 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
 
     def _poll_sync(self):
         self._poll_server_waiting = False
-        proc, _ = self.monitor_syscalls(self._poll_monitor, self._poll_ignore_callback, \
-            self._poll_break_callback, self._poll_syscall_callback, \
+        proc, _ = self.monitor_syscalls(self._poll_monitor, self._poll_ignore_callback,
+            self._poll_break_callback, self._poll_syscall_callback,
             break_on_entry=True)
         del self._poll_server_waiting
         return proc

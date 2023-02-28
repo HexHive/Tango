@@ -808,7 +808,7 @@ class ComponentOwner(dict, ABC):
         """
         config = config or self._config
         component_type = ComponentType(component_type)
-        component = await self.component_classes[component_type].instantiate( \
+        component = await self.component_classes[component_type].instantiate(
                         self, config, *args, **kwargs)
         return component
 

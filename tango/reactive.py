@@ -153,11 +153,15 @@ class ReactiveInputGenerator(BaseInputGenerator):
 
         return ReactiveHavocMutator(self._entropy, havoc_actions)(candidate)
 
-    def update_state(self, state: AbstractState, input: AbstractInput, *, orig_input: AbstractInput, exc: Exception=None, **kwargs):
+    def update_state(self, state: AbstractState, /, *, input: AbstractInput,
+            orig_input: AbstractInput, exc: Exception=None, **kwargs):
         if state not in self._state_model:
             self._init_state_model(state)
 
-    def update_transition(self, source: AbstractState, destination: AbstractState, input: AbstractInput, *, state_changed: bool, orig_input: AbstractInput, exc: Exception=None, **kwargs):
+    def update_transition(self, source: AbstractState,
+            destination: AbstractState, input: AbstractInput, /, *,
+            state_changed: bool, orig_input: AbstractInput, exc: Exception=None,
+            **kwargs):
         if state_changed:
             assert source != destination, "No state change detected!"
             if (t := (source, destination)) in self._seen_transitions:
@@ -343,11 +347,15 @@ class StatelessReactiveInputGenerator(ReactiveInputGenerator):
         return super(BaseInputGenerator, cls).match_config(config) and \
             config['generator'].get('type') == 'reactless'
 
-    def update_state(self, state: AbstractState, input: AbstractInput, *, orig_input: AbstractInput, exc: Exception=None, **kwargs):
+    def update_state(self, state: AbstractState, /, *, input: AbstractInput,
+            orig_input: AbstractInput, exc: Exception=None, **kwargs):
         state = state.tracker._entry_state
         super().update_state(state, input, orig_input=orig_input, exc=exc, **kwargs)
 
-    def update_transition(self, source: AbstractState, destination: AbstractState, input: AbstractInput, *, state_changed: bool, orig_input: AbstractInput, exc: Exception=None, **kwargs):
+    def update_transition(self, source: AbstractState,
+            destination: AbstractState, input: AbstractInput, /, *,
+            state_changed: bool, orig_input: AbstractInput, exc: Exception=None,
+            **kwargs):
         source = source.tracker._entry_state
         if state_changed:
             assert source != destination, "No state change detected!"

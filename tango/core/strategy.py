@@ -144,7 +144,7 @@ class SeedableStrategy(BaseStrategy,
         await self._explorer.reload_state()
 
     async def _state_update_cb(self,
-            state: AbstractState, *, breadcrumbs: LoadableTarget,
+            state: AbstractState, /, *, breadcrumbs: LoadableTarget,
             input: AbstractInput, orig_input: AbstractInput,
             exc: Optional[Exception]=None, **kwargs):
 
@@ -153,7 +153,7 @@ class SeedableStrategy(BaseStrategy,
 
     async def _transition_update_cb(self,
             source: AbstractState, destination: AbstractState,
-            input: AbstractInput, *, breadcrumbs: LoadableTarget,
+            input: AbstractInput, /, *, breadcrumbs: LoadableTarget,
             orig_input: AbstractInput, state_changed: bool, new_transition: bool,
             exc: Optional[Exception]=None, **kwargs):
 
@@ -217,7 +217,8 @@ class RandomStrategy(RolloverCounterStrategy, SeedableStrategy):
         else:
             return self._entropy.choice(filtered)
 
-    def update_state(self, state: AbstractState, *args, exc: Exception=None, **kwargs):
+    def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
+            **kwargs):
         super().update_state(state, *args, exc=exc, **kwargs)
         if exc:
             self._invalid_states.add(state)
@@ -261,7 +262,8 @@ class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
                         weights=self._calc_weights(len(filtered)),
                         k=1)[0]
 
-    def update_state(self, state: AbstractState, *args, exc: Exception=None, **kwargs):
+    def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
+            **kwargs):
         super().update_state(state, *args, exc=exc, **kwargs)
         if state is None:
             return
