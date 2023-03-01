@@ -569,6 +569,7 @@ class BaseExplorer(AbstractExplorer,
             state_or_path: LoadableTarget[AbstractState, BaseInput],
             dst: AbstractState, input: BaseInput):
         reduced = False
+        orig_len = reduced_len = len(input)
 
         # Phase 1: perform exponential back-off to find effective tail of input
         ValueProfiler('status')('minimize_exp_backoff')
@@ -590,6 +591,7 @@ class BaseExplorer(AbstractExplorer,
                 reduced = True
                 break
             begin = 0 if (diff := end - (end - begin) * 2) < 0 else diff
+        reduced_len -= begin
 
         # Phase 2: prune out dead instructions
         if reduced:
@@ -602,7 +604,10 @@ class BaseExplorer(AbstractExplorer,
         while step > 0:
             cur = 0
             while cur + step < end:
-                ValueProfiler('status')(f'minimize_bin_search ({100*i/(2 * (len(input) - begin)):.1f}%)')
+                ValueProfiler('status')(f'minimize_bin_search'
+                    f' (done:{100*i/(2 * (len(input) - begin)):.1f}%'
+                    f' reduced:{100*(orig_len-reduced_len)/orig_len:.1f}%'
+                    f'={orig_len-reduced_len}/{orig_len})')
                 success = True
                 src = await self.reload_state(state_or_path, dryrun=True)
                 tmp_lin_input = lin_input[:cur] + lin_input[cur + step:]
@@ -616,6 +621,7 @@ class BaseExplorer(AbstractExplorer,
                     reduced = True
                     lin_input = tmp_lin_input.flatten(inplace=True)
                     end -= step
+                    reduced_len -= step
                 else:
                     cur += step
                 i += 1
