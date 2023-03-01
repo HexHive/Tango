@@ -102,8 +102,8 @@ class BaseInput(AbstractInput):
 
     def ___len___(self):
         # if NotImplementedError is raised, then tuple(input) fails;
-        # if None is returned, tuple resorts to dynamic allocation
-        return None
+        # if NotImplemented is returned, tuple resorts to dynamic allocation
+        return NotImplemented
 
     def __bool__(self):
         # we define this so that __len__ is not used to test for truthiness
