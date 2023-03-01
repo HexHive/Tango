@@ -823,4 +823,4 @@ class PtraceProcess(object):
         return hash(self.pid)
 
     def notImplementedError(self):
-        raise NotImplementedError()
+        raise NotImplementedError

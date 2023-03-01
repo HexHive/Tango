@@ -100,7 +100,7 @@ class PtraceSyscall(FunctionCall):
             return (regs.ebx, regs.ecx, regs.edx, regs.esi, regs.edi, regs.ebp)
         if CPU_POWERPC:
             return (regs.gpr3, regs.gpr4, regs.gpr5, regs.gpr6, regs.gpr7, regs.gpr8)
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def writeArgumentValues(self, *args):
         regs = None
@@ -120,12 +120,12 @@ class PtraceSyscall(FunctionCall):
                 self.process.setreg(reg, value)
         elif RUNNING_BSD:
             # FIXME this is not yet implemented
-            raise NotImplementedError()
+            raise NotImplementedError
             # sp = self.process.getStackPointer()
             # return [self.process.readWord(sp + index * CPU_WORD_SIZE)
             #         for index in range(1, 6 + 1)]
         else:
-            raise NotImplementedError()
+            raise NotImplementedError
 
     def readArguments(self, argument_values):
         if self.name in SYSCALL_PROTOTYPES:

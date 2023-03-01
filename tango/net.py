@@ -124,7 +124,7 @@ class PortDescriptor:
     def __get__(self, obj, owner):
         if obj is None:
             # no default value
-            raise AttributeError()
+            raise AttributeError
         return getattr(obj, '_port')
 
     def __set__(self, obj, value: 'str'):
@@ -1113,7 +1113,7 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
             cli = random.randint(40000, 65534)
             srv = random.randint(cli + 1, 65535)
         else:
-            raise NotImplementedError()
+            raise NotImplementedError
 
         cur_time = time.time()
         writer = PcapWriter(self._file)

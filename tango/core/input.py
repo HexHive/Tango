@@ -336,7 +336,7 @@ class DecoratedInput(BaseInput):
         self.___decorator_depth___ = depth
 
     def ___iter___(self):
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def __del__(self):
         if self.decorated:

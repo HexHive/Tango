@@ -151,7 +151,7 @@ class LocalGlobalProfiler(AbstractProfiler, metaclass=LocalGlobalProfilerMeta):
     #         # __setattr__ uses the original name, so that
     #         # super().__getattribute___(name) should actually find it;
     #         # if it doesn't, then it was never set
-    #         raise AttributeError()
+    #         raise AttributeError
 
     # def __setattr__(self, name, value):
     #     if self._session_local:
@@ -207,7 +207,7 @@ class EventProfiler(FunctionCallProfiler):
 
     @property
     def value(self):
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def _create_event_context(self):
         ctx = EventContextManager(self)
@@ -403,7 +403,7 @@ class TimeElapsedProfiler(AbstractProfiler):
         self._accum = timedelta()
 
     def __call__(self, obj):
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def toggle(self):
         now = datetime.now()

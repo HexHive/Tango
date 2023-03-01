@@ -407,7 +407,7 @@ class OwnableDecorator(ABC):
         Args:
             fn (Callable[..., Any]): The function to be decorated.
         """
-        raise NotImplementedError()
+        raise NotImplementedError
 
     @abstractmethod
     def apply(self, owner: Type, name: str):
@@ -421,7 +421,7 @@ class OwnableDecorator(ABC):
             name (str): The name of the decorated function in the owner's
               namespace.
         """
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def __call__(self, *args, **kwargs):
         if not self._owned:

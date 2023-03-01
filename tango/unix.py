@@ -539,7 +539,7 @@ class PtraceForkChannel(PtraceChannel):
                 self._wakeup_forkserver()
             elif event.process == self._proc:
                 error("Forkserver crashed!")
-                raise ForkserverCrashedException()
+                raise ForkserverCrashedException
 
     def process_signal(self, event):
         if event.signum == signal.SIGTRAP:
