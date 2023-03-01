@@ -334,6 +334,11 @@ class BaseExplorer(AbstractExplorer,
         self._current_path.clear()
 
     async def attempt_load_state(self, loadable: LoadableTarget):
+        """
+        :raises StateNotReproducibleException: when the loadable target cannot \
+            be reached (when loader.load_state raises StabilityException); \
+            otherwise, exceptions from loader.load_state are propagated.
+        """
         if isinstance(state := loadable, AbstractState):
             # loop over possible paths until retry threshold
             paths = chain(self._sg.get_min_paths(state),
