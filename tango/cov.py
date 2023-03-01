@@ -338,7 +338,7 @@ class LoaderDependentTracker(AbstractStateTracker,
 
 class CoverageStateTracker(LoaderDependentTracker,
         capture_paths=['tracker.native_lib']):
-    def __init__(self, *, native_lib=None, **kwargs):
+    def __init__(self, *, native_lib: Optional[str]=None, **kwargs):
         super().__init__(**kwargs)
 
         if native_lib:
