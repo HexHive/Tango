@@ -9,7 +9,7 @@ from tango.common import AsyncComponent, ComponentType
 from tango.exceptions import StateNotReproducibleException
 
 from abc          import ABC, ABCMeta, abstractmethod
-from typing import TypeVar, Iterable
+from typing import TypeVar, Iterable, Optional
 from nptyping import NDArray, Shape
 from itertools import product as xproduct, tee
 from functools import partial
@@ -189,7 +189,8 @@ class AbstractStateGraph(ABC, metaclass=AbstractStateGraphMeta):
     @property
     @abstractmethod
     def adjacency_matrix(self) \
-            -> NDArray[Shape["*, *"], Iterable[AbstractInput] | AbstractInput]:
+            -> NDArray[Shape["Nodes, Nodes"],
+                Iterable[Optional[AbstractInput]] | Optional[AbstractInput]]:
         pass
 
 class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
@@ -243,7 +244,7 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
 
     @property
     def adjacency_matrix(self) \
-            -> NDArray[Shape["*, *"], Iterable[BaseInput]]:
+            -> NDArray[Shape["Nodes, Nodes"], Iterable[Optional[BaseInput]]]:
         return nx.to_numpy_array(self, weight='transition', nonedge=None)
 
     @EventProfiler('update_state')
