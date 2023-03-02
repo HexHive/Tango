@@ -204,19 +204,18 @@ class GlobalCoverage(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def __eq__(self, other):
-        return isinstance(other, GlobalCoverage)
+    def reset(self, set_map: Sequence, map_hash: int):
+        raise NotImplementedError
 
     @abstractmethod
-    def __hash__(self):
-        raise NotImplementedError
+    def __eq__(self, other):
+        return isinstance(other, GlobalCoverage)
 
 class CGlobalCoverage(GlobalCoverage):
     def __init__(self, *args, bind_lib, **kwargs):
         super().__init__(*args, **kwargs)
         self._set_arr = (b * self._length)()
         self.clear()
-        self._hash = 0
 
         self._bind_lib = bind_lib
         self._bind_lib.diff.argtypes = (
@@ -237,6 +236,13 @@ class CGlobalCoverage(GlobalCoverage):
         )
         self._bind_lib.apply.restype = B # success?
 
+        self._bind_lib.reset.argtypes = (
+            P(b), # global coverage array (set_arr)
+            P(b), # set_map buffer
+            S # common size of the coverage buffers
+        )
+        self._bind_lib.reset.restype = B # success?
+
     def update(self, coverage_map: Sequence) -> (Sequence, int, int):
         set_map = (b * self._length)()
         set_count = I()
@@ -245,12 +251,10 @@ class CGlobalCoverage(GlobalCoverage):
             byref(set_count), byref(map_hash),
             True
         )
-        self._hash ^= map_hash.value
         return set_map, set_count.value, map_hash.value
 
     def revert(self, set_map: Sequence, map_hash: int):
         self._bind_lib.apply(self._set_arr, set_map, self._length)
-        self._hash ^= map_hash
 
     def clone(self) -> CGlobalCoverage:
         cpy = self.__class__(self._length, bind_lib=self._bind_lib)
@@ -260,18 +264,16 @@ class CGlobalCoverage(GlobalCoverage):
     def copy_from(self, other: CGlobalCoverage):
         super().copy_from(other)
         memmove(self._set_arr, other._set_arr, self._length)
-        other._hash = self._hash
 
     def clear(self):
         memset(self._set_arr, 0, self._length)
 
+    def reset(self, set_map: Sequence, map_hash: int):
+        self._bind_lib.reset(self._set_arr, set_map, self._length)
+
     def __eq__(self, other):
         return super().__eq__(other) and \
-            self._hash == other._hash and \
             pythonapi.memcmp(self._set_arr, other._set_arr, self._length) == 0
-
-    def __hash__(self):
-        return self._hash
 
 class NPGlobalCoverage(GlobalCoverage):
     def __init__(self, *args, **kwargs):
@@ -304,12 +306,12 @@ class NPGlobalCoverage(GlobalCoverage):
     def clear(self):
         self._set_arr.fill(0)
 
+    def reset(self, set_map: Sequence, map_hash: int):
+        self._set_arr &= set_map
+
     def __eq__(self, other):
         return super().__eq__(other) and \
                np.array_equal(self._set_arr, other._set_arr)
-
-    def __hash__(self):
-        return hash(self._set_arr.data.tobytes())
 
 class LoaderDependentTracker(BaseStateTracker,
         capture_components={ComponentType.loader}):

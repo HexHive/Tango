@@ -69,6 +69,13 @@ bool apply(u8 *set_arr, const u8 *set_map, const size_t map_size)
   return true;
 }
 
+int reset(u8 *set_arr, const u8 *set_map, const size_t map_size)
+{
+  for (size_t i = 0; i < map_size; ++i)
+    set_arr[i] &= ~set_map[i];
+  return true;
+}
+
 #define ROL64(_x, _r)  ((((u64)(_x)) << (_r)) | (((u64)(_x)) >> (64 - (_r))))
 
 static inline u32 hash32(const void* key, u32 len, u32 seed)
