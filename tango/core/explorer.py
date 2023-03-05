@@ -3,7 +3,7 @@ from . import debug, info, warning, critical
 
 from tango.exceptions import (StabilityException, StateNotReproducibleException,
     StatePrecisionException)
-from tango.core.tracker import AbstractState, BaseStateTracker
+from tango.core.tracker import AbstractState, AbstractStateTracker
 from tango.core.input import (AbstractInput, BaseInput, PreparedInput,
     BaseDecorator)
 from tango.core.loader import AbstractStateLoader
@@ -57,7 +57,7 @@ class BaseExplorer(AbstractExplorer,
         capture_components={ComponentType.loader, ComponentType.tracker},
         capture_paths=['explorer.reload_attempts']):
     def __init__(self,
-            loader: AbstractStateLoader, tracker: BaseStateTracker,
+            loader: AbstractStateLoader, tracker: AbstractStateTracker,
             *, reload_attempts: str='50', **kwargs):
         super().__init__(**kwargs)
         self._loader = loader
@@ -69,7 +69,7 @@ class BaseExplorer(AbstractExplorer,
         self._last_path = []
 
     @property
-    def tracker(self) -> BaseStateTracker:
+    def tracker(self) -> AbstractStateTracker:
         return self._tracker
 
     @property
