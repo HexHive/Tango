@@ -140,14 +140,13 @@ class AbstractStateGraphMeta(ABCMeta):
         if not graph_cls:
             for base in bases:
                 if hasattr(base, 'graph_cls'):
-                    graph_cls = base.graph_cls
                     inherit = True
                     break
             else:
                 graph_cls = nx.Graph
         if not inherit:
             namespace['graph_cls'] = graph_cls
-        bases = (graph_cls,) + bases
+            bases = (graph_cls,) + bases
         return super().__new__(metacls, name, bases, namespace)
 
 class AbstractStateGraph(ABC, metaclass=AbstractStateGraphMeta):
