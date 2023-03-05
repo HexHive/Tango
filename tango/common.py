@@ -892,11 +892,13 @@ class AsyncComponent(Component):
         except KeyError as ex:
             raise TypeError(f"{cls}.__init__ does not provide an annotation for"
                 f" captured component {ex.args[0]}!")
-        cls._capture_components = annotated_capture
+        cls._capture_components = annotated_capture or \
+            getattr(cls, '_capture_components', set())
 
         if capture_paths:
             capture_paths = list(capture_paths)
-        cls._capture_paths = capture_paths or list()
+        cls._capture_paths = capture_paths or \
+            getattr(cls, '_capture_paths', list())
         for base in mro:
             if issubclass(base, AsyncComponent) and \
                     base is not AsyncComponent:
