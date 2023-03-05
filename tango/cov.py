@@ -388,13 +388,13 @@ class CoverageStateTracker(LoaderDependentTracker,
     def current_state(self) -> CoverageState:
         return self.peek(self._current_state)
 
-    def _diff_global_to_state(self, global_map: GlobalCoverage, parent_state: AbstractState,
-            local_state: bool=False, allow_empty: bool=False) -> AbstractState:
+    def _diff_global_to_state(self, global_map: GlobalCoverage, parent_state: AbstractState, *,
+            do_not_cache: bool=False, allow_empty: bool=False) -> AbstractState:
         coverage_map = self._reader.array
         set_map, set_count, map_hash = global_map.update(coverage_map)
         if set_count or allow_empty:
             return CoverageState(parent_state, set_map, set_count, global_map,
-                state_hash=map_hash, do_not_cache=local_state, tracker=self)
+                state_hash=map_hash, do_not_cache=do_not_cache, tracker=self)
         else:
             return None
 
@@ -426,7 +426,7 @@ class CoverageStateTracker(LoaderDependentTracker,
                 self._global.revert(source._set_map, source._hash)
             return source
 
-    def peek(self, default_source: AbstractState=None, expected_destination: AbstractState=None) -> AbstractState:
+    def peek(self, default_source: AbstractState=None, expected_destination: AbstractState=None, **kwargs) -> AbstractState:
         glbl = self._scratch
         if expected_destination:
             # when the destination is not None, we use its `context_map` as a
@@ -437,7 +437,7 @@ class CoverageStateTracker(LoaderDependentTracker,
             glbl.copy_from(self._global)
             parent = default_source
 
-        next_state = self._diff_global_to_state(glbl, parent, allow_empty=parent is None)
+        next_state = self._diff_global_to_state(glbl, parent, allow_empty=parent is None, **kwargs)
         if not next_state:
             next_state = default_source
         return next_state
@@ -455,6 +455,6 @@ class CoverageStateTracker(LoaderDependentTracker,
     def _update_local(self):
         # this is a pseudo-state that stores the last observed diffs in the local map
         next_state = self._diff_global_to_state(self._local, self._local_state,
-            local_state=True, allow_empty=True)
+            do_not_cache=True, allow_empty=True)
         # TODO is there special handling needed if next_state is None?
         self._local_state = next_state
