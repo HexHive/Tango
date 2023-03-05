@@ -83,7 +83,7 @@ static inline u32 hash32(const void* key, u32 len, u32 seed)
   const u64* data = (u64*)key;
   u64 h1 = seed ^ len;
 
-  rem = len & 0b111;
+  u32 rem = len & 0b111;
   len >>= 3;
 
   while (len--) {
