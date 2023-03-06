@@ -185,6 +185,9 @@ class WebDataLoader:
 
     async def track_node(self, *args, ret, **kwargs):
         state, new = ret
+        state = self._session._explorer.tracker.equivalence_map.get(state)
+        if state is None:
+            return
         now = datetime.datetime.now()
         if new:
             self._node_added[state] = now
@@ -193,6 +196,10 @@ class WebDataLoader:
 
     async def track_edge(self, *args, ret, **kwargs):
         src, dst, new = ret
+        src = self._session._explorer.tracker.equivalence_map.get(src)
+        dst = self._session._explorer.tracker.equivalence_map.get(dst)
+        if None in (src, dst):
+            return
         now = datetime.datetime.now()
         if new:
             self._edge_added[(src, dst)] = now
@@ -206,7 +213,7 @@ class WebDataLoader:
         # * send over WS
 
         # first we get a copy so that we can re-assign node and edge attributes
-        H = self._session._explorer.tracker.state_graph
+        H = self._session._explorer.tracker._inf_tracker.state_graph
         G = H.copy(fresh=True)
 
         to_delete = []
@@ -261,13 +268,13 @@ class WebDataLoader:
                 self.DEFAULT_EDGE_PEN_WIDTH,
                 self.NEW_EDGE_PEN_WIDTH,
                 coeff)
-            label = f"min={len(H.edges[src, dst]['minimized'].flatten())}"
+            # label = f"min={len(H.edges[src, dst]['minimized'].flatten())}"
 
             state = dst
             data.clear()
             data['color'] = color
             data['penwidth'] = penwidth * self._hitcounter[state]
-            data['label'] = label
+            # data['label'] = label
 
         G.graph["graph"] = {'rankdir': 'LR'}
         G.graph["node"] = {'style': 'filled'}
