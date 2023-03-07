@@ -417,5 +417,7 @@ class TimeElapsedProfiler(AbstractProfiler):
 
     @property
     def value(self):
-        time = datetime.now() - self._start + self._accum
+        time = self._accum
+        if self._running:
+            time += datetime.now() - self._start
         return str(time).split('.')[0]
