@@ -100,8 +100,9 @@ class ContextSwitchingTracker(AbstractStateTracker):
     def __init__(self, *args, **kwargs):
         self._cov_tracker = CoverageStateTracker(*args, **kwargs)
         self._inf_tracker = InferenceTracker(*args, **kwargs)
-        self._mode = InferenceMode.Discovery
-        self._eqv_map = {}
+        # properties
+        self.mode = InferenceMode.Discovery
+        self.equivalence_map = {}
 
     async def initialize(self):
         await super().initialize()
@@ -119,34 +120,18 @@ class ContextSwitchingTracker(AbstractStateTracker):
         return super().__getattribute__(name)
 
     @property
-    def mode(self) -> InferenceMode:
-        return self._mode
-
-    @mode.setter
-    def mode(self, value: InferenceMode):
-        self._mode = value
-
-    @property
     def current_tracker(self):
-        match self._mode:
+        match self.mode:
             case InferenceMode.Discovery:
                 return self._cov_tracker
             case _:
                 return self._inf_tracker
 
     @property
-    def equivalence_map(self):
-        return self._eqv_map
-
-    @equivalence_map.setter
-    def equivalence_map(self, eqv_map):
-        self._eqv_map = eqv_map
-
-    @property
     def unmapped_states(self):
         G = self._cov_tracker.state_graph
         nodes = G.nodes
-        return nodes - self._eqv_map.keys()
+        return nodes - self.equivalence_map.keys()
 
     ## Empty methods that will never be accessed
 
@@ -199,7 +184,7 @@ class StateInferenceStrategy(UniformStrategy,
                 cap, eqv_map = await self.perform_cross_pollination()
                 self._tracker.equivalence_map = eqv_map
                 self._tracker.current_tracker.reconstruct_graph(cap)
-                self._tracker._mode = InferenceMode.Discovery
+                self._tracker.mode = InferenceMode.Discovery
                 warning(eqv_map)
 
     async def perform_cross_pollination(self):
