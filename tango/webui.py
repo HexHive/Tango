@@ -27,7 +27,8 @@ __all__ = ['WebRenderer']
 WWW_PATH = os.path.join(os.path.dirname(__file__), 'www')
 
 class WebRenderer(AsyncComponent, component_type='webui',
-        capture_paths=['webui.*'], capture_components={'session'}):
+        capture_paths=['webui.*'], capture_components={'session'},
+        catch_all=True):
     def __init__(self, session: FuzzerSession, *,
             http_host: str='localhost', http_port: int=8080,
             www_path: str=WWW_PATH):
@@ -113,10 +114,6 @@ class WebRenderer(AsyncComponent, component_type='webui',
                 gather_tasks.cancel()
         await get_session_task_group().create_task(_handler())
 
-    @classmethod
-    def match_config(cls, config: dict) -> bool:
-        return super().match_config(config)
-
 class WebDataLoader:
     NA_DATE = datetime.datetime.fromtimestamp(0)
 
@@ -183,11 +180,16 @@ class WebDataLoader:
     def fade_coeff(cls, fade, value):
         return max(0, (fade - value) / fade)
 
+    @property
+    def fresh_graph(self):
+        H = self._session._explorer.tracker.state_graph
+        G = H.copy(fresh=True)
+        # we also return a reference to the original in case attribute access is
+        # needed
+        return G, H
+
     async def track_node(self, *args, ret, **kwargs):
         state, new = ret
-        state = self._session._explorer.tracker.equivalence_map.get(state)
-        if state is None:
-            return
         now = datetime.datetime.now()
         if new:
             self._node_added[state] = now
@@ -196,10 +198,6 @@ class WebDataLoader:
 
     async def track_edge(self, *args, ret, **kwargs):
         src, dst, new = ret
-        src = self._session._explorer.tracker.equivalence_map.get(src)
-        dst = self._session._explorer.tracker.equivalence_map.get(dst)
-        if None in (src, dst):
-            return
         now = datetime.datetime.now()
         if new:
             self._edge_added[(src, dst)] = now
@@ -213,8 +211,7 @@ class WebDataLoader:
         # * send over WS
 
         # first we get a copy so that we can re-assign node and edge attributes
-        H = self._session._explorer.tracker._inf_tracker.state_graph
-        G = H.copy(fresh=True)
+        G, H = self.fresh_graph
 
         to_delete = []
         for node, data in G.nodes(data=True):
@@ -268,13 +265,14 @@ class WebDataLoader:
                 self.DEFAULT_EDGE_PEN_WIDTH,
                 self.NEW_EDGE_PEN_WIDTH,
                 coeff)
-            # label = f"min={len(H.edges[src, dst]['minimized'].flatten())}"
 
             state = dst
             data.clear()
             data['color'] = color
             data['penwidth'] = penwidth * self._hitcounter[state]
-            # data['label'] = label
+            if 'minimized' in H.edges[src, dst]:
+                label = f"min={len(H.edges[src, dst]['minimized'].flatten())}"
+                data['label'] = label
 
         G.graph["graph"] = {'rankdir': 'LR'}
         G.graph["node"] = {'style': 'filled'}

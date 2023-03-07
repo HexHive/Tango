@@ -5,14 +5,21 @@ from . import debug, info, warning
 from tango.core import (UniformStrategy, AbstractState, AbstractInput,
     BaseStateGraph, AbstractStateTracker)
 from tango.cov import CoverageStateTracker
+from tango.webui import WebRenderer, WebDataLoader
+from tango.common import get_session_task_group
 
+from aiohttp import web
 from typing import Optional
 from enum import Enum, auto
 from nptyping import NDArray, Shape
 import numpy as np
 import networkx as nx
+import datetime
+import asyncio
 
-__all__ = ['StateInferenceStrategy', 'StateInferenceTracker']
+__all__ = [
+    'StateInferenceStrategy', 'StateInferenceTracker', 'InferenceWebRenderer'
+]
 
 class InferenceMode(Enum):
     Discovery = auto()
@@ -455,3 +462,55 @@ class StateInferenceStrategy(UniformStrategy,
             s_idx += 1
 
         return adj, eqv_map, eqv_mask
+
+class InferenceWebRenderer(WebRenderer):
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return config['strategy'].get('type') == 'inference'
+
+    async def _handle_websocket(self, request):
+        async def _handler():
+            ws = web.WebSocketResponse(compress=False)
+            await ws.prepare(request)
+
+            data_loader = InferenceWebDataLoader(ws, self._session, self._hitcounter)
+            gather_tasks = asyncio.gather(*data_loader.tasks)
+            try:
+                await gather_tasks
+            except (RuntimeError, ConnectionResetError) as ex:
+                debug(f'Websocket handler terminated ({ex=})')
+            finally:
+                gather_tasks.cancel()
+        await get_session_task_group().create_task(_handler())
+
+class InferenceWebDataLoader(WebDataLoader):
+    @property
+    def fresh_graph(self):
+        H = self._session._explorer.tracker.inf_tracker.state_graph
+        G = H.copy(fresh=True)
+        # we also return a reference to the original in case attribute access is
+        # needed
+        return G, H
+
+    async def track_node(self, *args, ret, **kwargs):
+        state, new = ret
+        state = self._session._explorer.tracker.equivalence_map.get(state)
+        if state is None:
+            return
+        now = datetime.datetime.now()
+        if new:
+            self._node_added[state] = now
+        self._node_visited[state] = now
+        await self.update_graph()
+
+    async def track_edge(self, *args, ret, **kwargs):
+        src, dst, new = ret
+        src = self._session._explorer.tracker.equivalence_map.get(src)
+        dst = self._session._explorer.tracker.equivalence_map.get(dst)
+        if None in (src, dst):
+            return
+        now = datetime.datetime.now()
+        if new:
+            self._edge_added[(src, dst)] = now
+        self._edge_visited[(src, dst)] = now
+        await self.update_graph()
