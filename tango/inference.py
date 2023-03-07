@@ -364,20 +364,9 @@ class StateInferenceStrategy(UniformStrategy,
 
     @classmethod
     def _collapse_cap_matrix(cls, cap, stilde, mask):
-        def equal_unordered(s, t):
-            t = list(t)   # make a mutable copy
-            try:
-                for elem in s:
-                    t.remove(elem)
-            except ValueError:
-                return False
-            return not t
-
         def combine_transitions(r, t):
-            if not r:
-                return
-            elif not t:
-                return r
+            if not (t and r):
+                return t or r
             combined = list(r)
             for elem in t:
                 if not elem in combined:
