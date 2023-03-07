@@ -326,7 +326,7 @@ class StateInferenceStrategy(UniformStrategy,
         if dual_axis:
             # we re-arrange is_nbr such that axis 0 returns both the
             # out-neighbors and in-neighbors
-            is_nbr = np.array((adj, adj.T), dtype=adj.dtype)
+            is_nbr = np.array((is_nbr, is_nbr.T), dtype=is_nbr.dtype)
             is_nbr = np.swapaxes(is_nbr, 0, 1)
 
         # the nodes array
@@ -416,7 +416,7 @@ class StateInferenceStrategy(UniformStrategy,
                 adj[v,:] = out_edges
                 if dual_axis:
                     in_edges = cls.combine_transitions(adj[:,idx], axis=1) \
-                        .reshape(adj.shape[0], 1)
+                        .reshape(adj.shape[0])
                     adj[:,v] = in_edges
 
         stilde = [set(x) for x in stilde]
