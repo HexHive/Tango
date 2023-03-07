@@ -8,7 +8,7 @@ if HAS_PTRACE_EVENTS:
     from tango.ptrace.binding.func import (
         PTRACE_O_TRACEFORK, PTRACE_O_TRACEVFORK,
         PTRACE_O_TRACEEXEC, PTRACE_O_TRACESYSGOOD,
-        PTRACE_O_TRACECLONE, THREAD_TRACE_FLAGS)
+        PTRACE_O_TRACECLONE, PTRACE_O_TRACESECCOMP, THREAD_TRACE_FLAGS)
 from tango.ptrace.binding import ptrace_detach
 if HAS_PROC:
     from tango.ptrace.linux_proc import readProcessStat, ProcError
@@ -65,6 +65,7 @@ class PtraceDebugger(object):
      - trace_fork (bool): fork() tracing is enabled?
      - trace_exec (bool): exec() tracing is enabled?
      - trace_clone (bool): clone() tracing is enabled?
+     - trace_seccomp (bool): seccomp_trace tracing is enabled?
      - use_sysgood (bool): sysgood option is enabled?
     """
 
@@ -75,6 +76,7 @@ class PtraceDebugger(object):
         self.trace_fork = False
         self.trace_exec = False
         self.trace_clone = False
+        self.trace_seccomp = False
         self.use_sysgood = False
 
         # WARN sometimes, when a traced process forks, the SIGSTOP from the
@@ -231,13 +233,12 @@ class PtraceDebugger(object):
         """
         return self._wait_event(pid, blocking=blocking)
 
-    def waitSignals(self, *signals, blocking=True, **kw):
+    def waitSignals(self, *signals, pid=None, blocking=True):
         """
         Wait for any signal or some specific signals (if specified) from a
         specific process (if pid keyword is set) or any process (default).
         Return a ProcessSignal object or raise an unexpected ProcessEvent.
         """
-        pid = kw.get('pid', None)
         event = self._wait_event(pid, blocking=blocking)
         if event is None:
             return
@@ -254,13 +255,16 @@ class PtraceDebugger(object):
         (if specified) or any process (default). Return a ProcessSignal object
         or raise an unexpected ProcessEvent.
         """
-        signum = SIGTRAP
-        if self.use_sysgood:
-            signum |= 0x80
         if process:
-            return self.waitSignals(signum, blocking=blocking, pid=process.pid)
+            event = self.waitProcessEvent(pid=process.pid, blocking=blocking)
         else:
-            return self.waitSignals(signum, blocking=blocking)
+            event = self.waitProcessEvent(blocking=blocking)
+        if event is None:
+            return
+        if event.is_syscall_stop():
+            return event
+        else:
+            raise event
 
     def deleteProcess(self, process=None, pid=None):
         """
@@ -277,6 +281,10 @@ class PtraceDebugger(object):
         except ValueError:
             pass
 
+    def updateProcessOptions(self):
+        for process in self:
+            process.setoptions(self.options)
+
     def traceFork(self):
         """
         Enable fork() tracing. Do nothing if it's not supported.
@@ -286,6 +294,7 @@ class PtraceDebugger(object):
                 "Tracing fork events is not supported on this architecture or operating system")
         self.options |= PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK
         self.trace_fork = True
+        self.updateProcessOptions()
         debug("Debugger trace forks (options=%s)" % self.options)
 
     def traceExec(self):
@@ -297,6 +306,7 @@ class PtraceDebugger(object):
             return
         self.trace_exec = True
         self.options |= PTRACE_O_TRACEEXEC
+        self.updateProcessOptions()
         debug("Debugger trace execs (options=%s)" % self.options)
 
     def traceClone(self):
@@ -308,6 +318,15 @@ class PtraceDebugger(object):
             return
         self.trace_clone = True
         self.options |= PTRACE_O_TRACECLONE
+        self.updateProcessOptions()
+
+    def traceSeccomp(self):
+        if not HAS_PTRACE_EVENTS:
+            # no effect on OS without ptrace events
+            return
+        self.trace_seccomp = True
+        self.options |= PTRACE_O_TRACESECCOMP
+        self.updateProcessOptions()
 
     def enableSysgood(self):
         """
@@ -320,6 +339,13 @@ class PtraceDebugger(object):
             return
         self.use_sysgood = True
         self.options |= PTRACE_O_TRACESYSGOOD
+
+    @property
+    def sigtrap_signum(self):
+        signum = SIGTRAP
+        if self.use_sysgood:
+            signum |= 0x80
+        return signum
 
     def __getitem__(self, pid):
         return self.dict[pid]

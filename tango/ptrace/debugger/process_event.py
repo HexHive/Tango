@@ -13,6 +13,8 @@ class ProcessEvent(Exception):
         Exception.__init__(self, message)
         self.process = process
 
+    def is_syscall_stop(self):
+        return False
 
 class ProcessExit(ProcessEvent):
     """

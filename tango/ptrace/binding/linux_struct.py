@@ -2,7 +2,7 @@ from tango.ptrace.cpu_info import (
     CPU_64BITS, CPU_PPC32, CPU_PPC64, CPU_ARM32, CPU_AARCH64)
 from ctypes import (Structure, Union, sizeof,
                     c_char, c_ushort, c_int, c_uint, c_ulong, c_void_p,
-                    c_uint16, c_uint32, c_uint64, c_size_t)
+                    c_uint8, c_uint16, c_uint32, c_uint64, c_size_t, c_int64)
 
 pid_t = c_int
 uid_t = c_ushort
@@ -274,3 +274,39 @@ class iovec_struct(Structure):
         ("buf", c_void_p),
         ("len", c_size_t)
     )
+
+class syscall_info_entry(Structure):
+    _fields_ = (
+        ("nr", c_uint64),
+        ("args", c_uint64*6),
+    )
+
+class syscall_info_exit(Structure):
+    _fields_ = (
+        ("rval", c_int64),
+        ("is_error", c_uint8),
+    )
+
+class syscall_info_seccomp(Structure):
+    _fields_ = (
+        ("nr", c_uint64),
+        ("args", c_uint64*6),
+        ("ret_data", c_uint32),
+    )
+
+class syscall_info_data(Union):
+    _fields_ = (
+        ("entry", syscall_info_entry),
+        ("exit", syscall_info_exit),
+        ("seccomp", syscall_info_seccomp),
+    )
+
+class ptrace_syscall_info(Structure):
+    _fields_ = (
+        ("op", c_uint8),
+        ("arch", c_uint32),
+        ("instruction_pointer", c_void_p),
+        ("stack_pointer", c_void_p),
+        ("_data", syscall_info_data),
+    )
+    _anonymous_ = ("_data",)

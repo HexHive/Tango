@@ -14,8 +14,8 @@ from tango.ptrace.cpu_info import CPU_WORD_SIZE
 from tango.ptrace.ctypes_tools import bytes2word, word2bytes, bytes2type, bytes2array
 from tango.ptrace.ctypes_tools import formatAddress, formatWordHex
 from tango.ptrace.errors import PtraceError
-from tango.ptrace.debugger import (Breakpoint,
-                             ProcessExit, ProcessSignal, NewProcessEvent, ProcessExecution)
+from tango.ptrace.debugger import (Breakpoint, ProcessExit, ProcessSignal,
+    NewProcessEvent, ProcessExecution, SeccompEvent)
 from tango.ptrace.disasm import HAS_DISASSEMBLER
 from tango.ptrace.debugger.backtrace import getBacktrace
 from tango.ptrace.debugger.process_error import ProcessError
@@ -35,7 +35,7 @@ if HAS_PTRACE_EVENTS:
     from tango.ptrace.binding import (
         ptrace_setoptions, ptrace_geteventmsg, WPTRACEEVENT,
         PTRACE_EVENT_FORK, PTRACE_EVENT_VFORK, PTRACE_EVENT_CLONE,
-        PTRACE_EVENT_EXEC)
+        PTRACE_EVENT_EXEC, PTRACE_EVENT_SECCOMP)
     NEW_PROCESS_EVENT = (
         PTRACE_EVENT_FORK, PTRACE_EVENT_VFORK, PTRACE_EVENT_CLONE)
 if HAS_PTRACE_GETREGS or HAS_PTRACE_GETREGSET:
@@ -410,6 +410,19 @@ class PtraceProcess(object):
         self.is_stopped = True
         return ProcessSignal(signum, self)
 
+    def processSeccompEvent(self, event):
+        self.is_stopped = True
+        if self.syscall_state.next_event == 'exit':
+            # tracer is aware of syscall-entry, so we must not double-notify it.
+            # instead, we'll resume the process until syscall-exit occurs
+            debug(f"seccomp_trace event received while expecting"
+                f" syscall-exit-stop; retrying")
+            self.syscall()
+            return self.waitEvent()
+        else:
+            debug("seccomp_trace event received as syscall-enter-stop")
+            return event
+
     def ptraceEvent(self, event):
         if not HAS_PTRACE_EVENTS:
             self.notImplementedError()
@@ -422,6 +435,9 @@ class PtraceProcess(object):
             return NewProcessEvent(new_process)
         elif event == PTRACE_EVENT_EXEC:
             return ProcessExecution(self)
+        elif event == PTRACE_EVENT_SECCOMP:
+            event = SeccompEvent(self)
+            return self.processSeccompEvent(event)
         else:
             raise ProcessError(self, "Unknown ptrace event: %r" % event)
 

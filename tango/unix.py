@@ -67,18 +67,15 @@ class PtraceChannel(AbstractChannel):
         self._debugger.traceExec()
         self._debugger.traceClone()
         self._proc = self._debugger.addProcess(self._pobj.pid, is_attached=True)
-        self._syscall_signum = signal.SIGTRAP
-        if self._debugger.use_sysgood:
-            self._syscall_signum |= 0x80
 
         # FIXME this is never really used; it's just a placeholder that went
         # obsolete
         default_ignore = lambda syscall: syscall.name not in SOCKET_SYSCALL_NAMES
-        self.prepare_process(self._proc, default_ignore, syscall=True)
+        self.prepare_process(self._proc, default_ignore, resume=True)
 
         self._monitor_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='PtraceMonitorExecutor')
 
-    def prepare_process(self, process, ignore_callback, syscall=True):
+    def prepare_process(self, process, ignore_callback, resume=True):
         if not process in self._debugger:
             self._debugger.addProcess(process, is_attached=True)
 
@@ -86,12 +83,12 @@ class PtraceChannel(AbstractChannel):
             ignore_callback = lambda x: False
         process.syscall_state.ignore_callback = ignore_callback
 
-        if syscall:
+        if resume:
             self.resume_process(process)
 
-    def process_syscall(self, process, syscall, syscall_callback, break_on_entry, **kwargs) -> bool:
+    def process_syscall(self, process, syscall, syscall_callback, is_entry, **kwargs) -> bool:
         # ensure that the syscall has finished successfully before callback
-        if break_on_entry or (syscall.result is not None and syscall.result >= 0):
+        if is_entry or syscall.result >= 0:
             # calling syscall.format() takes a lot of time and should be
             # avoided in production, even if logging is disabled
             if self._process_all or self._verbose:
@@ -99,9 +96,7 @@ class PtraceChannel(AbstractChannel):
             else:
                 debug(f"syscall requested: [{process.pid}] {syscall.name}")
             syscall_callback(process, syscall, **kwargs)
-            return True
-        else:
-            return False
+        return is_entry
 
     def process_exit(self, event):
         debug(f"Process with {event.process.pid=} exited, deleting from debugger")
@@ -140,7 +135,7 @@ class PtraceChannel(AbstractChannel):
         if event.process.is_attached:
             # sometimes, child process might have been killed at creation,
             # so the debugger detaches it; we check for that here
-            self.prepare_process(event.process, ignore_callback, syscall=True)
+            self.prepare_process(event.process, ignore_callback, resume=True)
         self.resume_process(event.process.parent)
 
     def process_exec(self, event):
@@ -159,14 +154,11 @@ class PtraceChannel(AbstractChannel):
         except ProcessExecution as event:
             self.process_exec(event)
 
-    def is_event_syscall(self, event):
-        return isinstance(event, ProcessSignal) and event.signum == self._syscall_signum
-
     def process_event(self, event, ignore_callback, syscall_callback, break_on_entry, **kwargs):
         if event is None:
             return
 
-        is_syscall = self.is_event_syscall(event)
+        is_syscall = event.is_syscall_stop()
         if not is_syscall:
             self.process_auxiliary_event(event, ignore_callback)
         else:
@@ -180,18 +172,25 @@ class PtraceChannel(AbstractChannel):
             #############
 
             syscall = state.event(self._syscall_options)
+            is_entry = state.next_event == 'exit'
+            match_condition = (break_on_entry and is_entry) or \
+                (not break_on_entry and not is_entry)
             if syscall is not None and \
-                    not (self._process_all and ignore_callback(syscall)):
-                processed = self.process_syscall(event.process, syscall, syscall_callback, break_on_entry, **kwargs)
+                    not (self._process_all and ignore_callback(syscall)) and \
+                    match_condition:
+                processed = self.process_syscall(event.process, syscall, syscall_callback, is_entry, **kwargs)
             else:
                 processed = False
 
-            if not processed or not break_on_entry:
+            if is_entry and not processed:
+                event.process.syscall()
+            elif not is_entry:
                 # resume the suspended process until it encounters the next syscall
                 self.resume_process(event.process)
             else:
                 # the caller is responsible for resuming the target process
                 pass
+
             return syscall
 
     def resume_process(self, process, signum=0):
@@ -523,7 +522,7 @@ class PtraceForkChannel(PtraceChannel):
 
     def _wakeup_forkserver_syscall_callback(self, process, syscall):
         self._wakeup_forkserver_syscall_found = True
-        self.resume_process(process)
+        process.syscall()
 
 class PtraceChannelFactory(AbstractChannelFactory):
     @abstractmethod

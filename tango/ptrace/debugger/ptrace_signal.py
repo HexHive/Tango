@@ -64,6 +64,9 @@ class ProcessSignal(ProcessEvent):
         self.signum = signum
         self.reason = None
 
+    def is_syscall_stop(self):
+        return self.signum == self.process.debugger.sigtrap_signum
+
     def _analyze(self):
         if self.signum in (SIGSEGV, SIGBUS):
             self.memoryFault()

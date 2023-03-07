@@ -3,6 +3,9 @@ CFLAGS := -fsanitize-coverage=$(COVERAGE),trace-pc-guard
 ifdef USE_ASAN
 	CFLAGS += -fsanitize=address
 endif
+ifdef USE_SECCOMP
+	CFLAGS += -DUSE_SECCOMP
+endif
 CFLAGS += -O3 -g -fPIC
 
 .PHONY: all clean

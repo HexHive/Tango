@@ -18,7 +18,7 @@ elif RUNNING_BSD:
 elif RUNNING_LINUX:
     from tango.ptrace.binding.linux_struct import (
         user_regs_struct as ptrace_registers_t,
-        user_fpregs_struct, siginfo, iovec_struct)
+        user_fpregs_struct, siginfo, iovec_struct, ptrace_syscall_info)
     if not CPU_64BITS:
         from tango.ptrace.binding.linux_struct import user_fpxregs_struct
 else:
@@ -111,6 +111,7 @@ if RUNNING_LINUX:
     HAS_PTRACE_EVENTS = True
     PTRACE_SETOPTIONS = 0x4200
     PTRACE_GETEVENTMSG = 0x4201
+    PTRACE_GET_SYSCALL_INFO = 0x420e
 
     # Linux introduces the __WALL flag for wait
     # Revisit: __WALL is the default for ptraced children since Linux 4.7
@@ -123,6 +124,7 @@ PTRACE_O_TRACECLONE = 0x00000008
 PTRACE_O_TRACEEXEC = 0x00000010
 PTRACE_O_TRACEVFORKDONE = 0x00000020
 PTRACE_O_TRACEEXIT = 0x00000040
+PTRACE_O_TRACESECCOMP = 0x00000080
 
 # Wait extended result codes for the above trace options
 PTRACE_EVENT_FORK = 1
@@ -131,6 +133,7 @@ PTRACE_EVENT_CLONE = 3
 PTRACE_EVENT_EXEC = 4
 PTRACE_EVENT_VFORK_DONE = 5
 PTRACE_EVENT_EXIT = 6
+PTRACE_EVENT_SECCOMP = 7
 
 try:
     from cptrace import ptrace as _ptrace
@@ -256,6 +259,13 @@ if RUNNING_LINUX:
 
     def ptrace_setfpregs(pid, fpregs):
         ptrace(PTRACE_SETFPREGS, pid, 0, addressof(fpregs))
+
+    def ptrace_get_syscall_info(pid):
+        info = ptrace_syscall_info()
+        size = ptrace(PTRACE_GET_SYSCALL_INFO, pid, sizeof(ptrace_syscall_info),
+            addressof(info))
+        return info
+
 
     if not CPU_64BITS:
         def ptrace_getfpxregs(pid):

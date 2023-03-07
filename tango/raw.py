@@ -134,7 +134,7 @@ class StdIOChannel(PtraceChannel):
             if self._poll_server_waiting:
                 self.cb_stdin_polled(process, syscall)
         finally:
-            self.resume_process(process)
+            process.syscall()
 
     def _poll_syscall_callback_internal(self, process, syscall):
         # poll, ppoll
@@ -266,13 +266,20 @@ class StdIOForkChannelFactory(StdIOChannelFactory,
 
 class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
     def __init__(self, work_dir: str, **kwargs):
-        super().__init__(**kwargs)
         self._work_dir = work_dir
         self._injected = False
         self._awaited = False
         self._reconnect = True
         self._fifo = os.path.join(self._work_dir, 'input.pipe')
         self._setup_fifo()
+        super().__init__(**kwargs)
+        self._debugger.traceSeccomp()
+
+    def resume_process(self, process, signum=0):
+        if self._injected:
+            process.cont(signum)
+        else:
+            process.syscall(signum)
 
     def connect(self):
         self._reconnect = True
@@ -339,6 +346,12 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
             break_on_entry=True)
         del self._poll_server_waiting
         return proc
+
+    def _wakeup_forkserver(self):
+        if self._proc_trapped:
+            debug("Waking up forkserver :)")
+            self.resume_process(self._proc)
+            self._proc_trapped = False
 
     ## Callbacks
     def _poll_monitor(self):
