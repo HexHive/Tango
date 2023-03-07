@@ -171,11 +171,13 @@ class ContextSwitchingTracker(AbstractStateTracker):
         raise NotImplementedError
 
 class StateInferenceStrategy(UniformStrategy,
-        capture_components={'tracker'}):
-    def __init__(self, *, tracker: ContextSwitchingTracker, **kwargs):
+        capture_components={'tracker'},
+        capture_paths=['strategy.inference_threshold']):
+    def __init__(self, *, tracker: ContextSwitchingTracker,
+            inference_threshold: Optional[str]=None, **kwargs):
         super().__init__(**kwargs)
         self._tracker = tracker
-        self._discovery_threshold = 50
+        self._discovery_threshold = int(inference_threshold or '50')
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
