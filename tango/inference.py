@@ -98,16 +98,16 @@ class ContextSwitchingTracker(AbstractStateTracker):
         InferenceTracker._capture_paths
 
     def __init__(self, *args, **kwargs):
-        self._cov_tracker = CoverageStateTracker(*args, **kwargs)
-        self._inf_tracker = InferenceTracker(*args, **kwargs)
         # properties
         self.mode = InferenceMode.Discovery
+        self.cov_tracker = CoverageStateTracker(*args, **kwargs)
+        self.inf_tracker = InferenceTracker(*args, **kwargs)
         self.equivalence_map = {}
 
     async def initialize(self):
         await super().initialize()
-        await self._cov_tracker.initialize()
-        await self._inf_tracker.initialize()
+        await self.cov_tracker.initialize()
+        await self.inf_tracker.initialize()
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -123,13 +123,13 @@ class ContextSwitchingTracker(AbstractStateTracker):
     def current_tracker(self):
         match self.mode:
             case InferenceMode.Discovery:
-                return self._cov_tracker
+                return self.cov_tracker
             case _:
-                return self._inf_tracker
+                return self.inf_tracker
 
     @property
     def unmapped_states(self):
-        G = self._cov_tracker.state_graph
+        G = self.cov_tracker.state_graph
         nodes = G.nodes
         return nodes - self.equivalence_map.keys()
 
@@ -183,13 +183,13 @@ class StateInferenceStrategy(UniformStrategy,
             case InferenceMode.CrossPollination:
                 cap, eqv_map = await self.perform_cross_pollination()
                 self._tracker.equivalence_map = eqv_map
-                self._tracker.current_tracker.reconstruct_graph(cap)
+                self._tracker.inf_tracker.reconstruct_graph(cap)
                 self._tracker.mode = InferenceMode.Discovery
                 warning(eqv_map)
 
     async def perform_cross_pollination(self):
-        G = self._tracker._cov_tracker.state_graph
         nodes = list(G.nodes)
+        G = self._tracker.cov_tracker.state_graph
 
         # get a capability matrix extended with cross-pollination
         cap = await self._extend_adj_matrix(G)
@@ -243,7 +243,7 @@ class StateInferenceStrategy(UniformStrategy,
                 dryrun=True)
             await self._explorer.loader.execute_input(input)
             # TODO add new states to graph and match against them too?
-            current_state = self._tracker.current_tracker.peek(eqv_src, eqv_dst,
+            current_state = self._tracker.cov_tracker.peek(eqv_src, eqv_dst,
                 do_not_cache=True)
             return current_state == eqv_dst
         finally:
