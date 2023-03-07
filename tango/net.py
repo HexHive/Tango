@@ -388,7 +388,7 @@ class TCPChannel(PtraceChannel, NetworkChannel):
             self._setup_accepting = True
             self.cb_socket_accepting(process, syscall)
         finally:
-            process.syscall()
+            self.resume_process(process)
 
     def _setup_ignore_callback_accept(self, syscall):
         return syscall.name not in ('accept', 'accept4', 'poll', 'ppoll', 'select')
@@ -479,7 +479,7 @@ class TCPChannel(PtraceChannel, NetworkChannel):
             else:
                 return
         finally:
-            process.syscall()
+            self.resume_process(process)
         self._poll_server_waiting = True
 
     def _poll_ignore_callback(self, syscall):
@@ -812,7 +812,7 @@ class UDPChannel(PtraceChannel, NetworkChannel):
                         self._sockfd = candidates[0]
                         self.cb_socket_binding(process, syscall)
         finally:
-            process.syscall()
+            self.resume_process(process)
 
     def _setup_ignore_callback(self, syscall):
         return syscall.name not in ('socket', 'bind')
@@ -866,7 +866,7 @@ class UDPChannel(PtraceChannel, NetworkChannel):
             else:
                 return
         finally:
-            process.syscall()
+            self.resume_process(process)
         self._poll_server_waiting = True
 
     def _poll_ignore_callback(self, syscall):

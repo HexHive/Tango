@@ -87,7 +87,7 @@ class PtraceChannel(AbstractChannel):
         process.syscall_state.ignore_callback = ignore_callback
 
         if syscall:
-            process.syscall()
+            self.resume_process(process)
 
     def process_syscall(self, process, syscall, syscall_callback, break_on_entry, **kwargs) -> bool:
         # ensure that the syscall has finished successfully before callback
@@ -120,18 +120,18 @@ class PtraceChannel(AbstractChannel):
         elif event.signum in (signal.SIGINT, signal.SIGWINCH):
             debug(f"Process with {event.process.pid=} received SIGINT or SIGWINCH {event.signum=}")
             # Ctrl-C or resizing the window should not be passed to child
-            event.process.syscall()
+            self.resume_process(event.process)
             return
         elif event.signum == signal.SIGSTOP:
             critical(f"{event.process.pid=} received rogue SIGSTOP, resuming for now")
-            event.process.syscall()
+            self.resume_process(event.process)
             return
         elif event.signum == signal.SIGSEGV:
             raise ProcessCrashedException(f"Process with {event.process.pid=} terminated abnormally with {event.signum=}", exitcode=event.signum)
         debug(f"Target process with {event.process.pid=} received signal with {event.signum=}")
         event.display(log=warning)
         signum = event.signum
-        event.process.syscall(signum)
+        self.resume_process(event.process, signum)
         exitcode = signal_to_exitcode(event.signum)
 
     def process_new(self, event, ignore_callback):
@@ -141,7 +141,7 @@ class PtraceChannel(AbstractChannel):
             # sometimes, child process might have been killed at creation,
             # so the debugger detaches it; we check for that here
             self.prepare_process(event.process, ignore_callback, syscall=True)
-        event.process.parent.syscall()
+        self.resume_process(event.process.parent)
 
     def process_exec(self, event):
         debug(f"Target process with {event.process.pid=} called exec; removing from debugger")
@@ -188,11 +188,14 @@ class PtraceChannel(AbstractChannel):
 
             if not processed or not break_on_entry:
                 # resume the suspended process until it encounters the next syscall
-                event.process.syscall()
+                self.resume_process(event.process)
             else:
                 # the caller is responsible for resuming the target process
                 pass
             return syscall
+
+    def resume_process(self, process, signum=0):
+        process.syscall(signum)
 
     def timeout_handler(self, stop_event):
         if not stop_event.wait(timeout * self._timescale):
@@ -374,7 +377,7 @@ class PtraceForkChannel(PtraceChannel):
                 # restore correct trap byte and registers
                 self._cleanup_forkserver(event.process)
                 # resume execution of the child process
-                event.process.syscall()
+                self.resume_process(event.process)
             else:
                 debug("Forkserver trapped, waiting for wake-up call")
                 self._proc_trapped = True
@@ -386,7 +389,7 @@ class PtraceForkChannel(PtraceChannel):
                 self._wait_for_proc = False
         elif event.signum == signal.SIGCHLD and event.process == self._proc:
             # when the forkserver receives SIGCHLD, we ignore it
-            event.process.syscall()
+            self.resume_process(event.process)
         else:
             super().process_signal(event)
 
@@ -404,7 +407,7 @@ class PtraceForkChannel(PtraceChannel):
             # We need to resume the forkserver because addProcess raised an exception instead
             # of NewProcessEvent (so the forkserver is still stuck in the fork syscall)
             warning("Forked child died on entry, forkserver will be woken up")
-            self._proc.syscall()
+            self.resume_process(self._proc)
             self._proc_untrap = True
             CountProfiler("infant_mortality")(1)
         except Exception as event:
@@ -477,7 +480,7 @@ class PtraceForkChannel(PtraceChannel):
     def _wakeup_forkserver(self):
         if self._proc_trapped:
             debug("Waking up forkserver :)")
-            self._proc.syscall()
+            self.resume_process(self._proc)
 
             # must actually wait for syscall, not any event
             self._wakeup_forkserver_syscall_found = False
@@ -510,7 +513,7 @@ class PtraceForkChannel(PtraceChannel):
         return self._proc_trapped
 
     def _invoke_forkserver_syscall_callback(self, process, syscall):
-        process.syscall()
+        pass
 
     def _wakeup_forkserver_ignore_callback(self, syscall):
         return False
@@ -520,7 +523,7 @@ class PtraceForkChannel(PtraceChannel):
 
     def _wakeup_forkserver_syscall_callback(self, process, syscall):
         self._wakeup_forkserver_syscall_found = True
-        process.syscall()
+        self.resume_process(process)
 
 class PtraceChannelFactory(AbstractChannelFactory):
     @abstractmethod

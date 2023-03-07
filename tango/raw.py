@@ -134,7 +134,7 @@ class StdIOChannel(PtraceChannel):
             if self._poll_server_waiting:
                 self.cb_stdin_polled(process, syscall)
         finally:
-            process.syscall()
+            self.resume_process(process)
 
     def _poll_syscall_callback_internal(self, process, syscall):
         # poll, ppoll
