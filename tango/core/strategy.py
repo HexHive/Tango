@@ -150,6 +150,8 @@ class SeedableStrategy(BaseStrategy,
 
         self._generator.update_state(state, breadcrumbs=breadcrumbs,
             input=input, orig_input=orig_input, exc=exc, **kwargs)
+        self.update_state(state, breadcrumbs=breadcrumbs,
+            input=input, orig_input=orig_input, exc=exc, **kwargs)
 
     async def _transition_update_cb(self,
             source: AbstractState, destination: AbstractState,
@@ -161,6 +163,10 @@ class SeedableStrategy(BaseStrategy,
             self._generator.save_input(input, breadcrumbs, 'queue', repr(destination))
 
         self._generator.update_transition(source, destination, input,
+            breadcrumbs=breadcrumbs, orig_input=orig_input,
+            state_changed=state_changed, new_transition=new_transition, exc=exc,
+            **kwargs)
+        self.update_transition(source, destination, input,
             breadcrumbs=breadcrumbs, orig_input=orig_input,
             state_changed=state_changed, new_transition=new_transition, exc=exc,
             **kwargs)
