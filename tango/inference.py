@@ -3,7 +3,7 @@ from __future__ import annotations
 from . import debug, info, warning
 
 from tango.core import (UniformStrategy, AbstractState, AbstractInput,
-    BaseStateGraph, AbstractStateTracker)
+    BaseStateGraph, AbstractStateTracker, ValueProfiler, TimeElapsedProfiler)
 from tango.cov import CoverageStateTracker
 from tango.webui import WebRenderer, WebDataLoader
 from tango.common import get_session_task_group
@@ -178,6 +178,7 @@ class StateInferenceStrategy(UniformStrategy,
         super().__init__(**kwargs)
         self._tracker = tracker
         self._discovery_threshold = int(inference_threshold or '50')
+        TimeElapsedProfiler('time_crosstest').toggle()
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -192,6 +193,7 @@ class StateInferenceStrategy(UniformStrategy,
                 else:
                     await super().step(input)
             case InferenceMode.CrossPollination:
+                TimeElapsedProfiler('time_crosstest').toggle()
                 cap, eqv_map, mask, nodes = await self.perform_cross_pollination()
                 self._tracker.capability_matrix = cap[mask,:][:,mask]
                 self._tracker.equivalence_map = eqv_map
@@ -199,6 +201,7 @@ class StateInferenceStrategy(UniformStrategy,
                 self._tracker.inf_tracker.reconstruct_graph(cap[~mask,:][:,~mask])
                 self._tracker.mode = InferenceMode.Discovery
                 warning(eqv_map)
+                TimeElapsedProfiler('time_crosstest').toggle()
 
     @staticmethod
     def intersect1d_nosort(a, b, /):
@@ -261,6 +264,8 @@ class StateInferenceStrategy(UniformStrategy,
         return adj
 
     async def _extend_cap_matrix(self, cap, nodes, edge_mask):
+        init_done = np.count_nonzero(edge_mask)
+        init_pending = edge_mask.size - init_done
         for src_idx, src in enumerate(nodes):
             for dst_idx, inputs in filter(lambda t: t[1],
                     enumerate(cap[src_idx,:])):
@@ -281,6 +286,10 @@ class StateInferenceStrategy(UniformStrategy,
                         # eqv_node matched all the responses of src to reach dst
                         self._update_cap_matrix(cap, eqv_idx, dst_idx, inputs)
                     edge_mask[eqv_idx, dst_idx] = True
+
+                    current_done = np.count_nonzero(edge_mask) - init_done
+                    percent = f'{100*current_done/init_pending:.1f}%'
+                    ValueProfiler('status')(f'cross_test ({percent})')
 
     async def _perform_one_cross_pollination(self, eqv_src: AbstractState,
             eqv_dst: AbstractState, input: AbstractInput):
