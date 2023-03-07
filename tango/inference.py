@@ -102,6 +102,8 @@ class ContextSwitchingTracker(AbstractStateTracker):
         self.mode = InferenceMode.Discovery
         self.cov_tracker = CoverageStateTracker(*args, **kwargs)
         self.inf_tracker = InferenceTracker(*args, **kwargs)
+        self.capability_matrix = np.empty((0,0), dtype=object)
+        self.nodes_seq = np.empty((0,), dtype=object)
         self.equivalence_map = {}
 
     async def initialize(self):
@@ -181,18 +183,48 @@ class StateInferenceStrategy(UniformStrategy,
                 else:
                     await super().step(input)
             case InferenceMode.CrossPollination:
-                cap, eqv_map = await self.perform_cross_pollination()
+                cap, eqv_map, mask, nodes = await self.perform_cross_pollination()
+                self._tracker.capability_matrix = cap[mask,:][:,mask]
                 self._tracker.equivalence_map = eqv_map
-                self._tracker.inf_tracker.reconstruct_graph(cap)
+                self._tracker.nodes_seq = nodes
+                self._tracker.inf_tracker.reconstruct_graph(cap[~mask,:][:,~mask])
                 self._tracker.mode = InferenceMode.Discovery
                 warning(eqv_map)
 
+    @staticmethod
+    def intersect1d_nosort(a, b, /):
+        idx = np.indices((*a.shape, *b.shape))
+        equals = lambda i, j: a[i] == b[j]
+        equals_ufn = np.frompyfunc(equals, 2, 1)
+        match = equals_ufn(*idx)
+        a_idx, b_idx = np.where(match)
+        return a_idx, b_idx
+
     async def perform_cross_pollination(self):
-        nodes = list(G.nodes)
         G = self._tracker.cov_tracker.state_graph
+        nodes = np.array(G.nodes)
+
+        to_idx, from_idx = self.intersect1d_nosort(nodes, self._tracker.nodes_seq)
+
+        # get current adjacency matrix
+        adj = G.adjacency_matrix
+        # and current capability matrix
+        cap = self._tracker.capability_matrix
+        try:
+            assert cap.shape == (len(from_idx), len(from_idx))
+        except AssertionError:
+            import ipdb; ipdb.set_trace()
+
+        # mask out edges which have already been cross-tested
+        edge_mask = adj != None
+        mask_irow, mask_icol = np.meshgrid(to_idx, to_idx, indexing='ij')
+        edge_mask[mask_irow, mask_icol] = True
+
+        # get a new capability matrix, overlayed with new adjacencies
+        cap = self._overlay_capabilities(cap, from_idx, adj, to_idx)
 
         # get a capability matrix extended with cross-pollination
-        cap = await self._extend_adj_matrix(G)
+        await self._extend_cap_matrix(cap, nodes, edge_mask)
 
         # construct equivalence sets
         stilde = self._construct_equivalence_sets(cap)
@@ -210,18 +242,25 @@ class StateInferenceStrategy(UniformStrategy,
             eqv_map.setdefault(i, -1)
         eqv_map = {nodes[l]: s_idx for l, s_idx in eqv_map.items()}
 
-        return cap, eqv_map
+        return cap, eqv_map, node_mask, nodes
 
-    async def _extend_adj_matrix(self, G):
-        nodes = list(G.nodes)
-        adj, cap = G.adjacency_matrix, G.adjacency_matrix
+    @staticmethod
+    def _overlay_capabilities(cap, from_idx, adj, to_idx):
+        from_irow, from_icol = np.meshgrid(from_idx, from_idx, indexing='ij')
+        to_irow, to_icol = np.meshgrid(to_idx, to_idx, indexing='ij')
+        adj[to_irow, to_icol] = cap[from_irow, from_icol]
+        return adj
 
+    async def _extend_cap_matrix(self, cap, nodes, edge_mask):
         for src_idx, src in enumerate(nodes):
             for dst_idx, inputs in filter(lambda t: t[1],
-                    enumerate(adj[src_idx,:])):
+                    enumerate(cap[src_idx,:])):
                 dst = nodes[dst_idx]
                 for eqv_idx, eqv_node in filter(lambda t: t[1] != src,
                         enumerate(nodes)):
+                    if edge_mask[eqv_idx, dst_idx]:
+                        # this edge has already been tested
+                        continue
                     for inp in inputs:
                         try:
                             if not await self._perform_one_cross_pollination(
@@ -231,8 +270,8 @@ class StateInferenceStrategy(UniformStrategy,
                             break
                     else:
                         # eqv_node matched all the responses of src to reach dst
-                        self._update_adj_matrix(cap, eqv_idx, dst_idx, inputs)
-        return cap
+                        self._update_cap_matrix(cap, eqv_idx, dst_idx, inputs)
+                    edge_mask[eqv_idx, dst_idx] = True
 
     async def _perform_one_cross_pollination(self, eqv_src: AbstractState,
             eqv_dst: AbstractState, input: AbstractInput):
@@ -252,8 +291,8 @@ class StateInferenceStrategy(UniformStrategy,
             self._tracker.mode = restore_mode
 
     @staticmethod
-    def _update_adj_matrix(adj, src_idx, dst_idx, inputs):
-        row = adj[src_idx,:]
+    def _update_cap_matrix(cap, src_idx, dst_idx, inputs):
+        row = cap[src_idx,:]
         if not (t := row[dst_idx]):
             row[dst_idx] = list(inputs)
         else:
