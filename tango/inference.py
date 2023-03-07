@@ -197,9 +197,31 @@ class StateInferenceStrategy(UniformStrategy,
                 self._tracker.capability_matrix = cap[mask,:][:,mask]
                 self._tracker.equivalence_map = eqv_map
                 self._tracker.nodes_seq = nodes
-                self._tracker.inf_tracker.reconstruct_graph(cap[~mask,:][:,~mask])
+
+                collapsed = self._collapse_graph(cap[~mask,:][:,~mask])
+                self._tracker.inf_tracker.reconstruct_graph(collapsed)
                 self._tracker.mode = InferenceMode.Discovery
                 TimeElapsedProfiler('time_crosstest').toggle()
+
+    @classmethod
+    def _collapse_graph(cls, adj):
+        last_adj = adj
+        while True:
+            # construct equivalence sets
+            stilde = cls._construct_equivalence_sets(adj, dual_axis=True)
+            # remove strictly subsumed nodes
+            adj, stilde, node_mask, sub_map = cls._eliminate_subsumed_nodes(adj,
+                stilde, dual_axis=True)
+            # collapse capability matrix where equivalence states exist
+            adj, eqv_map, node_mask = cls._collapse_adj_matrix(adj, stilde,
+                node_mask, sub_map)
+            # mask out collapsed nodes
+            adj = adj[~node_mask,:][:,~node_mask]
+            if adj.shape == last_adj.shape:
+                break
+            debug(f"Reduced from {last_adj.shape} to {adj.shape}")
+            last_adj = adj
+        return last_adj
 
     @staticmethod
     def intersect1d_nosort(a, b, /):
