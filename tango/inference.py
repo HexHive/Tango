@@ -188,7 +188,6 @@ class StateInferenceStrategy(UniformStrategy,
         match self._tracker.mode:
             case InferenceMode.Discovery:
                 if len(self._tracker.unmapped_states) > self._discovery_threshold:
-                    warning(f'Unmapped: {self._tracker.unmapped_states}')
                     self._tracker.mode = InferenceMode.CrossPollination
                 else:
                     await super().step(input)
@@ -200,7 +199,6 @@ class StateInferenceStrategy(UniformStrategy,
                 self._tracker.nodes_seq = nodes
                 self._tracker.inf_tracker.reconstruct_graph(cap[~mask,:][:,~mask])
                 self._tracker.mode = InferenceMode.Discovery
-                warning(eqv_map)
                 TimeElapsedProfiler('time_crosstest').toggle()
 
     @staticmethod
