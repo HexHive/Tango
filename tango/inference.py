@@ -198,13 +198,15 @@ class StateInferenceStrategy(UniformStrategy,
         stilde = self._construct_equivalence_sets(cap)
 
         # remove strictly subsumed nodes
-        cap, stilde, mask = self._eliminate_subsumed_nodes(cap, stilde)
+        cap, stilde, node_mask, sub_map = self._eliminate_subsumed_nodes(cap, stilde)
 
         # collapse capability matrix where equivalence states exist
-        cap, eqv_map, mask = self._collapse_cap_matrix(cap, stilde, mask)
+        cap, eqv_map, node_mask = self._collapse_adj_matrix(cap, stilde, node_mask, sub_map)
+
+        assert len(eqv_map) == len(nodes)
 
         # translate indices back to nodes
-        for i in np.where(mask)[0]:
+        for i in np.where(node_mask)[0]:
             eqv_map.setdefault(i, -1)
         eqv_map = {nodes[l]: s_idx for l, s_idx in eqv_map.items()}
 
@@ -260,18 +262,25 @@ class StateInferenceStrategy(UniformStrategy,
             row[dst_idx] = list(t) + list(inputs)
 
     @staticmethod
-    def _construct_equivalence_sets(cap, dual_axis=False):
-        if dual_axis:
-            raise NotImplementedError
-        axis = 0
-
+    def _construct_equivalence_sets(adj, dual_axis=False):
         stilde = set()
-        is_nbr = cap != None
+        is_nbr = adj != None
 
-        idx = np.array(range(is_nbr.shape[axis]))
-        _, membership = np.unique(is_nbr, axis=axis, return_inverse=True)
+        if dual_axis:
+            # we re-arrange is_nbr such that axis 0 returns both the
+            # out-neighbors and in-neighbors
+            is_nbr = np.array((adj, adj.T), dtype=adj.dtype)
+            is_nbr = np.swapaxes(is_nbr, 0, 1)
+
+        # the nodes array
+        idx = np.array(range(adj.shape[0]))
+        # get the index of the unique equivalence set each node maps to
+        _, membership = np.unique(is_nbr, axis=0, return_inverse=True)
+        # re-arrange eqv set indices so that members are grouped together
         order = np.argsort(membership)
+        # get the boundaries of each eqv set in the ordered nodes array
         _, split = np.unique(membership[order], return_index=True)
+        # split the ordered nodes array into eqv groups
         eqvs = np.split(idx[order], split[1:])
 
         for eqv in eqvs:
@@ -305,24 +314,54 @@ class StateInferenceStrategy(UniformStrategy,
             stilde.update(frozenset(x) for x in n_stilde)
 
     @classmethod
-    def _eliminate_subsumed_nodes(cls, cap, stilde, dual_axis=False):
-        if dual_axis:
-            raise NotImplementedError
-
+    def _eliminate_subsumed_nodes(cls, adj, stilde, dual_axis=False):
         svee = set()
-        is_nbr = cap != None
+        is_nbr = adj != None
         nbrs_fn = lambda x: frozenset(np.where(x)[0])
         nbrs = np.apply_along_axis(nbrs_fn, 1, is_nbr)
+        if dual_axis:
+            nbrs_in = np.apply_along_axis(nbrs_fn, 0, is_nbr)
+            nbrs = np.array((nbrs, nbrs_in))
+            nbrs = np.swapaxes(nbrs, 0, 1)
 
-        for v, nbv in enumerate(nbrs):
-            subv = set()
-            for u, nbu in enumerate(nbrs):
-                if nbv > nbu:
-                    subv.add(u)
-            if subv:
-                svee.add(frozenset(subv))
+        # create a grid of (i,j) indices
+        gridx = np.indices(adj.shape)
+        subsumes = lambda u, v: np.all(nbrs[u] > nbrs[v])
+        subsumes_ufn = np.frompyfunc(subsumes, 2, 1, identity=False)
+        # apply subsumption logic for all node pairs (i,j)
+        sub = subsumes_ufn(*gridx).astype(bool)
 
-        mask = np.zeros(len(cap), dtype=bool)
+        # get the unique sets of subsumed nodes
+        subbeds, subbers = np.unique(sub, axis=0, return_index=True)
+        subbeds = np.apply_along_axis(nbrs_fn, 1, subbeds)
+
+        sub_map = {}
+        mask = np.zeros(len(adj), dtype=bool)
+        for us, v in zip(subbeds, subbers):
+            if mask[v] or not us:
+                continue
+            svee.add(us)
+            idx = []
+            for u in us:
+                if mask[u]:
+                    continue
+                idx.append(u)
+                for x, y in sub_map.items():
+                    if y == u:
+                        idx.append(x)
+                # idx.extend(np.where(sub[u] & ~mask))
+                mask[u] = True
+            for u in idx:
+                sub_map[u] = v
+            if idx:
+                idx.append(v)
+                out_edges = cls.combine_transitions(adj[idx,:], axis=0)
+                adj[v,:] = out_edges
+                if dual_axis:
+                    in_edges = cls.combine_transitions(adj[:,idx], axis=1) \
+                        .reshape(adj.shape[0], 1)
+                    adj[:,v] = in_edges
+
         stilde = [set(x) for x in stilde]
         for subv in svee:
             for u in subv:
@@ -330,49 +369,44 @@ class StateInferenceStrategy(UniformStrategy,
                     if u in eqv:
                         # discard u from all eqv sets in S~
                         eqv.discard(u)
-                        # mark for deletion from cap matrix
-                        mask[u] = True
-
-                        # FIXME transitions of subsumed nodes need to be
-                        # substitued in subsumers, especially when subsumption
-                        # not dual_axis, because subsumers are only counted
-                        # along the outward axis...
+                        assert mask[u]
 
         # discard the empty set if it exists
         stilde = {frozenset(x) for x in stilde}
         stilde.discard(set())
-        # cls._adjust_stilde(stilde, mask)
-        # cap = cap[~mask,:][:,~mask]
-        cap[mask,:] = None
-        cap[:,mask] = None
-        return cap, stilde, mask
+        return adj, stilde, mask, sub_map
+
+    @staticmethod
+    def _combine_transitions(r, t):
+        if not (t and r):
+            return t or r
+        combined = list(r)
+        for elem in t:
+            if not elem in combined:
+                combined.append(elem)
+        return combined
 
     @classmethod
-    def _collapse_cap_matrix(cls, cap, stilde, mask):
-        def combine_transitions(r, t):
-            if not (t and r):
-                return t or r
-            combined = list(r)
-            for elem in t:
-                if not elem in combined:
-                    combined.append(elem)
-            return combined
-        combine_transitions = np.frompyfunc(combine_transitions, 2, 1,
+    @property
+    def combine_transitions(cls):
+        return np.frompyfunc(cls._combine_transitions, 2, 1,
             identity=[]).reduce
 
+    @classmethod
+    def _collapse_adj_matrix(cls, adj, stilde, mask, sub_map):
         eqv_mask = np.concatenate((mask, np.zeros(len(stilde), dtype=bool)))
-        eqv_map = {}
+        eqv_map = sub_map
         s_idx = 0
         for eqv in stilde:
             idx = np.array(list(eqv))
-            out_edges = combine_transitions(cap[idx,:], axis=0)
-            in_edges = combine_transitions(cap[:,idx], axis=1).reshape(cap.shape[0], 1)
-            self_edges = combine_transitions(cap[idx,idx], axis=0, keepdims=True)
-            self_edges = combine_transitions(self_edges, keepdims=True)
-            # s_idx = cap.shape[0]
+            out_edges = cls.combine_transitions(adj[idx,:], axis=0)
+            in_edges = cls.combine_transitions(adj[:,idx], axis=1).reshape(adj.shape[0], 1)
+            self_edges = cls.combine_transitions(adj[idx,idx], axis=0, keepdims=True)
+            self_edges = cls.combine_transitions(self_edges, keepdims=True)
+            # s_idx = adj.shape[0]
             try:
-                cap = np.vstack((cap, out_edges))
-                cap = np.hstack((cap, np.vstack((in_edges, self_edges))))
+                adj = np.vstack((adj, out_edges))
+                adj = np.hstack((adj, np.vstack((in_edges, self_edges))))
             except Exception:
                 import ipdb; ipdb.set_trace()
 
@@ -381,6 +415,4 @@ class StateInferenceStrategy(UniformStrategy,
                 eqv_mask[l] = True
             s_idx += 1
 
-        cap = cap[~eqv_mask,:][:,~eqv_mask]
-        assert cap.shape == (len(stilde), len(stilde))
-        return cap, eqv_map, mask
+        return adj, eqv_map, eqv_mask
