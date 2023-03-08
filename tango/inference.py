@@ -440,17 +440,20 @@ class StateInferenceStrategy(UniformStrategy,
                     adj[:,v] = in_edges
 
         stilde = [set(x) for x in stilde]
-        for subv in svee:
-            for u in subv:
-                for eqv in stilde:
-                    if u in eqv:
-                        # discard u from all eqv sets in S~
-                        eqv.discard(u)
-                        assert mask[u]
+        for u in np.where(mask)[0]:
+            for eqv in stilde:
+                if sub_map[u] in eqv:
+                    # we add the subsumed node to the subsumer's equivalence set
+                    # even though it is not entirely correct, but it makes it
+                    # easier to collapse the adj matrix later
+                    eqv.add(u)
+                else:
+                    # discard u from all other eqv sets in S~
+                    eqv.discard(u)
 
         # discard the empty set if it exists
         stilde = {frozenset(x) for x in stilde}
-        stilde.discard(set())
+        stilde.discard(frozenset())
         return adj, stilde, mask, sub_map
 
     @staticmethod
