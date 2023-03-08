@@ -172,13 +172,20 @@ class ContextSwitchingTracker(AbstractStateTracker):
 
 class StateInferenceStrategy(UniformStrategy,
         capture_components={'tracker'},
-        capture_paths=['strategy.inference_threshold']):
+        capture_paths=['strategy.inference_threshold',
+            'strategy.extend_on_groups']):
     def __init__(self, *, tracker: ContextSwitchingTracker,
-            inference_threshold: Optional[str]=None, **kwargs):
+            inference_threshold: Optional[str | int]=None,
+            extend_on_groups: Optional[bool]=False, **kwargs):
         super().__init__(**kwargs)
         self._tracker = tracker
         self._discovery_threshold = int(inference_threshold or '50')
+        self._extend_on_groups = extend_on_groups
         TimeElapsedProfiler('time_crosstest').toggle()
+
+    async def initialize(self):
+        self._nprng = np.random.default_rng(
+            seed=self._entropy.randint(0, 0xffffffff))
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -225,7 +232,7 @@ class StateInferenceStrategy(UniformStrategy,
 
     @staticmethod
     def intersect1d_nosort(a, b, /):
-        idx = np.indices((*a.shape, *b.shape))
+        idx = np.indices((a.shape[0], b.shape[0]))
         equals = lambda i, j: a[i] == b[j]
         equals_ufn = np.frompyfunc(equals, 2, 1)
         match = equals_ufn(*idx)
@@ -234,9 +241,11 @@ class StateInferenceStrategy(UniformStrategy,
 
     async def perform_cross_pollination(self):
         G = self._tracker.cov_tracker.state_graph
+        eqv_map = self._tracker.equivalence_map
         nodes = np.array(G.nodes)
 
-        to_idx, from_idx = self.intersect1d_nosort(nodes, self._tracker.nodes_seq)
+        to_idx, from_idx = self.intersect1d_nosort(nodes,
+            self._tracker.nodes_seq)
 
         # get current adjacency matrix
         adj = G.adjacency_matrix
@@ -253,10 +262,10 @@ class StateInferenceStrategy(UniformStrategy,
         edge_mask[mask_irow, mask_icol] = True
 
         # get a new capability matrix, overlayed with new adjacencies
-        cap = self._overlay_capabilities(cap, from_idx, adj, to_idx)
+        cap = self._overlay_capabilities(cap, adj, from_idx, to_idx)
 
         # get a capability matrix extended with cross-pollination
-        await self._extend_cap_matrix(cap, nodes, edge_mask)
+        await self._extend_cap_matrix(cap, nodes, edge_mask, eqv_map, to_idx)
 
         # construct equivalence sets
         stilde = self._construct_equivalence_sets(cap)
@@ -277,13 +286,66 @@ class StateInferenceStrategy(UniformStrategy,
         return cap, eqv_map, node_mask, nodes
 
     @staticmethod
-    def _overlay_capabilities(cap, from_idx, adj, to_idx):
+    def _overlay_capabilities(cap, adj, from_idx, to_idx):
         from_irow, from_icol = np.meshgrid(from_idx, from_idx, indexing='ij')
         to_irow, to_icol = np.meshgrid(to_idx, to_idx, indexing='ij')
         adj[to_irow, to_icol] = cap[from_irow, from_icol]
         return adj
 
-    async def _extend_cap_matrix(self, cap, nodes, edge_mask):
+    def _spread_crosstests(self, cap, eqvs, eqv_mask, edge_mask):
+        for eqv in eqvs:
+            if not eqv.size:
+                continue
+            idx_bc = np.where(eqv_mask)[0]
+            grid_bc = np.meshgrid(eqv, idx_bc, indexing='ij')
+            mixed = np.logical_or.reduce(edge_mask[*grid_bc])
+            edge_mask[*grid_bc] |= mixed
+            untested = np.where(~edge_mask[*grid_bc][0])[0]
+            untested_idx = np.arange(len(eqv) * len(untested))
+            spread_idx = self._nprng.choice(untested_idx, untested.shape[0],
+                replace=False)
+            spread_untested = np.zeros((eqv.shape[0], untested.shape[0]),
+                dtype=bool).flatten()
+            spread_untested[spread_idx] = True
+            spread_untested = spread_untested.reshape((eqv.shape[0], untested.shape[0]))
+            spread = np.zeros((eqv.shape[0], idx_bc.shape[0]), dtype=bool)
+            spread[:, untested] = spread_untested
+            # uniform_spread = ~np.eye(eqv.shape[0], idx_bc.shape[0], dtype=bool)
+            edge_mask[*grid_bc] |= ~spread
+
+    @classmethod
+    def _broadcast_capabilities(cls, cap, eqvs, eqv_mask, edge_mask):
+        for eqv in eqvs:
+            idx_bc = np.where(eqv_mask)[0]
+            grid_bc = np.meshgrid(eqv, idx_bc, indexing='ij')
+            mixed = cls.combine_transitions(cap[*grid_bc], axis=0)
+            cap[*grid_bc] = mixed
+            edge_mask[*grid_bc] = True
+
+    async def _extend_cap_matrix(self, cap, nodes, edge_mask, eqv_map, to_idx):
+        if self._extend_on_groups:
+            # get a sequence of the old nodes in the new order
+            eqv_nodes = nodes[to_idx]
+            # set up a mask for processing new nodes only in cap
+            eqv_mask = np.ones(cap.shape[0], dtype=bool)
+            eqv_mask[to_idx] = False
+            # create an array of (node, eqv)
+            eqv_arr = np.vectorize(eqv_map.get, otypes=(int,))(eqv_nodes)
+
+            # the nodes array
+            idx = np.arange(eqv_nodes.shape[0])
+            # get the index of the unique equivalence set each node maps to
+            _, membership = np.unique(eqv_arr, axis=0, return_inverse=True)
+            # re-arrange eqv set indices so that members are grouped together
+            order = np.argsort(membership)
+            # get the boundaries of each eqv set in the ordered nodes array
+            _, split = np.unique(membership[order], return_index=True)
+            # split the ordered nodes array into eqv groups
+            eqvs = np.split(idx[order], split[1:])
+
+            # spread the responsibility of tests across members of the set
+            self._spread_crosstests(cap, eqvs, eqv_mask, edge_mask)
+
         init_done = np.count_nonzero(edge_mask)
         init_pending = edge_mask.size - init_done
         for src_idx, src in enumerate(nodes):
@@ -310,6 +372,9 @@ class StateInferenceStrategy(UniformStrategy,
                     current_done = np.count_nonzero(edge_mask) - init_done
                     percent = f'{100*current_done/init_pending:.1f}%'
                     ValueProfiler('status')(f'cross_test ({percent})')
+
+        if self._extend_on_groups:
+            self._broadcast_capabilities(cap, eqvs, eqv_mask, edge_mask)
 
     async def _perform_one_cross_pollination(self, eqv_src: AbstractState,
             eqv_dst: AbstractState, input: AbstractInput):
