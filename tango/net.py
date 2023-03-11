@@ -1118,7 +1118,7 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
         cur_time = time.time()
         writer = PcapWriter(self._file)
         client_sent = False
-        for instruction in ite:
+        for instruction in itr:
             if isinstance(instruction, DelayInstruction):
                 if instruction._time >= self.DELAY_THRESHOLD:
                     cur_time += instruction._time
