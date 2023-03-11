@@ -258,6 +258,9 @@ class StateInferenceStrategy(UniformStrategy,
         edge_mask = adj != None
         mask_irow, mask_icol = np.meshgrid(to_idx, to_idx, indexing='ij')
         edge_mask[mask_irow, mask_icol] = True
+        # if there are nodes with no predecessors, we consider edges to those
+        # nodes as masked (e.g., the root node)
+        edge_mask[:,*np.where(np.all(adj == None, axis=0))] = True
 
         # get a new capability matrix, overlayed with new adjacencies
         cap = self._overlay_capabilities(cap, adj, from_idx, to_idx)
