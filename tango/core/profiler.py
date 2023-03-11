@@ -345,7 +345,7 @@ class CountProfiler(ValueProfiler):
     def value(self):
         return self._format(self._count)
 
-class ValueMeanProfiler(ValueProfiler, NumericalProfiler):
+class ValueMeanProfiler(NumericalProfiler):
     def __init__(self, *, samples=10, **kwargs):
         super().__init__(**kwargs)
         self._maxlen = samples
