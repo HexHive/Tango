@@ -252,10 +252,7 @@ class StateInferenceStrategy(UniformStrategy,
         adj = G.adjacency_matrix
         # and current capability matrix
         cap = self._tracker.capability_matrix
-        try:
-            assert cap.shape == (len(from_idx), len(from_idx))
-        except AssertionError:
-            import ipdb; ipdb.set_trace()
+        assert cap.shape == (len(from_idx), len(from_idx))
 
         # mask out edges which have already been cross-tested
         edge_mask = adj != None
@@ -550,11 +547,8 @@ class StateInferenceStrategy(UniformStrategy,
             self_edges = cls.combine_transitions(adj[idx,idx], axis=0, keepdims=True)
             self_edges = cls.combine_transitions(self_edges, keepdims=True)
             # s_idx = adj.shape[0]
-            try:
-                adj = np.vstack((adj, out_edges))
-                adj = np.hstack((adj, np.vstack((in_edges, self_edges))))
-            except Exception:
-                import ipdb; ipdb.set_trace()
+            adj = np.vstack((adj, out_edges))
+            adj = np.hstack((adj, np.vstack((in_edges, self_edges))))
 
             for l in idx:
                 eqv_map[l] = s_idx
