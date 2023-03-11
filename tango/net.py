@@ -21,7 +21,7 @@ import socket
 import random
 import time
 
-from scapy.all   import *
+from scapy.all import Ether, IP, TCP, UDP, Packet, PcapReader, PcapWriter, Raw
 
 __all__ = [
     'NetworkFormatDescriptor', 'TransportFormatDescriptor', 'NetworkChannel',
