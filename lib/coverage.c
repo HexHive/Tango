@@ -69,6 +69,13 @@ bool apply(u8 *set_arr, const u8 *set_map, const size_t map_size)
   return true;
 }
 
+int reset(u8 *set_arr, const u8 *set_map, const size_t map_size)
+{
+  for (size_t i = 0; i < map_size; ++i)
+    set_arr[i] &= ~set_map[i];
+  return true;
+}
+
 #define ROL64(_x, _r)  ((((u64)(_x)) << (_r)) | (((u64)(_x)) >> (64 - (_r))))
 
 static inline u32 hash32(const void* key, u32 len, u32 seed)
@@ -76,11 +83,13 @@ static inline u32 hash32(const void* key, u32 len, u32 seed)
   const u64* data = (u64*)key;
   u64 h1 = seed ^ len;
 
+  u32 rem = len & 0b111;
   len >>= 3;
 
   while (len--) {
 
     u64 k1 = *data++;
+    key += 1<<3;
 
     k1 *= 0x87c37b91114253d5ULL;
     k1  = ROL64(k1, 31);
@@ -91,6 +100,17 @@ static inline u32 hash32(const void* key, u32 len, u32 seed)
     h1  = h1 * 5 + 0x52dce729;
 
   }
+
+  u64 data_rem = 0;
+  for (int i = 0; i < rem; ++i)
+    data_rem += *((u8*)key++) << (8 * i);
+  u64 k1 = data_rem;
+  k1 *= 0x87c37b91114253d5ULL;
+  k1  = ROL64(k1, 31);
+  k1 *= 0x4cf5ad432745937fULL;
+  h1 ^= k1;
+  h1  = ROL64(h1, 27);
+  h1  = h1 * 5 + 0x52dce729;
 
   h1 ^= h1 >> 33;
   h1 *= 0xff51afd7ed558ccdULL;

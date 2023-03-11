@@ -662,9 +662,9 @@ class PtraceForkChannel(PtraceChannel):
             # backup the old ignore_callbacks
             for process in self._debugger:
                 process.syscall_state._ignore_callback = process.syscall_state.ignore_callback
-            self.monitor_syscalls(None, \
-                self._wakeup_forkserver_ignore_callback, \
-                self._wakeup_forkserver_break_callback, \
+            self.monitor_syscalls(None,
+                self._wakeup_forkserver_ignore_callback,
+                self._wakeup_forkserver_break_callback,
                 self._wakeup_forkserver_syscall_callback, break_on_entry=True)
             # restore the old ignore_callbacks
             for process in self._debugger:

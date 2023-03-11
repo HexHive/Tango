@@ -55,7 +55,7 @@ class FuzzerConfig(ComponentOwner):
                 factory = getattr(self, lookup_attr)
         if not factory:
             config = config or self._config
-            factory = self.component_classes[component_type].instantiate( \
+            factory = self.component_classes[component_type].instantiate(
                         self, config, *args, initialize=False, **kwargs)
         component = await factory
         if not component._initialized:

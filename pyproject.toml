@@ -10,7 +10,8 @@ authors = [
 description = "A state-aware fuzzing framework."
 requires-python = ">=3.11,<3.12"
 dependencies = [
-    'networkx==2.5.1',
+    'networkx==3.0',
+    'nptyping==2.5.0',
     'websockets==10.0',
     'pydot==1.4.2',
     'async-property==0.2.1',
@@ -32,6 +33,15 @@ network = [
 coverage = [
     'posix-ipc==1.0.5',
     'numpy==1.23.4',
+]
+inference = [
+    'scikit-learn==1.2.2',
+]
+
+complete = [
+    'tango[network]',
+    'tango[coverage]',
+    'tango[inference]',
 ]
 
 [tool.setuptools]

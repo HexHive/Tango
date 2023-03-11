@@ -1,4 +1,4 @@
-from tango.core.tracker import AbstractState
+from tango.core.tracker import AbstractState, Transition, Path, PathGenerator
 from tango.core.input import AbstractInput
 
 from typing import TypeVar, Iterable, Callable, Awaitable, Optional, Any
@@ -11,9 +11,6 @@ __all__ = [
 
 S = TypeVar('State', bound=AbstractState)
 I = TypeVar('Input', bound=AbstractInput)
-Transition = tuple[S, S, I]
-Path = list[Transition]
-PathGenerator = Iterable[Path]
 LoadableTarget = S | Path
 ExplorerStateReloadCallback = Callable[
     [

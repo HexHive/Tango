@@ -713,6 +713,28 @@ class ComponentType(Enum, metaclass=ComponentTypeMeta):
     strategy = auto()
     session = auto()
 
+class Component:
+    """
+    Todo:
+        * Implement a non-async version of configurable components
+    """
+
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        """
+        Inspects the configuration dict and returns whether or not the requested
+        parameters match the current component. If matched, the component class
+        is added as a possible candidate for instantiation of its component
+        type.
+
+        Args:
+            config (dict): The configuration dict.
+
+        Returns:
+            bool: Whether or not the configuration matches the component.
+        """
+        return True
+
 ComponentKey = ComponentType | str
 """TypeAlias:
 
@@ -736,7 +758,7 @@ in the :py:func:`AsyncComponent.__init_subclass__` function.
 
 recursive_dict = lambda: defaultdict(recursive_dict)
 ComponentRegistry: Mapping[ComponentKey, Mapping] = recursive_dict()
-
+ComponentCatchAll: Mapping[ComponentKey, Component] = dict()
 
 class ComponentOwner(dict, ABC):
 
@@ -768,6 +790,8 @@ class ComponentOwner(dict, ABC):
     def __init__(self, config: dict):
         self._config = recursive_dict()
         self._config.update(config)
+
+    __repr__ = object.__repr__
 
     @property
     def component_classes(self) -> dict[ComponentKey, Component]:
@@ -808,7 +832,7 @@ class ComponentOwner(dict, ABC):
         """
         config = config or self._config
         component_type = ComponentType(component_type)
-        component = await self.component_classes[component_type].instantiate( \
+        component = await self.component_classes[component_type].instantiate(
                         self, config, *args, **kwargs)
         return component
 
@@ -825,46 +849,38 @@ class ComponentOwner(dict, ABC):
                 match = match_component_dfs(classes)
                 if match is not None:
                     return match
-                if base.match_config(config):
+                if not base._catch_all and base.match_config(config):
                     return base
         match = match_component_dfs(ComponentRegistry[component_type])
+        match = match or ComponentCatchAll.get(component_type)
         if match is None:
             raise LookupError(f"No valid component for `{component_type.name}`")
         return match
 
-class Component:
-    """
-    Todo:
-        * Implement a non-async version of configurable components
-    """
-
-    @classmethod
-    def match_config(cls, config: dict) -> bool:
-        """
-        Inspects the configuration dict and returns whether or not the requested
-        parameters match the current component. If matched, the component class
-        is added as a possible candidate for instantiation of its component
-        type.
-
-        Args:
-            config (dict): The configuration dict.
-
-        Returns:
-            bool: Whether or not the configuration matches the component.
-        """
-        return True
-
 class AsyncComponent(Component):
     _capture_components: AnnotatedComponentCapture
     _capture_paths: PathCapture
+    _catch_all: bool = False
 
     def __init_subclass__(cls,
             component_type: Optional[ComponentKey]=None,
             capture_components: ComponentCapture=None,
-            capture_paths: PathCapture=None, *args, **kwargs):
+            capture_paths: PathCapture=None,
+            catch_all: bool=False, *args, **kwargs):
         super().__init_subclass__(*args, **kwargs)
         if component_type:
             component_type = ComponentType(component_type)
+
+        if not catch_all:
+            cls._catch_all = False
+        elif inspect.isabstract(cls):
+            raise TypeError(f"Abstract class {cls} registered as a catch_all"
+                f" for {component_type}!")
+        elif (prev := ComponentCatchAll.setdefault(component_type, cls)) != cls:
+            raise TypeError(f"{cls} registered as a catch_all for"
+                f" {component_type}, for which {prev} is already a catch_all.")
+        else:
+            cls._catch_all = True
 
         base_type = getattr(cls, '_component_type', None)
         component_type = component_type or base_type
@@ -892,11 +908,13 @@ class AsyncComponent(Component):
         except KeyError as ex:
             raise TypeError(f"{cls}.__init__ does not provide an annotation for"
                 f" captured component {ex.args[0]}!")
-        cls._capture_components = annotated_capture
+        cls._capture_components = annotated_capture or \
+            cls.__dict__.get('_capture_components', set())
 
         if capture_paths:
             capture_paths = list(capture_paths)
-        cls._capture_paths = capture_paths or list()
+        cls._capture_paths = capture_paths or \
+            cls.__dict__.get('_capture_paths', list())
         for base in mro:
             if issubclass(base, AsyncComponent) and \
                     base is not AsyncComponent:

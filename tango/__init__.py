@@ -82,3 +82,4 @@ from . import raw
 from . import reactive
 from . import webui
 from . import fuzzer
+from . import inference

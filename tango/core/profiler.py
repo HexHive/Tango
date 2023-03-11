@@ -53,7 +53,7 @@ class AbstractProfilerMeta(ABCMeta):
         if cls.ProfilingNOP:
             return cls.nop
         if (p := ProfiledObjects.get(name)) is None:
-            p = super().__call__(*args, name=name, **kwargs)
+            p = super().__call__(*args, **kwargs)
             object.__setattr__(p, 'name', name)
             if session_local:
                 context = get_session_context()
@@ -345,7 +345,7 @@ class CountProfiler(ValueProfiler):
     def value(self):
         return self._format(self._count)
 
-class ValueMeanProfiler(ValueProfiler, NumericalProfiler):
+class ValueMeanProfiler(NumericalProfiler):
     def __init__(self, *, samples=10, **kwargs):
         super().__init__(**kwargs)
         self._maxlen = samples
@@ -417,5 +417,7 @@ class TimeElapsedProfiler(AbstractProfiler):
 
     @property
     def value(self):
-        time = datetime.now() - self._start + self._accum
+        time = self._accum
+        if self._running:
+            time += datetime.now() - self._start
         return str(time).split('.')[0]

@@ -6,7 +6,6 @@ from tango.core.tracker import AbstractState
 from tango.core.input     import AbstractInput
 from tango.core.types import LoadableTarget
 from tango.core.profiler import CountProfiler
-from tango.core.types import LoadableTarget
 from tango.core.explorer import BaseExplorer
 from tango.core.generator import BaseInputGenerator
 from tango.core.strategy import BaseStrategy
@@ -110,7 +109,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
                 raise
 
     async def _state_reload_cb(self,
-            loadable: LoadableTarget, *, exc: Optional[Exception]=None):
+            loadable: LoadableTarget, /, *, exc: Optional[Exception]=None):
         if not exc:
             # called when the loader needs a startup input to reload the target
             # FIXME not very clean, consider using arbitration protocols
@@ -137,7 +136,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
                 input=None, exc=exc)
 
     async def _state_update_cb(self,
-            state: AbstractState, *, breadcrumbs: LoadableTarget,
+            state: AbstractState, /, *, breadcrumbs: LoadableTarget,
             input: AbstractInput, orig_input: AbstractInput,
             exc: Optional[Exception]=None, **kwargs):
 
@@ -152,7 +151,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
 
     async def _transition_update_cb(self,
             source: AbstractState, destination: AbstractState,
-            input: AbstractInput, *, breadcrumbs: LoadableTarget,
+            input: AbstractInput, /, *, breadcrumbs: LoadableTarget,
             orig_input: AbstractInput, state_changed: bool, new_transition: bool,
             exc: Optional[Exception]=None, **kwargs):
 
