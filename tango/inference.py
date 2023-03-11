@@ -184,6 +184,7 @@ class StateInferenceStrategy(UniformStrategy,
         TimeElapsedProfiler('time_crosstest').toggle()
 
     async def initialize(self):
+        await super().initialize()
         self._nprng = np.random.default_rng(
             seed=self._entropy.randint(0, 0xffffffff))
 
