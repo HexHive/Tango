@@ -563,7 +563,7 @@ class ListenerSocketState:
 
 @dataclass(kw_only=True)
 class TCPForkChannelFactory(TCPChannelFactory,
-        capture_paths=['fork_before_accept']):
+        capture_paths=['channel.fork_before_accept']):
     fork_before_accept: bool
 
     def create(self, pobj: Popen, netns: str, *args, **kwargs) -> AbstractChannel:
@@ -957,7 +957,7 @@ class UDPSocketState:
 
 @dataclass(kw_only=True)
 class UDPForkChannelFactory(UDPChannelFactory,
-        capture_paths=['fork_before_bind']):
+        capture_paths=['channel.fork_before_bind']):
     fork_before_bind: bool
 
     def create(self, pobj: Popen, netns: str, *args, **kwargs) -> AbstractChannel:
