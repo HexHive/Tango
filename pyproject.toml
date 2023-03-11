@@ -34,6 +34,15 @@ coverage = [
     'posix-ipc==1.0.5',
     'numpy==1.23.4',
 ]
+inference = [
+    'scikit-learn==1.2.2',
+]
+
+complete = [
+    'tango[network]',
+    'tango[coverage]',
+    'tango[inference]',
+]
 
 [tool.setuptools]
 packages = ["tango"]

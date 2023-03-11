@@ -3,15 +3,17 @@ from __future__ import annotations
 from . import debug, info, warning
 
 from tango.core import (UniformStrategy, AbstractState, AbstractInput,
-    BaseStateGraph, AbstractStateTracker, ValueProfiler, TimeElapsedProfiler)
+    BaseStateGraph, AbstractStateTracker, ValueProfiler, TimeElapsedProfiler,
+    ValueMeanProfiler)
 from tango.cov import CoverageStateTracker
 from tango.webui import WebRenderer, WebDataLoader
 from tango.common import get_session_task_group
 
 from aiohttp import web
-from typing import Optional
+from typing import Optional, Sequence
 from enum import Enum, auto
 from nptyping import NDArray, Shape
+from sklearn import tree
 import numpy as np
 import networkx as nx
 import datetime
@@ -172,15 +174,25 @@ class ContextSwitchingTracker(AbstractStateTracker):
 
 class StateInferenceStrategy(UniformStrategy,
         capture_components={'tracker'},
-        capture_paths=['strategy.inference_threshold',
-            'strategy.extend_on_groups']):
+        capture_paths=['strategy.inference_batch',
+            'strategy.extend_on_groups', 'strategy.recursive_collapse',
+            'strategy.dt_predict', 'strategy.dt_validate']):
     def __init__(self, *, tracker: ContextSwitchingTracker,
-            inference_threshold: Optional[str | int]=None,
-            extend_on_groups: Optional[bool]=False, **kwargs):
+            inference_batch: Optional[str | int]=None,
+            extend_on_groups: Optional[bool]=False,
+            recursive_collapse: Optional[bool]=False,
+            dt_predict: Optional[bool]=False,
+            dt_validate: Optional[bool]=False, **kwargs):
         super().__init__(**kwargs)
         self._tracker = tracker
-        self._discovery_threshold = int(inference_threshold or '50')
+        self._inference_batch = int(inference_batch or 50)
         self._extend_on_groups = extend_on_groups
+        self._recursive_collapse = recursive_collapse
+        self._dt_predict = dt_predict
+        self._dt_validate = dt_validate
+        if dt_predict:
+            self._dt_clf = tree.DecisionTreeClassifier()
+            self._dt_fit = False
         TimeElapsedProfiler('time_crosstest').toggle()
 
     async def initialize(self):
@@ -195,7 +207,7 @@ class StateInferenceStrategy(UniformStrategy,
     async def step(self, input: Optional[AbstractInput]=None):
         match self._tracker.mode:
             case InferenceMode.Discovery:
-                if len(self._tracker.unmapped_states) > self._discovery_threshold:
+                if len(self._tracker.unmapped_states) >= self._inference_batch:
                     self._tracker.mode = InferenceMode.CrossPollination
                 else:
                     await super().step(input)
@@ -206,7 +218,9 @@ class StateInferenceStrategy(UniformStrategy,
                 self._tracker.equivalence_map = eqv_map
                 self._tracker.nodes_seq = nodes
 
-                collapsed = self._collapse_graph(cap[~mask,:][:,~mask])
+                collapsed = cap[~mask,:][:,~mask]
+                if self._recursive_collapse:
+                    collapsed = self._collapse_graph(cap[~mask,:][:,~mask])
                 self._tracker.inf_tracker.reconstruct_graph(collapsed)
                 self._tracker.mode = InferenceMode.Discovery
                 TimeElapsedProfiler('time_crosstest').toggle()
@@ -266,7 +280,7 @@ class StateInferenceStrategy(UniformStrategy,
         cap = self._overlay_capabilities(cap, adj, from_idx, to_idx)
 
         # get a capability matrix extended with cross-pollination
-        await self._extend_cap_matrix(cap, nodes, edge_mask, eqv_map, to_idx)
+        await self._extend_cap_matrix(cap, nodes, edge_mask, eqv_map, from_idx, to_idx)
 
         # construct equivalence sets
         stilde = self._construct_equivalence_sets(cap)
@@ -276,6 +290,12 @@ class StateInferenceStrategy(UniformStrategy,
 
         # collapse capability matrix where equivalence states exist
         cap, eqv_map, node_mask = self._collapse_adj_matrix(cap, stilde, node_mask, sub_map)
+
+        if self._dt_predict:
+            X = cap[node_mask,:][:,node_mask] != None
+            Y = np.vectorize(eqv_map.get, otypes=(int,))(np.arange(X.shape[0]))
+            self._dt_clf.fit(X, Y)
+            self._dt_fit = True
 
         assert len(eqv_map) == len(nodes)
 
@@ -323,61 +343,178 @@ class StateInferenceStrategy(UniformStrategy,
             cap[*grid_bc] = mixed
             edge_mask[*grid_bc] = True
 
-    async def _extend_cap_matrix(self, cap, nodes, edge_mask, eqv_map, to_idx):
+    async def _extend_cap_matrix(self, cap, nodes, edge_mask, eqv_map,
+            from_idx, to_idx):
+        # get a sequence of the old nodes in the new order
+        eqv_nodes = nodes[to_idx]
+        # set up a mask for processing new nodes only in cap
+        eqv_mask = np.ones(cap.shape[0], dtype=bool)
+        eqv_mask[to_idx] = False
+        # eqv_arr[i] := eqv_map[eqv_nodes[i]]
+        eqv_arr = np.vectorize(eqv_map.get, otypes=(int,))(eqv_nodes)
+
+        # the nodes array
+        idx = np.arange(eqv_nodes.shape[0])
+        # get the index of the unique equivalence set each node maps to
+        groups, membership = np.unique(eqv_arr, axis=0, return_inverse=True)
+        # re-arrange eqv set indices so that members are grouped together
+        order = np.argsort(membership)
+        # get the boundaries of each eqv set in the ordered nodes array
+        _, split = np.unique(membership[order], return_index=True)
+        # split the ordered nodes array into eqv groups
+        eqvs = np.split(idx[order], split[1:])
+
         if self._extend_on_groups:
-            # get a sequence of the old nodes in the new order
-            eqv_nodes = nodes[to_idx]
-            # set up a mask for processing new nodes only in cap
-            eqv_mask = np.ones(cap.shape[0], dtype=bool)
-            eqv_mask[to_idx] = False
-            # create an array of (node, eqv)
-            eqv_arr = np.vectorize(eqv_map.get, otypes=(int,))(eqv_nodes)
-
-            # the nodes array
-            idx = np.arange(eqv_nodes.shape[0])
-            # get the index of the unique equivalence set each node maps to
-            _, membership = np.unique(eqv_arr, axis=0, return_inverse=True)
-            # re-arrange eqv set indices so that members are grouped together
-            order = np.argsort(membership)
-            # get the boundaries of each eqv set in the ordered nodes array
-            _, split = np.unique(membership[order], return_index=True)
-            # split the ordered nodes array into eqv groups
-            eqvs = np.split(idx[order], split[1:])
-
             # spread the responsibility of tests across members of the set
             self._spread_crosstests(cap, eqvs, eqv_mask, edge_mask)
 
+        should_predict = self._dt_predict and self._dt_fit
+
         init_done = np.count_nonzero(edge_mask)
         init_pending = edge_mask.size - init_done
-        for src_idx, src in enumerate(nodes):
-            for dst_idx, inputs in filter(lambda t: t[1],
-                    enumerate(cap[src_idx,:])):
-                dst = nodes[dst_idx]
-                for eqv_idx, eqv_node in filter(lambda t: t[1] != src,
-                        enumerate(nodes)):
-                    if edge_mask[eqv_idx, dst_idx]:
-                        # this edge has already been tested
-                        continue
-                    for inp in inputs:
-                        try:
-                            if not await self._perform_one_cross_pollination(
-                                    eqv_node, dst, inp):
-                                break
-                        except Exception:
-                            break
-                    else:
-                        # eqv_node matched all the responses of src to reach dst
-                        self._update_cap_matrix(cap, eqv_idx, dst_idx, inputs)
-                    edge_mask[eqv_idx, dst_idx] = True
+        if should_predict:
+            projected_savings = init_pending
+            projected_done = 0
 
-                    current_done = np.count_nonzero(edge_mask) - init_done
-                    percent = f'{100*current_done/init_pending:.1f}%'
-                    ValueProfiler('status')(f'cross_test ({percent})')
+        uidx, = np.where(np.any(~edge_mask, axis=1))
+        for eqv_idx in uidx:
+            eqv_node = nodes[eqv_idx]
+
+            should_predict_idx = should_predict and eqv_idx not in to_idx
+            should_validate = should_predict_idx and self._dt_validate
+
+            vidx = None
+            if should_predict_idx:
+                # traverse the dt
+                dt = self._dt_clf.tree_
+                stack = [0]
+                candidates = []
+                while stack:
+                    cur = stack.pop()
+                    if dt.children_left[cur] == dt.children_right[cur]:
+                        # we've reached a leaf node
+                        candidates.extend(dt.value[cur][0].nonzero()[0])
+                        # at this point, egde_mask[:,to_idx] has been covered;
+                        # and for grouped nodes, it is all True.
+                        continue
+                    # the DT is trained on the previous mapping
+                    dst_idx = to_idx[from_idx == dt.feature[cur]]
+                    if not dst_idx:
+                        # the snapshot no longer exists, we try both sides
+                        stack.append(dt.children_left[cur])
+                        stack.append(dt.children_right[cur])
+                        continue
+                    dst_idx = dst_idx[0]
+
+                    if edge_mask[eqv_idx, dst_idx]:
+                        # can occur when multiple paths are traversed
+                        # e.g., when the snapshot no longer exists as above
+                        exists = cap[eqv_idx, dst_idx] is not None
+                    else:
+                        dst_node = nodes[dst_idx]
+                        inputs = cap[:,dst_idx]
+                        # we're assuming all inputs for a feature are equal
+                        inputs = inputs[inputs != None][0]
+                        if (exists := await self._perform_one_cross_pollination(
+                                eqv_node, dst_node, inputs)):
+                            self._update_cap_matrix(cap, eqv_idx, dst_idx, inputs)
+
+                        # mark edge as tested
+                        edge_mask[eqv_idx, dst_idx] = True
+                        projected_savings -= 1
+
+                        # report completion status
+                        current_done = np.count_nonzero(edge_mask) - init_done
+                        if should_predict and not should_validate:
+                            current_done += projected_done
+                        percent = f'{100*current_done/init_pending:.1f}%'
+                        ValueProfiler('status')(f'cross_test ({percent})')
+
+                    children = dt.children_left if exists else dt.children_right
+                    stack.append(children[cur])
+
+                vidx_all, = np.where(~edge_mask[eqv_idx,:])
+                vidx_ungrouped = np.setdiff1d(vidx_all, to_idx,
+                    assume_unique=True)
+                projected_savings -= vidx_ungrouped.size
+                projected_done += np.setdiff1d(vidx_all, vidx_ungrouped,
+                    assume_unique=True).size
+                if not should_validate:
+                    # we ignore cross-testing against grouped nodes under the
+                    # assumption that DT predicted them correctly
+                    vidx = vidx_ungrouped
+            elif should_predict:
+                projected_savings -= np.count_nonzero(~edge_mask[eqv_idx,:])
+
+            if vidx is None:
+                # this happens in the following cases:
+                # - dt_predict is False
+                # - dt_predict is True but dt_fit is False
+                # - eqv_idx is a previously-grouped node
+                # - none of the above, and dt_validate is True
+                vidx, = np.where(~edge_mask[eqv_idx,:])
+
+            if should_validate:
+                mispredicts = 0
+
+            for dst_idx in vidx:
+                dst_node = nodes[dst_idx]
+                inputs = cap[:,dst_idx]
+                if not np.any(inputs):
+                    continue
+                inputs = inputs[inputs != None][0]
+
+                should_validate_idx = should_validate and dst_idx in to_idx
+                exists = await self._perform_one_cross_pollination(
+                        eqv_node, dst_node, inputs)
+
+                if exists:
+                    if should_validate_idx:
+                        if not cap[eqv_idx, dst_idx]:
+                        # the DT mispredicted
+                            mispredicts += 1
+                    self._update_cap_matrix(cap, eqv_idx, dst_idx, inputs)
+
+                # mark edge as tested
+                edge_mask[eqv_idx, dst_idx] = True
+
+                # report completion status
+                current_done = np.count_nonzero(edge_mask) - init_done
+                if should_predict and not should_validate:
+                    current_done += projected_done
+                percent = f'{100*current_done/init_pending:.1f}%'
+                ValueProfiler('status')(f'cross_test ({percent})')
+
+            if should_validate:
+                assert np.all(edge_mask[eqv_idx,])
+                ValueMeanProfiler('dt_mispredict',
+                    samples=self._inference_batch, decimal_digits=2)(mispredicts)
+
+        if should_predict:
+            if not should_validate:
+                current_pending = np.count_nonzero(~edge_mask)
+                assert projected_savings == current_pending
+            percent = 100*projected_savings/init_pending
+            ValueMeanProfiler('dt_savings', samples=5)(percent)
 
         if self._extend_on_groups:
             self._broadcast_capabilities(cap, eqvs, eqv_mask, edge_mask)
 
     async def _perform_one_cross_pollination(self, eqv_src: AbstractState,
+            eqv_dst: AbstractState, inputs: Sequence[AbstractInput]):
+        for inp in inputs:
+            try:
+                if not await self._perform_partial_cross_pollination(
+                        eqv_src, eqv_dst, inp):
+                    break
+            except Exception:
+                break
+        else:
+            # eqv_node matched all the responses of src to reach dst
+            return True
+        return False
+
+    async def _perform_partial_cross_pollination(self, eqv_src: AbstractState,
             eqv_dst: AbstractState, input: AbstractInput):
         # hacky for now; switch back to coverage states temporarily
         restore_mode = self._tracker.mode
