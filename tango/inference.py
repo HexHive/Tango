@@ -461,7 +461,8 @@ class StateInferenceStrategy(UniformStrategy,
                 vidx, = np.where(~edge_mask[eqv_idx,:])
 
             if should_validate:
-                mispredicts = 0
+                dt_misses = 0
+                dt_hits = 0
 
             for dst_idx in vidx:
                 dst_node = nodes[dst_idx]
@@ -474,11 +475,12 @@ class StateInferenceStrategy(UniformStrategy,
                 exists = await self._perform_one_cross_pollination(
                         eqv_node, dst_node, inputs)
 
+                if should_validate_idx:
+                    if exists ^ (cap[eqv_idx, dst_idx] is not None):
+                            dt_misses += 1
+                    else:
+                        dt_hits += 1
                 if exists:
-                    if should_validate_idx:
-                        if not cap[eqv_idx, dst_idx]:
-                        # the DT mispredicted
-                            mispredicts += 1
                     self._update_cap_matrix(cap, eqv_idx, dst_idx, inputs)
 
                 # mark edge as tested
@@ -493,9 +495,10 @@ class StateInferenceStrategy(UniformStrategy,
 
             if should_validate:
                 assert np.all(edge_mask[eqv_idx,])
-                ValueMeanProfiler('dt_mispredict',
-                    samples=self._inference_batch, decimal_digits=2)(mispredicts)
-
+                ValueMeanProfiler('dt_miss',
+                    samples=self._inference_batch, decimal_digits=2)(dt_misses)
+                ValueMeanProfiler('dt_hit',
+                    samples=self._inference_batch, decimal_digits=2)(dt_hits)
         if should_predict:
             if not should_validate:
                 current_pending = np.count_nonzero(~edge_mask)
