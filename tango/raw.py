@@ -4,7 +4,7 @@ from tango.core import (AbstractChannel, AbstractChannelFactory,
     FormatDescriptor, AbstractInstruction, TransmitInstruction,
     SerializedInputMeta, CountProfiler)
 from tango.ptrace.syscall import SYSCALL_REGISTER
-from tango.unix import PtraceChannel, PtraceForkChannel
+from tango.unix import PtraceChannel, PtraceForkChannel, PtraceChannelFactory
 from tango.exceptions import ChannelBrokenException
 from tango.common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
 
@@ -25,7 +25,7 @@ __all__ = [
 ]
 
 @dataclass(kw_only=True)
-class StdIOChannelFactory(AbstractChannelFactory):
+class StdIOChannelFactory(PtraceChannelFactory, AbstractChannelFactory):
     fmt: FormatDescriptor = FormatDescriptor('raw')
 
     def create(self, pobj: Popen, *args, **kwargs) -> AbstractChannel:

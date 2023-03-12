@@ -1,6 +1,6 @@
 {
-	"loader": {
-		"type": "replay",
+	"driver": {
+		"type": "unix",
 		"exec": {
 			"path": "./parse",
 			"args": ["./parse", "-b", "4", "-p", "-m", "-c"],
@@ -11,6 +11,9 @@
 		},
 		"forkserver": true,
 		"disable_aslr": true
+	},
+	"loader": {
+		"type": "replay"
 	},
 	"channel": {
 		"type": "stdio"

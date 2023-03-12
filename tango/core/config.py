@@ -1,14 +1,14 @@
 from . import  info
 
 from tango.core.dataio  import AbstractChannelFactory
-from tango.core.loader  import AbstractStateLoader
+from tango.core.loader  import AbstractLoader
 from tango.core.tracker  import AbstractStateTracker
 from tango.core.explorer import AbstractExplorer
 from tango.core.generator import AbstractInputGenerator
 from tango.core.strategy import AbstractStrategy
 from tango.core.session import FuzzerSession
-from tango.common       import (async_cached_property, cached_property,
-    AsyncComponent, ComponentOwner, ComponentType, ComponentKey)
+from tango.common import (cached_property, AsyncComponent, ComponentOwner,
+    ComponentType, ComponentKey)
 
 from random import Random
 from pathlib import Path
@@ -46,23 +46,22 @@ class FuzzerConfig(ComponentOwner):
 
     async def instantiate(self, component_type: ComponentKey, config=None,
             *args, **kwargs) -> AsyncComponent:
-        factory = None
         component_type = ComponentType(component_type)
-        if config is not None:
-            # was not called through own async_cached_property
-            lookup_attr = component_type.name
-            if hasattr(self, lookup_attr):
-                factory = getattr(self, lookup_attr)
-        if not factory:
-            config = config or self._config
-            factory = self.component_classes[component_type].instantiate(
-                        self, config, *args, initialize=False, **kwargs)
-        component = await factory
+        config = config or self._config
+        component = await self.component_classes[component_type].instantiate(
+                    self, config, *args, initialize=False, finalize=False,
+                    **kwargs)
+
+        if not kwargs.get('dependants'):
+            # initialization is breadth-first
+            await component.initialize_dependencies(self, self.preinitialize_cb)
+            # finalization is depth-first
+            await component.finalize_dependencies(self)
+        return component
+
+    def preinitialize_cb(self, component: AsyncComponent):
         if not component._initialized:
             component._entropy = self.entropy
-            await component.initialize()
-            component._initialized = True
-        return component
 
     def update_overrides(self, overrides: dict):
         def update(d, u):
@@ -96,34 +95,3 @@ class FuzzerConfig(ComponentOwner):
     def entropy(self):
         seed = self._config["fuzzer"].get("entropy")
         return Random(seed)
-
-    ### AsyncComponent components ###
-
-    @async_cached_property
-    async def channel_factory(self) -> AbstractChannelFactory:
-        return await self.instantiate(ComponentType.channel_factory)
-
-    @async_cached_property
-    async def loader(self) -> AbstractStateLoader:
-        return await self.instantiate(ComponentType.loader)
-
-    @async_cached_property
-    async def tracker(self) -> AbstractStateTracker:
-        return await self.instantiate(ComponentType.tracker)
-
-    @async_cached_property
-    async def explorer(self) -> AbstractExplorer:
-        return await self.instantiate(ComponentType.explorer)
-
-    @async_cached_property
-    async def generator(self) -> AbstractInputGenerator:
-        fmt = (await self.channel_factory).fmt
-        return await self.instantiate(ComponentType.generator, fmt=fmt)
-
-    @async_cached_property
-    async def strategy(self) -> AbstractStrategy:
-        return await self.instantiate(ComponentType.strategy)
-
-    @async_cached_property
-    async def session(self) -> FuzzerSession:
-        return await self.instantiate(ComponentType.session)

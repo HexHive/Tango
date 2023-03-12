@@ -7,7 +7,7 @@ from tango.core import (UniformStrategy, AbstractState, AbstractInput,
     ValueMeanProfiler)
 from tango.cov import CoverageStateTracker
 from tango.webui import WebRenderer, WebDataLoader
-from tango.common import get_session_task_group
+from tango.common import get_session_task_group, ComponentOwner
 
 from aiohttp import web
 from typing import Optional, Sequence
@@ -103,7 +103,7 @@ class InferenceTracker(AbstractStateTracker):
 class ContextSwitchingTracker(AbstractStateTracker):
     _capture_components = CoverageStateTracker._capture_components | \
         InferenceTracker._capture_components
-    _capture_paths = CoverageStateTracker._capture_paths + \
+    _capture_paths = CoverageStateTracker._capture_paths | \
         InferenceTracker._capture_paths
 
     def __init__(self, *args, **kwargs):
@@ -119,6 +119,11 @@ class ContextSwitchingTracker(AbstractStateTracker):
         await super().initialize()
         await self.cov_tracker.initialize()
         await self.inf_tracker.initialize()
+
+    async def finalize(self, owner: ComponentOwner):
+        await self.cov_tracker.finalize(owner)
+        await self.inf_tracker.finalize(owner)
+        await super().finalize(owner)
 
     @classmethod
     def match_config(cls, config: dict) -> bool:

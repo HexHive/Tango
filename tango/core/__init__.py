@@ -6,6 +6,7 @@ for func in ('debug', 'info', 'warning', 'error', 'critical'):
 from .profiler import *
 from .dataio import *
 from .input import *
+from .driver import *
 from .loader import *
 from .tracker import *
 from .types import *
@@ -16,6 +17,7 @@ from .strategy import *
 from .session import *
 from .config import *
 
-__all__ = ( dataio.__all__ + loader.__all__ + tracker.__all__ + explorer.__all__
-    + input.__all__ + mutator.__all__ + generator.__all__ + strategy.__all__ +
-    profiler.__all__ + config.__all__ + session.__all__ + types.__all__ )
+__all__ = (dataio.__all__ + driver.__all__ + loader.__all__ + tracker.__all__ +
+    explorer.__all__ + input.__all__ + mutator.__all__ + generator.__all__ +
+    strategy.__all__ + profiler.__all__ + config.__all__ + session.__all__ +
+    types.__all__)

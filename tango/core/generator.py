@@ -1,9 +1,9 @@
 from . import warning
 from tango.core.profiler import FrequencyProfiler
 from tango.core.tracker  import AbstractState, IUpdateCallback
-from tango.core.dataio   import FormatDescriptor
+from tango.core.dataio   import FormatDescriptor, AbstractChannelFactory
 from tango.core.input import AbstractInput, Serializer, EmptyInput
-from tango.common import AsyncComponent, ComponentType
+from tango.common import AsyncComponent, ComponentType, ComponentOwner
 
 from abc import ABC, abstractmethod
 from random import Random
@@ -44,23 +44,26 @@ class AbstractInputGenerator(AsyncComponent, IUpdateCallback, ABC,
         pass
 
 class BaseInputGenerator(AbstractInputGenerator,
+        capture_components={ComponentType.channel_factory},
         capture_paths=['generator.startup', 'generator.seeds', 'fuzzer.work_dir']):
-    def __init__(self, *, work_dir: str, fmt: FormatDescriptor,
+    def __init__(self, *, work_dir: str, channel_factory: AbstractChannelFactory,
             startup: Optional[str]=None, seeds: Optional[str]=None):
         self._seed_dir = seeds
         self._work_dir = work_dir
+        self._startup_path = startup
+        self._fmt: FormatDescriptor = channel_factory.fmt
 
         self._startup = EmptyInput()
         self._seeds = []
 
-        self._fmt = fmt
-        self._input_kls = Serializer.get(fmt)
+    async def initialize(self):
+        self._input_kls = Serializer.get(self._fmt)
         if self._input_kls is None:
             warning(f"No serializer available for `{self._fmt.typ}`!")
             return
 
-        if startup and os.path.isfile(startup):
-            self._startup = self._input_kls(file=startup, load=True)
+        if self._startup_path and os.path.isfile(self._startup_path):
+            self._startup = self._input_kls(file=self._startup_path, load=True)
 
         if self._seed_dir is None or not os.path.isdir(self._seed_dir):
             return

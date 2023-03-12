@@ -1,6 +1,6 @@
 {
-	"loader": {
-		"type": "replay",
+	"driver": {
+		"type": "unix",
 		"exec": {
 			"path": "./xmlwf",
 			"args": ["./xmlwf"],
@@ -12,6 +12,9 @@
 		},
 		"forkserver": true,
 		"disable_aslr": true
+	},
+	"loader": {
+		"type": "replay"
 	},
 	"channel": {
 		"type": "stdio"

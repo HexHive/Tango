@@ -5,7 +5,7 @@ from . import debug, warning, error
 from tango.core.input import AbstractInput, BaseInput, EmptyInput
 from tango.core.profiler import (LambdaProfiler, EventProfiler, CountProfiler,
     NumericalProfiler, AbstractProfilerMeta as create_profiler)
-from tango.common import AsyncComponent, ComponentType
+from tango.common import AsyncComponent, ComponentType, ComponentOwner
 from tango.exceptions import StateNotReproducibleException
 
 from abc          import ABC, ABCMeta, abstractmethod
@@ -477,7 +477,7 @@ class AbstractStateTracker(AsyncComponent, IUpdateCallback, ABC,
         pass
 
 class BaseStateTracker(AbstractStateTracker):
-    async def initialize(self):
+    async def finalize(self, owner: ComponentOwner):
         self._state_graph = BaseStateGraph(entry_state=self.entry_state)
 
     @property

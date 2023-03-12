@@ -6,7 +6,7 @@ from tango.core.types import LoadableTarget
 from tango.core.explorer import BaseExplorer
 from tango.core.generator import AbstractInputGenerator, BaseInputGenerator
 from tango.core.profiler import LambdaProfiler, EventProfiler
-from tango.common import AsyncComponent, ComponentType
+from tango.common import AsyncComponent, ComponentType, ComponentOwner
 from tango.exceptions import LoadedException, StateNotReproducibleException
 
 from abc import ABC, abstractmethod
@@ -119,13 +119,12 @@ class SeedableStrategy(BaseStrategy,
         self._minimize_seeds = minimize_seeds
         self._validate_seeds = validate_seeds
 
-    async def initialize(self):
+    async def finalize(self, owner: ComponentOwner):
         """
         Loops over the initial set of seeds to populate the state machine with
         known states.
         """
         # TODO also load in existing queue if config.resume is True
-        await super().initialize()
 
         # while loading seeds, new states may be discovered; until the session
         # takes over, we will be informing the input generator of this
@@ -142,6 +141,7 @@ class SeedableStrategy(BaseStrategy,
             except LoadedException as ex:
                 warning(f"Failed to load {input}: {ex.exception}")
         await self._explorer.reload_state()
+        await super().finalize(owner)
 
     async def _state_update_cb(self,
             state: AbstractState, /, *, breadcrumbs: LoadableTarget,

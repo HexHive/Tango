@@ -121,7 +121,7 @@ class Fuzzer:
     async def create_session(self):
         name = asyncio.current_task().get_name()
         config = FuzzerConfig(self._argspace.config, self._overrides)
-        session = await config.session
+        session = await config.instantiate('session')
         self._sessions.append(session)
         webui = await config.instantiate('webui')
         tg = get_session_task_group()

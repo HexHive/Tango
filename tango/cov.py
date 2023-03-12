@@ -4,7 +4,7 @@ from . import debug, info
 from tango.core import (AbstractState, BaseState, BaseStateTracker,
     AbstractInput, LambdaProfiler)
 from tango.common import ComponentType
-from tango.unix import ProcessLoader
+from tango.unix import ProcessDriver
 
 from abc import ABC, abstractmethod
 from typing       import Sequence, Callable, Optional
@@ -313,16 +313,12 @@ class NPGlobalCoverage(GlobalCoverage):
         return super().__eq__(other) and \
                np.array_equal(self._set_arr, other._set_arr)
 
-class LoaderDependentTracker(BaseStateTracker,
-        capture_components={ComponentType.loader}):
-    def __init__(self, *, loader: ProcessLoader, **kwargs):
-        super().__init__(**kwargs)
-        self._loader = loader
-
-class CoverageStateTracker(LoaderDependentTracker,
+class CoverageStateTracker(BaseStateTracker,
+        capture_components={ComponentType.driver},
         capture_paths=['tracker.native_lib']):
-    def __init__(self, *, native_lib=None, **kwargs):
+    def __init__(self, *, driver: ProcessDriver, native_lib=None, **kwargs):
         super().__init__(**kwargs)
+        self._driver = driver
 
         if native_lib:
             self._bind_lib = CDLL(native_lib)
@@ -337,7 +333,7 @@ class CoverageStateTracker(LoaderDependentTracker,
         self._shm_size_name = f'/tango_size_{self._shm_uuid}'
 
         # set environment variables and load program with loader
-        self._loader._exec_env.env.update({
+        self._driver._exec_env.env.update({
             'TANGO_COVERAGE': self._shm_name,
             'TANGO_SIZE': self._shm_size_name
         })
@@ -347,12 +343,13 @@ class CoverageStateTracker(LoaderDependentTracker,
         return super().match_config(config) and \
             config['tracker'].get('type') == 'coverage'
 
-    async def initialize(self):
-        load = self._loader.load_state(None)
-        try:
-            await load.asend(None)
-        except StopAsyncIteration:
-            pass
+    async def finalize(self, owner: ComponentOwner):
+        generator = owner['generator']
+        startup = getattr(generator, 'startup_input', None)
+
+        await self._driver.relaunch()
+        if startup:
+            await self._driver.execute_input(startup)
 
         self._reader = CoverageReader(self._shm_name, self._shm_size_name)
 
@@ -367,7 +364,7 @@ class CoverageStateTracker(LoaderDependentTracker,
         self.update_state(None, input=None)
         self._entry_state = self._current_state
 
-        await super().initialize()
+        await super().finalize(owner)
 
         # initialize local map and local state
         self.reset_state(self._current_state)

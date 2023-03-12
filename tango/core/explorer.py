@@ -6,13 +6,14 @@ from tango.exceptions import (StabilityException, StateNotReproducibleException,
 from tango.core.tracker import AbstractState, AbstractStateTracker
 from tango.core.input import (AbstractInput, BaseInput, PreparedInput,
     BaseDecorator)
-from tango.core.loader import AbstractStateLoader
+from tango.core.driver import AbstractDriver
+from tango.core.loader import AbstractLoader
 from tango.core.profiler import (ValueProfiler, FrequencyProfiler,
     CountProfiler)
 from tango.core.types import (Path, LoadableTarget,
     ExplorerStateUpdateCallback, ExplorerTransitionUpdateCallback,
     ExplorerStateReloadCallback)
-from tango.common import AsyncComponent, ComponentType
+from tango.common import AsyncComponent, ComponentType, ComponentOwner
 
 from abc import ABC, abstractmethod
 from typing import Callable
@@ -54,27 +55,35 @@ class AbstractExplorer(AsyncComponent, ABC,
         pass
 
 class BaseExplorer(AbstractExplorer,
-        capture_components={ComponentType.loader, ComponentType.tracker},
+        capture_components={
+            ComponentType.loader, ComponentType.tracker, ComponentType.driver},
         capture_paths=['explorer.reload_attempts']):
-    def __init__(self,
-            loader: AbstractStateLoader, tracker: AbstractStateTracker,
-            *, reload_attempts: str='50', **kwargs):
+    def __init__(self, *,
+            loader: AbstractLoader, tracker: AbstractStateTracker,
+            driver: AbstractDriver, reload_attempts: str='50', **kwargs):
         super().__init__(**kwargs)
         self._loader = loader
         self._tracker = tracker
+        self._driver = driver
         self._reload_attempts = int(reload_attempts)
-
-        self._last_state = self._current_state = self._tracker.entry_state
         self._current_path = []
         self._last_path = []
+
+    async def finalize(self, owner: ComponentOwner):
+        self._last_state = self._current_state = self._tracker.entry_state
+        await super().finalize(owner)
 
     @property
     def tracker(self) -> AbstractStateTracker:
         return self._tracker
 
     @property
-    def loader(self) -> AbstractStateLoader:
+    def loader(self) -> AbstractLoader:
         return self._loader
+
+    @property
+    def driver(self) -> AbstractDriver:
+        return self._driver
 
     def _reset_current_path(self):
         self._current_path.clear()
@@ -122,11 +131,7 @@ class BaseExplorer(AbstractExplorer,
             while True:
                 previous, current, inp = await load.asend(nxt)
                 if current is None:
-                    # special case where the loader is requesting support from
-                    # the fuzzer and generator overlords;
-                    # we inform them that a reload will happen and forward
-                    # their response
-                    nxt = await self._state_reload_cb(path)
+                    raise RuntimeError("This is deprecated behavior.")
                 else:
                     if inp:
                         self._current_path.append((previous, current, inp))
@@ -174,7 +179,7 @@ class BaseExplorer(AbstractExplorer,
         update it.
         """
         context_input = self.get_context_input(input, **kwargs)
-        await self._loader.execute_input(context_input)
+        await self._driver.execute_input(context_input)
 
     async def update(self, input_gen: Callable[..., BaseInput],
             minimize: bool=True, validate: bool=True) \
@@ -244,7 +249,7 @@ class BaseExplorer(AbstractExplorer,
                     self._last_path = self._current_path.copy()
                     src = await self.reload_state(self._last_state, dryrun=True)
                     assert self._last_state == src
-                    await self._loader.execute_input(input)
+                    await self._driver.execute_input(input)
                     actual_state = self._tracker.peek(
                         src, self._current_state)
                     if self._current_state != actual_state:
@@ -295,7 +300,7 @@ class BaseExplorer(AbstractExplorer,
             src = await self.reload_state(state_or_path, dryrun=True)
             exp_input = input[begin:]
             try:
-                await self._loader.execute_input(exp_input)
+                await self._driver.execute_input(exp_input)
             except Exception:
                 success = False
 
@@ -325,7 +330,7 @@ class BaseExplorer(AbstractExplorer,
                 src = await self.reload_state(state_or_path, dryrun=True)
                 tmp_lin_input = lin_input[:cur] + lin_input[cur + step:]
                 try:
-                    await self._loader.execute_input(tmp_lin_input)
+                    await self._driver.execute_input(tmp_lin_input)
                 except Exception:
                     success = False
 
@@ -342,13 +347,13 @@ class BaseExplorer(AbstractExplorer,
 
         # Phase 3: make sure the reduced transition is correct
         src = await self.reload_state(state_or_path, dryrun=True)
-        await self._loader.execute_input(lin_input)
+        await self._driver.execute_input(lin_input)
         success = (dst == self._tracker.peek(src, dst))
         if not success and reduced:
             # finally, we fall back to validating the original input
             lin_input = input
             src = await self.reload_state(state_or_path, dryrun=True)
-            await self._loader.execute_input(lin_input)
+            await self._driver.execute_input(lin_input)
             success = (dst == self._tracker.peek(src, dst))
         if not success:
             raise StatePrecisionException("destination state did not match current state")

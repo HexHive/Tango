@@ -3,7 +3,7 @@ from tango.core import (AbstractChannel, AbstractChannelFactory,
     FormatDescriptor, AbstractInstruction, TransmitInstruction,
     ReceiveInstruction, DelayInstruction, SerializedInputMeta)
 from tango.ptrace.syscall import SYSCALL_REGISTER
-from tango.unix import PtraceChannel, PtraceForkChannel
+from tango.unix import PtraceChannel, PtraceForkChannel, PtraceChannelFactory
 from tango.common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
 from tango.exceptions import ChannelBrokenException
 
@@ -116,7 +116,7 @@ class TransportFormatDescriptor(NetworkFormatDescriptor, _TransportFormatDescrip
         setattr(obj, '_fmt', fmt)
 
 @dataclass(kw_only=True)
-class NetworkChannelFactory(AbstractChannelFactory,
+class NetworkChannelFactory(PtraceChannelFactory, AbstractChannelFactory,
         capture_paths=['channel.endpoint']):
     endpoint: str
 

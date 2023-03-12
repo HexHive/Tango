@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 from . import debug, info, warning, critical, error
 
-from tango.core import (BaseStateLoader, AbstractState, Transition,
-    LoadableTarget, ValueProfiler, CountProfiler, AbstractChannel)
+from tango.core import (BaseDriver, AbstractState, Transition,
+    LoadableTarget, ValueProfiler, CountProfiler, AbstractChannel,
+    AbstractChannelFactory)
 from tango.ptrace.binding import ptrace_traceme
 from tango.ptrace.cpu_info import CPU_WORD_SIZE
 from tango.ptrace.binding.cpu import CPU_INSTR_POINTER, CPU_STACK_POINTER
@@ -12,10 +15,11 @@ from tango.ptrace import PtraceError
 from tango.ptrace.func_call import FunctionCallOptions
 from tango.ptrace.syscall import PtraceSyscall, SOCKET_SYSCALL_NAMES
 from tango.ptrace.tools import signal_to_exitcode
-from tango.common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
+from tango.common import sync_to_async, GLOBAL_ASYNC_EXECUTOR, ComponentType
 from tango.exceptions import (ChannelTimeoutException, StabilityException,
     ProcessCrashedException, ProcessTerminatedException)
 
+from abc import abstractmethod
 from dataclasses import dataclass, field
 from typing import IO, AsyncGenerator, Callable
 from pyroute2 import netns, IPRoute
@@ -31,192 +35,11 @@ import signal
 import traceback
 
 __all__ = [
-    'ProcessLoader', 'ReplayStateLoader', 'ReplayForkStateLoader',
-    'PtraceChannel', 'PtraceForkChannel'
+    'ProcessDriver', 'ProcessForkDriver', 'PtraceChannel', 'PtraceForkChannel',
+    'PtraceChannelFactory'
 ]
 
 SOCKET_SYSCALL_NAMES = SOCKET_SYSCALL_NAMES.union(('read', 'write'))
-
-@dataclass
-class Environment:
-    """
-    This class describes a process execution environment.
-    """
-    path: str
-    args: list[str] = field(default_factory=list)
-    env: dict[str, str] = None # field(default_factory=dict)
-    cwd: str = None
-    stdin:  IO = None
-    stdout: IO = None
-    stderr: IO = None
-
-
-class ProcessLoader(BaseStateLoader,
-        capture_paths=['loader.exec', 'loader.disable_aslr', 'fuzzer.work_dir']):
-    PROC_TERMINATE_RETRIES = 5
-    PROC_TERMINATE_WAIT = 0.1 # seconds
-
-    def __init__(self, *, exec: dict, disable_aslr: bool, work_dir:str, **kwargs):
-        super().__init__(**kwargs)
-        self._work_dir = work_dir
-        self._exec_env = self.setup_execution_environment(exec)
-        self._pobj = None # Popen object of child process
-        self._netns_name = f'ns:{uuid4()}'
-
-        if disable_aslr:
-            ADDR_NO_RANDOMIZE = 0x0040000
-            personality = ctypes.pythonapi.personality
-            personality.restype = ctypes.c_int
-            personality.argtypes = [ctypes.c_ulong]
-            personality(ADDR_NO_RANDOMIZE)
-
-    def setup_execution_environment(self, config: dict) -> Environment:
-        ValueProfiler('target_name')(config["path"])
-        for stdf in ["stdin", "stdout", "stderr"]:
-            if config.get(stdf) == "inherit":
-                config[stdf] = None
-            elif config.get(stdf) is not None:
-                config[stdf] = open(config[stdf], "wt")
-            elif stdf == "stdin":
-                config[stdf] = PIPE
-            else:
-                config[stdf] = DEVNULL
-        if not config.get("env"):
-            config["env"] = dict(os.environ)
-        config["env"]["TANGO_WORKDIR"] = self._work_dir
-        config["args"][0] = os.path.realpath(config["args"][0])
-        if not (path := config.get("path")):
-            config["path"] = config["args"][0]
-        else:
-            config["path"] = os.path.realpath(path)
-        if (cwd := config.get("cwd")):
-            config["cwd"] = os.path.realpath(cwd)
-        return Environment(**config)
-
-    def __del__(self):
-        netns.remove(self._netns_name)
-
-    def _prepare_process(self):
-        os.setsid()
-        netns.setns(self._netns_name, flags=os.O_CREAT)
-        with IPRoute() as ipr:
-            ipr.link('set', index=1, state='up')
-        ptrace_traceme()
-
-    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
-    def _launch_target(self):
-        ## Kill current process, if any
-        if self._pobj:
-            # ensure that the channel is closed and the debugger detached
-            self._channel.close(terminate=True)
-
-            # close pipes, if any
-            for f in ('in', 'out', 'err'):
-                if (stdf := getattr(self._pobj, f'std{f}')):
-                    stdf.close()
-
-            retries = 0
-            while True:
-                if retries == self.PROC_TERMINATE_RETRIES:
-                    # TODO add logging to indicate force kill
-                    # FIXME is safe termination necessary?
-                    self._pobj.kill()
-                    break
-                self._pobj.terminate()
-                try:
-                    self._pobj.wait(self.PROC_TERMINATE_WAIT)
-                    break
-                except TimeoutExpired:
-                    retries += 1
-
-        ## Launch new process
-        self._pobj = self._popen()
-
-        ## Establish a connection
-        self._channel = self._ch_env.create(self._pobj, self._netns_name)
-
-    @property
-    def channel(self):
-        return self._channel
-
-    def _popen(self):
-        pobj = Popen(self._exec_env.args, shell=False,
-            bufsize=0,
-            executable = self._exec_env.path,
-            stdin  = self._exec_env.stdin,
-            stdout = self._exec_env.stdout,
-            stderr = self._exec_env.stderr,
-            cwd = self._exec_env.cwd,
-            restore_signals = True, # TODO check if this should be false
-            env = self._exec_env.env,
-            preexec_fn = self._prepare_process
-        )
-        return pobj
-
-class ReplayStateLoader(ProcessLoader):
-    async def load_state(self, state_or_path: LoadableTarget) \
-            -> AsyncGenerator[Transition, AbstractState]:
-        if isinstance(path := state_or_path, AbstractState):
-            raise TypeError(f"{self.__class__.__name__} can only load paths!")
-
-        # relaunch the target and establish channel
-        await self._launch_target()
-
-        if not path:
-            return
-
-        # request startup input from generator
-        startup = yield (None, None, None)
-
-        if startup:
-            # Send startup input
-            await self.execute_input(startup)
-
-        last_state = None
-        for source, destination, input in path:
-            current_state = yield (last_state, source, None)
-            # check if source matches the current state
-            if source != current_state:
-                raise StabilityException(
-                    f"source state ({source}) did not match current state ({current_state})"
-                )
-            # execute the input
-            await self.execute_input(input)
-
-            current_state = yield (source, destination, input)
-            # check if destination matches the current state
-            if destination != current_state:
-                faulty_state = destination
-                raise StabilityException(
-                    f"destination state ({destination}) did not match current state ({current_state})"
-                )
-            last_state = current_state
-
-    @classmethod
-    def match_config(cls, config: dict) -> bool:
-        return super().match_config(config) and \
-            config['loader'].get('type') == 'replay'
-
-class ReplayForkStateLoader(ReplayStateLoader):
-    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
-    def _launch_target(self):
-        if not self._pobj:
-            ## Launch new process
-            self._pobj = self._popen()
-        elif self._channel:
-            ## Kill current process, if any
-            try:
-                self._channel.close(terminate=True)
-            except ProcessLookupError:
-                pass
-
-        ## Establish a connection
-        self._channel = self._ch_env.create(self._pobj, self._netns_name)
-
-    @classmethod
-    def match_config(cls, config: dict) -> bool:
-        return super().match_config(config) and \
-            config['loader'].get('forkserver')
 
 class PtraceChannel(AbstractChannel):
     def __init__(self, pobj: Popen, **kwargs):
@@ -698,6 +521,154 @@ class PtraceForkChannel(PtraceChannel):
     def _wakeup_forkserver_syscall_callback(self, process, syscall):
         self._wakeup_forkserver_syscall_found = True
         process.syscall()
+
+class PtraceChannelFactory(AbstractChannelFactory):
+    @abstractmethod
+    def create(self, pobj: Popen, *args, **kwargs) -> PtraceChannel:
+        pass
+
+@dataclass
+class Environment:
+    """
+    This class describes a process execution environment.
+    """
+    path: str
+    args: list[str] = field(default_factory=list)
+    env: dict[str, str] = None # field(default_factory=dict)
+    cwd: str = None
+    stdin:  IO = None
+    stdout: IO = None
+    stderr: IO = None
+
+class ProcessDriver(BaseDriver,
+        capture_components={ComponentType.channel_factory},
+        capture_paths=['driver.exec', 'driver.disable_aslr', 'fuzzer.work_dir']):
+    PROC_TERMINATE_RETRIES = 5
+    PROC_TERMINATE_WAIT = 0.1 # seconds
+
+    def __init__(self, *, exec: dict, disable_aslr: bool, work_dir:str,
+            channel_factory: PtraceChannelFactory, **kwargs):
+        super().__init__(channel_factory=channel_factory, **kwargs)
+        self._work_dir = work_dir
+        self._exec_env = self.setup_execution_environment(exec)
+        self._pobj = None # Popen object of child process
+        self._netns_name = f'ns:{uuid4()}'
+
+        if disable_aslr:
+            ADDR_NO_RANDOMIZE = 0x0040000
+            personality = ctypes.pythonapi.personality
+            personality.restype = ctypes.c_int
+            personality.argtypes = [ctypes.c_ulong]
+            personality(ADDR_NO_RANDOMIZE)
+
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return super().match_config(config) and \
+            config['driver'].get('type') == 'unix'
+
+    def setup_execution_environment(self, config: dict) -> Environment:
+        ValueProfiler('target_name')(config["path"])
+        for stdf in ["stdin", "stdout", "stderr"]:
+            if config.get(stdf) == "inherit":
+                config[stdf] = None
+            elif config.get(stdf) is not None:
+                config[stdf] = open(config[stdf], "wt")
+            elif stdf == "stdin":
+                config[stdf] = PIPE
+            else:
+                config[stdf] = DEVNULL
+        if not config.get("env"):
+            config["env"] = dict(os.environ)
+        config["env"]["TANGO_WORKDIR"] = self._work_dir
+        config["args"][0] = os.path.realpath(config["args"][0])
+        if not (path := config.get("path")):
+            config["path"] = config["args"][0]
+        else:
+            config["path"] = os.path.realpath(path)
+        if (cwd := config.get("cwd")):
+            config["cwd"] = os.path.realpath(cwd)
+        return Environment(**config)
+
+    def __del__(self):
+        netns.remove(self._netns_name)
+
+    def _prepare_process(self):
+        os.setsid()
+        netns.setns(self._netns_name, flags=os.O_CREAT)
+        with IPRoute() as ipr:
+            ipr.link('set', index=1, state='up')
+        ptrace_traceme()
+
+    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
+    def relaunch(self):
+        ## Kill current process, if any
+        if self._pobj:
+            # ensure that the channel is closed and the debugger detached
+            self._channel.close(terminate=True)
+
+            # close pipes, if any
+            for f in ('in', 'out', 'err'):
+                if (stdf := getattr(self._pobj, f'std{f}')):
+                    stdf.close()
+
+            retries = 0
+            while True:
+                if retries == self.PROC_TERMINATE_RETRIES:
+                    # TODO add logging to indicate force kill
+                    # FIXME is safe termination necessary?
+                    self._pobj.kill()
+                    break
+                self._pobj.terminate()
+                try:
+                    self._pobj.wait(self.PROC_TERMINATE_WAIT)
+                    break
+                except TimeoutExpired:
+                    retries += 1
+
+        ## Launch new process
+        self._pobj = self._popen()
+
+        ## Establish a connection
+        self._channel = self._factory.create(self._pobj, self._netns_name)
+
+    @property
+    def channel(self):
+        return self._channel
+
+    def _popen(self):
+        pobj = Popen(self._exec_env.args, shell=False,
+            bufsize=0,
+            executable = self._exec_env.path,
+            stdin  = self._exec_env.stdin,
+            stdout = self._exec_env.stdout,
+            stderr = self._exec_env.stderr,
+            cwd = self._exec_env.cwd,
+            restore_signals = True, # TODO check if this should be false
+            env = self._exec_env.env,
+            preexec_fn = self._prepare_process
+        )
+        return pobj
+
+class ProcessForkDriver(ProcessDriver):
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return super().match_config(config) and \
+            config['driver'].get('forkserver')
+
+    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
+    def relaunch(self):
+        if not self._pobj:
+            ## Launch new process
+            self._pobj = self._popen()
+        elif self._channel:
+            ## Kill current process, if any
+            try:
+                self._channel.close(terminate=True)
+            except ProcessLookupError:
+                pass
+
+        ## Establish a connection
+        self._channel = self._factory.create(self._pobj, self._netns_name)
 
 class ForkserverCrashedException(RuntimeError):
     pass

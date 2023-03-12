@@ -9,7 +9,7 @@ from enum import Enum, EnumType, auto
 from collections import defaultdict
 from typing import (Hashable, Optional, Mapping, Sequence, Type, TypeAlias,
     Awaitable, Callable, Coroutine, AsyncIterable, AsyncIterator, Any,
-    TypeVar, ParamSpec, get_type_hints)
+    TypeVar, ParamSpec, Iterable, get_type_hints)
 from contextvars import ContextVar, Context, Token, copy_context
 from concurrent.futures import Future, Executor
 import types
@@ -692,12 +692,13 @@ class ComponentType(Enum, metaclass=ComponentTypeMeta):
 
     Attributes:
         channel_factory
+        driver
+        tracker
+        loader
         explorer
         generator
-        loader
-        session
         strategy
-        tracker
+        session
 
     See Also:
         :py:class:`ComponentOwner`
@@ -706,8 +707,9 @@ class ComponentType(Enum, metaclass=ComponentTypeMeta):
     """
 
     channel_factory = auto()
-    loader = auto()
+    driver = auto()
     tracker = auto()
+    loader = auto()
     explorer = auto()
     generator = auto()
     strategy = auto()
@@ -749,7 +751,7 @@ This type alias represents the data type that component capture parameters must
 have in the :py:func:`AsyncComponent.__init_subclass__` function.
 """
 
-PathCapture = Optional[Sequence[str]]
+PathCapture = Optional[Iterable[str]]
 """TypeAlias:
 
 This type alias represents the data type that path capture parameters must have
@@ -792,6 +794,10 @@ class ComponentOwner(dict, ABC):
         self._config.update(config)
 
     __repr__ = object.__repr__
+
+    def __getitem__(self, key: ComponentKey):
+        key = ComponentType(key)
+        return super().__getitem__(key)
 
     @property
     def component_classes(self) -> dict[ComponentKey, Component]:
@@ -893,28 +899,11 @@ class AsyncComponent(Component):
         elif not base_type:
             cls._component_type = component_type
 
+        # inherit capture specs from bases
         mro = inspect.getmro(cls)[:0:-1]
         reg = ComponentRegistry[component_type]
-        annotated_init = cls.__dict__.get('__init__')
-        if capture_components and (annotated_init is None or \
-                not (annot := get_type_hints(annotated_init))):
-            raise TypeError(f"{cls} captures {capture_components} but does not"
-                " provide an annotated __init__!")
-
-        capture_components = capture_components or set()
-        try:
-            annotated_capture = {(c := (ComponentType(x)), annot[c.name])
-                for x in capture_components}
-        except KeyError as ex:
-            raise TypeError(f"{cls}.__init__ does not provide an annotation for"
-                f" captured component {ex.args[0]}!")
-        cls._capture_components = annotated_capture or \
-            cls.__dict__.get('_capture_components', set())
-
-        if capture_paths:
-            capture_paths = list(capture_paths)
-        cls._capture_paths = capture_paths or \
-            cls.__dict__.get('_capture_paths', list())
+        inherit_components = dict()
+        inherit_paths = set()
         for base in mro:
             if issubclass(base, AsyncComponent) and \
                     base is not AsyncComponent:
@@ -923,38 +912,73 @@ class AsyncComponent(Component):
                 # FIXME may be useful to keep track of where captures were
                 # inherited from, especially for documentation; alternatively,
                 # MRO can be resolved at instantiation instead of caching it
-                cls._capture_components.update(base._capture_components)
-                cls._capture_paths.extend(base._capture_paths)
+                inherit_components.update(base._capture_components)
+                inherit_paths.update(base._capture_paths)
+
+        annotated_init = cls.__dict__.get('__init__')
+        if capture_components and (annotated_init is None or \
+                not (annot := get_type_hints(annotated_init))):
+            raise TypeError(f"{cls} captures {capture_components} but does not"
+                " provide an annotated __init__!")
+
+        capture_components = capture_components or set()
+        try:
+            annotated_capture = {(c := ComponentType(x)): annot[c.name]
+                for x in capture_components}
+        except KeyError as ex:
+            raise TypeError(f"{cls}.__init__ does not provide an annotation for"
+                f" captured component {ex.args[0]}!")
+        capture_components = annotated_capture or \
+            cls.__dict__.get('_capture_components', dict())
+
+        if capture_paths:
+            capture_paths = set(capture_paths)
+        capture_paths = capture_paths or \
+            cls.__dict__.get('_capture_paths', set())
+
+        # override capture specs with current class
+        cls._capture_components = inherit_components | capture_components
+        cls._capture_paths = inherit_paths | capture_paths
+
         if not inspect.isabstract(cls):
             # finally, we add ourselves to the leaf of the defaultdict
             reg = reg[cls]
 
+    def __new__(cls, *args, **kwargs):
+        obj = super().__new__(cls)
+        obj._initialized = False
+        obj._finalized = False
+        return obj
+
     async def initialize(self):
         info(f'Initializing {self}')
 
+    async def finalize(self, owner: ComponentOwner):
+        info(f'Finalized {self}')
+
     @classmethod
-    async def instantiate(cls, owner: ComponentOwner, config: dict,
-            deps: set=None, initialize: bool=True, *args, **kwargs) \
-            -> AsyncComponent:
-        deps = deps if deps is not None else set()
+    async def instantiate(cls, owner: ComponentOwner, config: dict, *args,
+            dependants: set=None, initialize: bool=True, finalize: bool=True,
+            **kwargs) -> AsyncComponent:
+        if finalize and not initialize:
+            raise ValueError("It is invalid to finalize without initializing!")
+        deps = dependants or set()
         if (typ := cls._component_type) in deps:
             raise RuntimeError(f"{typ.name} has a cyclical dependency!")
 
         if (new_component := owner.get(cls._component_type)):
-            assert new_component._initialized
+            assert new_component._initialized and new_component._finalized
             return new_component
 
         for path in cls._capture_paths:
             for kw, value in cls.find_path(path, config):
                 # WARN might overwrite values in case of globbing
                 kwargs[kw] = value
-        for component_type, requested_type in cls._capture_components:
+        for component_type, requested_type in cls._capture_components.items():
             if (component := owner.get(component_type)) is None:
                 component = \
-                    await owner.instantiate(component_type, config, deps | {typ})
-            if not component._initialized:
-                raise TypeError(f"{typ} attempted to capture uninitialized"
-                    f" compononent `{component}`")
+                    await owner.instantiate(component_type, config,
+                        dependants=deps | {typ})
             if not isinstance(component, requested_type):
                 raise TypeError(f"{owner} instantiated a {component_type} as an"
                     f" instance of {type(component)}, but {cls} captured an"
@@ -962,12 +986,48 @@ class AsyncComponent(Component):
             kwargs[component_type.name] = component
 
         new_component = cls(*args, **kwargs)
-        new_component._initialized = False
         owner[typ] = new_component
-        if initialize:
-            await new_component.initialize()
-            new_component._initialized = True
+        if not deps:
+            if initialize:
+                # initialization is breadth-first
+                await new_component.initialize_dependencies(owner)
+            if finalize:
+                # finalization is depth-first
+                await new_component.finalize_dependencies(owner)
         return new_component
+
+    @classmethod
+    async def initialize_dependencies(cls, owner: ComponentOwner,
+            preinitialize: Optional[Callable[[AsyncComponent]], None]=None):
+        queue = [cls]
+        while queue:
+            kls = queue.pop(0)
+            component = owner[kls._component_type]
+            if not component._initialized:
+                if preinitialize:
+                    preinitialize(component)
+                await component.initialize()
+                component._initialized = True
+            queue.extend(kls._capture_components.values())
+
+    @classmethod
+    async def finalize_dependencies(cls, owner: ComponentOwner,
+            postfinalize: Optional[Callable[[AsyncComponent]], None]=None):
+        stack = [cls]
+        visited = set()
+        while stack:
+            kls = stack.pop()
+            if kls in visited:
+                component = owner[kls._component_type]
+                if not component._finalized:
+                    await component.finalize(owner)
+                    component._finalized = True
+                    if postfinalize:
+                        postfinalize(component)
+            else:
+                stack.append(kls)
+                stack.extend(kls._capture_components.values())
+                visited.add(kls)
 
     @staticmethod
     def find_path(path: str, config: dict, *, expand_globs: bool=True):
@@ -989,5 +1049,5 @@ class AsyncComponent(Component):
         parts = path.split('.')
         yield from find_path_rec(parts, config, expand_glob=expand_globs)
 
-AnnotatedComponentCapture = set[tuple[
-        ComponentKey, Optional[Type[AsyncComponent]]]]
+AnnotatedComponentCapture = Mapping[ComponentKey,
+    Optional[Type[AsyncComponent]]]

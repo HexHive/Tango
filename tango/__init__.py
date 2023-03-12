@@ -75,6 +75,7 @@ for func in ('debug', 'info', 'warning', 'error', 'critical'):
 from . import common
 from . import exceptions
 from . import unix
+from . import replay
 from . import cov
 from . import havoc
 from . import net
