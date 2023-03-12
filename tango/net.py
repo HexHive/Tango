@@ -366,7 +366,7 @@ class TCPChannel(PtraceChannel, NetworkChannel):
                 else:
                     return
             # select
-            elif syscall.name == 'select':
+            elif syscall.name in ('select', 'pselect6'):
                 nfds = syscall.arguments[0].value
                 if nfds <= listenfd:
                     return
@@ -391,7 +391,7 @@ class TCPChannel(PtraceChannel, NetworkChannel):
             process.syscall()
 
     def _setup_ignore_callback_accept(self, syscall):
-        return syscall.name not in ('accept', 'accept4', 'poll', 'ppoll', 'select')
+        return syscall.name not in ('accept', 'accept4', 'poll', 'ppoll', 'select', 'pselect6')
 
     def _setup_break_callback_accept(self):
         return self._setup_accepting
@@ -432,7 +432,7 @@ class TCPChannel(PtraceChannel, NetworkChannel):
                 else:
                     return
             # select
-            elif syscall.name == 'select':
+            elif syscall.name in ('select', 'pselect6'):
                 nfds = syscall.arguments[0].value
                 if nfds <= max(self._sockfd):
                     return
@@ -485,7 +485,7 @@ class TCPChannel(PtraceChannel, NetworkChannel):
     def _poll_ignore_callback(self, syscall):
         # TODO add support for epoll?
         return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg',
-                                'poll', 'ppoll', 'select', 'close', 'shutdown',
+                                'poll', 'ppoll', 'select', 'pselect6', 'close', 'shutdown',
                                 'dup', 'dup2', 'dup3')
 
     def _poll_break_callback(self):
@@ -832,7 +832,7 @@ class UDPChannel(PtraceChannel, NetworkChannel):
                 else:
                     return
             # select
-            elif syscall.name == 'select':
+            elif syscall.name in ('select', 'pselect6'):
                 nfds = syscall.arguments[0].value
                 if nfds <= self._sockfd:
                     return
@@ -869,7 +869,7 @@ class UDPChannel(PtraceChannel, NetworkChannel):
     def _poll_ignore_callback(self, syscall):
         # TODO add support for epoll?
         return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg',
-                                'poll', 'ppoll', 'select', 'close', 'shutdown')
+                                'poll', 'ppoll', 'select', 'pselect6', 'close', 'shutdown')
 
     def _poll_break_callback(self):
         return self._poll_server_waiting
