@@ -529,7 +529,7 @@ class StateInferenceStrategy(UniformStrategy,
         try:
             assert eqv_src == await self._explorer.reload_state(eqv_src,
                 dryrun=True)
-            await self._explorer.loader.execute_input(input)
+            await self._explorer.driver.execute_input(input)
             # TODO add new states to graph and match against them too?
             current_state = self._tracker.cov_tracker.peek(eqv_src, eqv_dst,
                 do_not_cache=True)
