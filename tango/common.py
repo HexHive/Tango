@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from . import info, warning, critical, error
-from functools import partial, wraps, cached_property
+from functools import partial, wraps, cached_property, cache
 from async_property import async_property, async_cached_property
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
@@ -9,9 +9,10 @@ from enum import Enum, EnumType, auto
 from collections import defaultdict
 from typing import (Hashable, Optional, Mapping, Sequence, Type, TypeAlias,
     Awaitable, Callable, Coroutine, AsyncIterable, AsyncIterator, Any,
-    TypeVar, ParamSpec, Iterable, get_type_hints)
+    TypeVar, ParamSpec, Iterator, Iterable, get_type_hints)
 from contextvars import ContextVar, Context, Token, copy_context
 from concurrent.futures import Future, Executor
+import numpy as np
 import types
 import asyncio
 import inspect
@@ -800,7 +801,7 @@ class ComponentOwner(dict, ABC):
         return super().__getitem__(key)
 
     @property
-    def component_classes(self) -> dict[ComponentKey, Component]:
+    def component_classes(self) -> Mapping[ComponentKey, Component]:
         """dict:
         A lazy-evaluated dict mapping :py:obj:`ComponentKey` to
         :py:class:`Component` classes, to be used as instance factories.
@@ -809,10 +810,59 @@ class ComponentOwner(dict, ABC):
         import), in which case a greedy evaluation would miss the newly-added
         components.
         """
-        return {
-            component_type: self.match_component(component_type, self._config)
+        class hashabledict(dict):
+            def __key(self):
+                return tuple(self.items())
+            def __hash__(self):
+                return hash(self.__key())
+            def __eq__(self, other):
+                return self.__key() == other.__key()
+        matches = {
+            component_type: tuple(
+                self.match_component(component_type, self._config))
             for component_type in ComponentRegistry
         }
+        kls_map = self.resolve_dependencies(hashabledict(matches))
+        return kls_map
+
+    @classmethod
+    @cache
+    def resolve_dependencies(cls,
+            matches: Mapping[ComponentKey, Sequence[Component]]) \
+            -> dict[ComponentKey, Component]:
+        def verify_combination(*idx):
+            valid = np.zeros(len(types), dtype=bool)
+            for i, m in enumerate(idx):
+                typ = types[i]
+                kls = matches[typ][m]
+                for t, kls_c in kls._capture_components.items():
+                    try:
+                        j = types.index(t)
+                        kls_m = matches[t][idx[j]]
+                    except ValueError:
+                        break
+                    if not issubclass(kls_m, kls_c):
+                        break
+                else:
+                    valid[i] = True
+            return np.all(valid)
+        types = list(matches.keys())
+        u_verify_combination = np.frompyfunc(verify_combination, len(types), 1)
+        shape = [len(matches[t]) for t in types]
+        grid = np.indices(shape)
+        valid = zip(*u_verify_combination(*grid).nonzero())
+        combinations = []
+        for combination in valid:
+            combinations.append({
+                (t:=types[i]): matches[t][c] for i, c in enumerate(combination)
+            })
+        if not combinations:
+            raise TypeError("No valid combination of components found!")
+        combination = combinations.pop(0)
+        if combinations:
+            warning("More than one valid configuration possible." \
+                f" Choosing: {list(combination.values())}")
+        return combination
 
     async def instantiate(self, component_type: ComponentKey,
             config: Optional[dict]=None, *args, **kwargs) -> AsyncComponent:
@@ -844,24 +894,27 @@ class ComponentOwner(dict, ABC):
 
     @staticmethod
     def match_component(
-            component_type: ComponentKey, config: dict) -> Component:
+            component_type: ComponentKey, config: dict) -> Sequence[Component]:
         """
         Todo:
             * Make it return sets of compatible configurations instead of
               finding the first matching one
         """
-        def match_component_dfs(reg) -> Optional[Component]:
+        def match_component_dfs(reg, catch_all: list) -> Iterator[Component]:
             for base, classes in reg.items():
-                match = match_component_dfs(classes)
-                if match is not None:
-                    return match
+                yield from match_component_dfs(classes, catch_all)
+                if inspect.isabstract(base):
+                    continue
                 if not base._catch_all and base.match_config(config):
-                    return base
-        match = match_component_dfs(ComponentRegistry[component_type])
-        match = match or ComponentCatchAll.get(component_type)
-        if match is None:
+                    yield base
+                elif base._catch_all:
+                    catch_all.append(base)
+        catch_all = []
+        matches = list(match_component_dfs(ComponentRegistry[component_type],
+            catch_all)) + catch_all[::-1]
+        if not matches:
             raise LookupError(f"No valid component for `{component_type.name}`")
-        return match
+        return matches
 
 class AsyncComponent(Component):
     _capture_components: AnnotatedComponentCapture
@@ -907,8 +960,7 @@ class AsyncComponent(Component):
         for base in mro:
             if issubclass(base, AsyncComponent) and \
                     base is not AsyncComponent:
-                if not inspect.isabstract(base):
-                    reg = reg[base]
+                reg = reg[base]
                 # FIXME may be useful to keep track of where captures were
                 # inherited from, especially for documentation; alternatively,
                 # MRO can be resolved at instantiation instead of caching it

@@ -60,8 +60,7 @@ class FuzzerConfig(ComponentOwner):
         return component
 
     def preinitialize_cb(self, component: AsyncComponent):
-        if not component._initialized:
-            component._entropy = self.entropy
+        object.__setattr__(component, '_entropy', self.entropy)
 
     def update_overrides(self, overrides: dict):
         def update(d, u):

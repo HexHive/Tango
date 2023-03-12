@@ -59,9 +59,9 @@ class TimescaleDescriptor:
 
     def __set__(self, obj, value: str):
         fval = float(value)
-        setattr(obj, '_timescale', fval)
+        object.__setattr__(obj, '_timescale', fval)
 
-@dataclass
+@dataclass(frozen=True)
 class AbstractChannelFactory(AsyncComponent, ABC,
         component_type=ComponentType.channel_factory,
         capture_paths=['fuzzer.timescale']):

@@ -24,7 +24,7 @@ __all__ = [
     'StdIOForkChannel', 'RawInput'
 ]
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class StdIOChannelFactory(PtraceChannelFactory, AbstractChannelFactory):
     fmt: FormatDescriptor = FormatDescriptor('raw')
 
@@ -247,13 +247,13 @@ class StdIOChannel(PtraceChannel):
         self._send_barrier.wait()
         return ret
 
-@dataclass
+@dataclass(kw_only=True, frozen=True)
 class StdIOForkChannelFactory(StdIOChannelFactory,
         capture_paths=['fuzzer.work_dir']):
     work_dir: str = None
 
     def create(self, pobj: Popen, *args, **kwargs) -> AbstractChannel:
-        self._pobj = pobj
+        object.__setattr__(self, '_pobj', pobj)
         ch = self.forkchannel
         ch.connect()
         return ch

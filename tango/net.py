@@ -113,9 +113,9 @@ class TransportFormatDescriptor(NetworkFormatDescriptor, _TransportFormatDescrip
 
     def __set__(self, obj, value):
         fmt = type(self)(protocol=value)
-        setattr(obj, '_fmt', fmt)
+        object.__setattr__(obj, '_fmt', fmt)
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class NetworkChannelFactory(PtraceChannelFactory, AbstractChannelFactory,
         capture_paths=['channel.endpoint']):
     endpoint: str
@@ -129,9 +129,9 @@ class PortDescriptor:
 
     def __set__(self, obj, value: 'str'):
         ival = int(value)
-        setattr(obj, '_port', ival)
+        object.__setattr__(obj, '_port', ival)
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class TransportChannelFactory(NetworkChannelFactory,
         capture_paths=['channel.port']):
     port: PortDescriptor = PortDescriptor()
@@ -139,10 +139,9 @@ class TransportChannelFactory(NetworkChannelFactory,
     fmt: FormatDescriptor = TransportFormatDescriptor(protocol=None)
 
     def __post_init__(self):
-        self.fmt = self.protocol # implicit casting through the descriptor
+        object.__setattr__(self, 'fmt', self.protocol) # implicit casting through the descriptor
 
-
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class TCPChannelFactory(TransportChannelFactory,
         capture_paths=['channel.connect_timeout', 'channel.data_timeout']):
     connect_timeout: float = None # seconds
@@ -561,14 +560,14 @@ class ListenerSocketState:
             return (self._sa_family, self._sin_addr, self._sin_port)
 
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class TCPForkChannelFactory(TCPChannelFactory,
         capture_paths=['channel.fork_before_accept']):
     fork_before_accept: bool
 
     def create(self, pobj: Popen, netns: str, *args, **kwargs) -> AbstractChannel:
-        self._pobj = pobj
-        self._netns = netns
+        object.__setattr__(self, '_pobj', pobj)
+        object.__setattr__(self, '_netns', netns)
         ch = self.forkchannel
         ch.connect((self.endpoint, self.port))
         return ch
@@ -630,7 +629,7 @@ class TCPForkBeforeAcceptChannel(TCPChannel, PtraceForkChannel):
             super()._cleanup_forkserver(process)
 
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class UDPChannelFactory(TransportChannelFactory,
         capture_paths=['channel.connect_timeout', 'channel.data_timeout']):
     connect_timeout: float = None # seconds
@@ -955,14 +954,14 @@ class UDPSocketState:
             return (_sa_family, _sin_addr, _sin_port)
 
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class UDPForkChannelFactory(UDPChannelFactory,
         capture_paths=['channel.fork_before_bind']):
     fork_before_bind: bool
 
     def create(self, pobj: Popen, netns: str, *args, **kwargs) -> AbstractChannel:
-        self._pobj = pobj
-        self._netns = netns
+        object.__setattr__(self, '_pobj', pobj)
+        object.__setattr__(self, '_netns', netns)
         ch = self.forkchannel
         ch.connect((self.endpoint, self.port))
         return ch
