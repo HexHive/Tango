@@ -793,6 +793,8 @@ class ComponentOwner(dict, ABC):
     def __init__(self, config: dict):
         self._config = recursive_dict()
         self._config.update(config)
+        self._initialized = set()
+        self._finalized = set()
 
     __repr__ = object.__repr__
 
@@ -996,12 +998,6 @@ class AsyncComponent(Component):
             # finally, we add ourselves to the leaf of the defaultdict
             reg = reg[cls]
 
-    def __new__(cls, *args, **kwargs):
-        obj = super().__new__(cls)
-        obj._initialized = False
-        obj._finalized = False
-        return obj
-
     async def initialize(self):
         info(f'Initializing {self}')
 
@@ -1019,7 +1015,8 @@ class AsyncComponent(Component):
             raise RuntimeError(f"{typ.name} has a cyclical dependency!")
 
         if (new_component := owner.get(cls._component_type)):
-            assert new_component._initialized and new_component._finalized
+            assert new_component in self._initialized and \
+                new_component in self._finalized
             return new_component
 
         for path in cls._capture_paths:
@@ -1055,12 +1052,12 @@ class AsyncComponent(Component):
         while queue:
             kls = queue.pop(0)
             component = owner[kls._component_type]
-            if not component._initialized:
+            if not component in owner._initialized:
                 if preinitialize:
                     preinitialize(component)
                 await component.initialize()
-                component._initialized = True
-            queue.extend(kls._capture_components.values())
+                owner._initialized.add(component)
+            queue.extend(component._capture_components.values())
 
     @classmethod
     async def finalize_dependencies(cls, owner: ComponentOwner,
@@ -1069,16 +1066,16 @@ class AsyncComponent(Component):
         visited = set()
         while stack:
             kls = stack.pop()
+            component = owner[kls._component_type]
             if kls in visited:
-                component = owner[kls._component_type]
-                if not component._finalized:
+                if not component in owner._finalized:
                     await component.finalize(owner)
-                    component._finalized = True
+                    owner._finalized.add(component)
                     if postfinalize:
                         postfinalize(component)
             else:
                 stack.append(kls)
-                stack.extend(kls._capture_components.values())
+                stack.extend(component._capture_components.values())
                 visited.add(kls)
 
     @staticmethod
