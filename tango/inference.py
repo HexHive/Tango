@@ -127,11 +127,12 @@ class ContextSwitchingTracker(AbstractStateTracker):
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
-        return config['tracker'].get('type') == 'inference'
+        return config['strategy'].get('type') == 'inference'
 
     def __getattribute__(self, name):
         if name in ('update_state', 'update_transition', 'entry_state',
-                'current_state', 'state_graph', 'peek', 'reset_state'):
+                'current_state', 'state_graph', 'peek', 'reset_state') or \
+                name.startswith('_'):
             return getattr(self.current_tracker, name)
         return super().__getattribute__(name)
 

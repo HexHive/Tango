@@ -2,9 +2,10 @@ from __future__   import annotations
 from . import debug, info
 
 from tango.core import (AbstractState, BaseState, BaseStateTracker,
-    AbstractInput, LambdaProfiler)
-from tango.common import ComponentType
-from tango.unix import ProcessDriver
+    AbstractInput, LambdaProfiler, ValueMeanProfiler, CountProfiler)
+from tango.unix import ProcessDriver, ProcessForkDriver
+from tango.common import ComponentType, ComponentOwner
+from tango.exceptions import LoadedException
 
 from abc import ABC, abstractmethod
 from typing       import Sequence, Callable, Optional
@@ -30,7 +31,8 @@ import posix_ipc
 import numpy as np
 
 __all__ = [
-    'CoverageState', 'CoverageReader', 'GlobalCoverage', 'CoverageStateTracker'
+    'CoverageState', 'CoverageReader', 'GlobalCoverage', 'CoverageStateTracker',
+    'CoverageDriver', 'CoverageForkDriver'
 ]
 
 pythonapi.memcmp.argtypes = (V, V, S)
@@ -69,6 +71,44 @@ def _count_class_lookup(count):
 CLASS_LUT = np.zeros(256, dtype=np.uint8)
 for i in range(len(CLASS_LUT)):
     CLASS_LUT[i] = _count_class_lookup(i)
+
+class CoverageDriver(ProcessDriver,
+        capture_paths=('driver.clear_coverage',)):
+    @classmethod
+    def match_config(cls, config: dict):
+        return super().match_config(config) and \
+            config['tracker'].get('type') == 'coverage'
+
+    def __init__(self, *, clear_coverage: Optional[bool]=True, **kwargs):
+        super().__init__(**kwargs)
+        self._clear_cov = clear_coverage
+
+    async def finalize(self, owner: ComponentOwner):
+        # WARN this bypasses the expected component hierarchy and would usually
+        # result in cyclic dependencies, but since both components are defined
+        # and confined within this module, they are expected to be tightly
+        # coupled and be aware of this dependency
+        self._tracker: CoverageStateTracker = owner['tracker']
+        await super().finalize(owner)
+
+    async def execute_input(self, input: AbstractInput):
+        try:
+            idx = 0
+            async for instruction in input:
+                idx += 1
+                if self._clear_cov:
+                    memset(self._tracker._reader.array, 0,
+                        self._tracker._reader.size)
+                await instruction.perform(self._channel)
+        except Exception as ex:
+            raise LoadedException(ex, lambda: input[:idx]) from ex
+        finally:
+            ValueMeanProfiler("input_len", samples=100)(idx)
+            CountProfiler("total_instructions")(idx)
+
+# this class exists only to allow matching with forkserver==true
+class CoverageForkDriver(CoverageDriver, ProcessForkDriver):
+    pass
 
 class CoverageState(BaseState):
     __slots__ = '_parent', '_set_map', '_set_count', '_context'
@@ -118,9 +158,9 @@ class CoverageReader:
         tag = self.ensure_tag(tag)
 
         _type = b * self._length
-        _size = sizeof(_type)
+        self._size = sizeof(_type)
 
-        self._mem, self._map = self.init_array(tag, _type, _size, create, force)
+        self._mem, self._map = self.init_array(tag, _type, self._size, create, force)
         self._array = _type.from_address(self.address_of_buffer(self._map))
 
     @classmethod
@@ -160,6 +200,10 @@ class CoverageReader:
     @property
     def length(self):
         return self._length
+
+    @property
+    def size(self):
+        return self._size
 
     @property
     def address(self):
