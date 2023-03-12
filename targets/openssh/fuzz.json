@@ -1,0 +1,37 @@
+{
+	"driver": {
+		"type": "unix",
+		"exec": {
+			"path": "./sshd",
+			"args": ["./sshd", "-d", "-e", "-p", "2022", "-r", "-f", "sshd_config"],
+			"cwd": "./",
+			"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
+		},
+		"forkserver": true,
+		"disable_aslr": true
+	},
+	"channel": {
+		"type": "tcp",
+		"endpoint": "127.0.0.1",
+		"port": 2022,
+		"fork_before_accept": true
+	},
+	"tracker": {
+		"type": "coverage"
+	},
+	"loader": {
+		"type": "replay"
+	},
+	"generator": {
+		"type": "reactive",
+		"seeds": "./seeds/"
+	},
+	"strategy": {
+		"type": "uniform"
+	},
+	"fuzzer": {
+		"cwd": "./targets/openssh/",
+		"work_dir": "./workdir/",
+		"resume": true
+	}
+}
