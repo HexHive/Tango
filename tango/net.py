@@ -293,7 +293,11 @@ class TCPChannel(PtraceChannel, NetworkChannel):
             except ValueError as ex:
                 raise ChannelBrokenException("socket fd is negative, socket is closed") from ex
 
-            ret = self._socket.recv(self.RECV_CHUNK_SIZE)
+            try:
+                ret = self._socket.recv(self.RECV_CHUNK_SIZE)
+            except ConnectionResetError as ex:
+                raise ChannelBrokenException("recv failed, connection reset") \
+                    from ex
             if ret == b'' and len(chunks) == 0:
                 raise ChannelBrokenException("recv returned 0, socket shutdown")
             elif ret == b'':
@@ -768,7 +772,11 @@ class UDPChannel(PtraceChannel, NetworkChannel):
         except ValueError:
             raise ChannelBrokenException("socket fd is negative, socket is closed")
 
-        data = self._socket.recv(self.MAX_DATAGRAM_SIZE)
+        try:
+            data = self._socket.recv(self.MAX_DATAGRAM_SIZE)
+        except ConnectionResetError as ex:
+            raise ChannelBrokenException("recv failed, connection reset") \
+                from ex
         if data:
             debug(f"Received data from server: {data}")
         return data
