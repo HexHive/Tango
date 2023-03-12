@@ -154,7 +154,7 @@ class StdIOChannel(PtraceChannel):
             else:
                 return
         # select
-        elif syscall.name == 'select':
+        elif syscall.name in ('select', 'pselect6'):
             nfds = syscall.arguments[0].value
             if nfds <= max(self._fd):
                 return
@@ -202,7 +202,7 @@ class StdIOChannel(PtraceChannel):
 
     def _poll_ignore_callback(self, syscall):
         # TODO add support for epoll?
-        return syscall.name not in {'read', 'poll', 'ppoll', 'select', 'close',
+        return syscall.name not in {'read', 'poll', 'ppoll', 'select', 'pselect6', 'close',
                                 'dup', 'dup2', 'dup3'}
 
     def _poll_break_callback(self):
