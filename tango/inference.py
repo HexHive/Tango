@@ -198,7 +198,8 @@ class StateInferenceStrategy(UniformStrategy,
         if dt_predict:
             self._dt_clf = tree.DecisionTreeClassifier()
             self._dt_fit = False
-        TimeElapsedProfiler('time_crosstest').toggle()
+        self._crosstest_timer = TimeElapsedProfiler('time_crosstest')
+        self._crosstest_timer()
 
     async def initialize(self):
         await super().initialize()
@@ -217,7 +218,7 @@ class StateInferenceStrategy(UniformStrategy,
                 else:
                     await super().step(input)
             case InferenceMode.CrossPollination:
-                TimeElapsedProfiler('time_crosstest').toggle()
+                self._crosstest_timer()
                 cap, eqv_map, mask, nodes = await self.perform_cross_pollination()
                 self._tracker.capability_matrix = cap[mask,:][:,mask]
                 self._tracker.equivalence_map = eqv_map
@@ -228,7 +229,7 @@ class StateInferenceStrategy(UniformStrategy,
                     collapsed = self._collapse_graph(cap[~mask,:][:,~mask])
                 self._tracker.inf_tracker.reconstruct_graph(collapsed)
                 self._tracker.mode = InferenceMode.Discovery
-                TimeElapsedProfiler('time_crosstest').toggle()
+                self._crosstest_timer()
 
     @classmethod
     def _collapse_graph(cls, adj):

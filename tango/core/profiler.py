@@ -17,8 +17,8 @@ from typing import Optional, Iterable
 import asyncio
 
 __all__ = [
-    'initialize', 'get_profiler', 'get_all_profilers', 'AbstractProfiler',
-    'ValueProfiler', 'LambdaProfiler', 'NumericalProfiler',
+    'initialize', 'get_profiler', 'get_all_profilers', 'is_profiling_active',
+    'AbstractProfiler', 'ValueProfiler', 'LambdaProfiler', 'NumericalProfiler',
     'FunctionCallProfiler', 'EventProfiler', 'PeriodicProfiler',
     'FrequencyProfiler', 'CountProfiler', 'ValueMeanProfiler',
     'LambdaMeanProfiler', 'TimeElapsedProfiler', 'AbstractProfilerMeta'
@@ -44,6 +44,9 @@ def get_all_profilers() -> Iterable[tuple[str, AbstractProfiler]]:
     yield from {
         name: get_profiler(name) for name in ProfiledObjects
     }.items()
+
+def is_profiling_active() -> bool:
+    return not AbstractProfilerMeta.ProfilingNOP
 
 class AbstractProfilerMeta(ABCMeta):
     DEBUG = sys_gettrace() is not None
@@ -71,7 +74,7 @@ class AbstractProfilerMeta(ABCMeta):
         return p
 
     @staticmethod
-    def nop(obj):
+    def nop(obj=None):
         return obj
 
 class AbstractProfiler(ABC, metaclass=AbstractProfilerMeta):
@@ -402,8 +405,8 @@ class TimeElapsedProfiler(AbstractProfiler):
         self._running = True
         self._accum = timedelta()
 
-    def __call__(self, obj):
-        raise NotImplementedError
+    def __call__(self):
+        self.toggle()
 
     def toggle(self):
         now = datetime.now()

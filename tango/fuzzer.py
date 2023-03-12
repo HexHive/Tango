@@ -1,7 +1,7 @@
 from . import info, warning
 
 from tango.core import (FuzzerConfig, FuzzerSession,
-    initialize as initialize_profiler, TimeElapsedProfiler)
+    initialize as initialize_profiler, TimeElapsedProfiler, is_profiling_active)
 from tango.common import (Suspendable,
     create_session_context, get_session_task_group)
 from tango.webui import WebRenderer
@@ -123,10 +123,11 @@ class Fuzzer:
         config = FuzzerConfig(self._argspace.config, self._overrides)
         session = await config.instantiate('session')
         self._sessions.append(session)
-        webui = await config.instantiate('webui')
         tg = get_session_task_group()
-        tg.create_task(webui.run(), name=f'webui[{name}]')
         tg.create_task(Suspendable(session.run()).as_coroutine(), name=name)
+        if is_profiling_active():
+            webui = await config.instantiate('webui')
+            tg.create_task(webui.run(), name=f'webui[{name}]')
 
     def _bootstrap_sigint(self, loop, handle=True):
         if handle:
@@ -148,7 +149,7 @@ class Fuzzer:
         self._bootstrap_sigint(loop, handle=False)
 
         # pause fuzzing timer
-        self._timer.toggle()
+        self._timer()
 
         # suspend fuzzing sessions (and call respective suspend handlers)
         self._suspendable.suspend()
@@ -174,7 +175,7 @@ class Fuzzer:
                 sys.stdin.close()
                 sys.stdin = open("/dev/tty")
 
-            self._timer.toggle()
+            self._timer()
             self._bootstrap_sigint(loop, handle=True)
 
     def _cleanup_and_exit(self, loop, code, /):
