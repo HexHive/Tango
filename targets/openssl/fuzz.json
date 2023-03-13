@@ -1,23 +1,23 @@
 {
-    "driver": {
-        "type": "unix",
-        "exec": {
-            "path": "./openssl",
-            "args": ["./openssl", "s_server", "-key", "key.pem", "-cert", "cert.pem", "-4", "-naccept", "1", "-no_anti_replay"],
-            "cwd": "./",
-            "env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
-        },
-        "disable_aslr": true,
+	"driver": {
+		"type": "unix",
+		"exec": {
+			"path": "./openssl",
+			"args": ["./openssl", "s_server", "-key", "key.pem", "-cert", "cert.pem", "-4", "-naccept", "1", "-no_anti_replay"],
+			"cwd": "./",
+			"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
+		},
+		"disable_aslr": true,
 		"forkserver": true
-    },
-    "loader": {
+	},
+	"loader": {
 		"type": "replay"
 	},
 	"channel": {
 		"type": "tcp",
-        "endpoint": "127.0.0.1",
-        "port": 4433,
-        "fork_before_accept": true
+		"endpoint": "127.0.0.1",
+		"port": 4433,
+		"fork_before_accept": true
 	},
 	"generator": {
 		"type": "reactive"
@@ -25,9 +25,9 @@
 	"tracker": {
 		"type": "coverage"
 	},
-    "strategy": {
-        "type": "uniform"
-    },
+	"strategy": {
+		"type": "uniform"
+	},
 	"fuzzer": {
 		"lib": "./lib/",
 		"cwd": "./targets/openssl/",
