@@ -251,6 +251,11 @@ class StdIOForkChannelFactory(StdIOChannelFactory,
         capture_paths=['fuzzer.work_dir']):
     work_dir: str = None
 
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return super().match_config(config) and \
+            config['driver'].get('forkserver')
+
     def create(self, pobj: Popen, netns: str) -> AbstractChannel:
         object.__setattr__(self, '_pobj', pobj)
         ch = self.forkchannel

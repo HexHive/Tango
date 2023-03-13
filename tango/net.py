@@ -569,6 +569,11 @@ class TCPForkChannelFactory(TCPChannelFactory,
         capture_paths=['channel.fork_before_accept']):
     fork_before_accept: bool
 
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return super().match_config(config) and \
+            config['driver'].get('forkserver')
+
     def create(self, pobj: Popen, netns: str) -> AbstractChannel:
         object.__setattr__(self, '_pobj', pobj)
         object.__setattr__(self, '_netns', netns)
@@ -958,6 +963,11 @@ class UDPSocketState:
 class UDPForkChannelFactory(UDPChannelFactory,
         capture_paths=['channel.fork_before_bind']):
     fork_before_bind: bool
+
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return super().match_config(config) and \
+            config['driver'].get('forkserver')
 
     def create(self, pobj: Popen, netns: str) -> AbstractChannel:
         object.__setattr__(self, '_pobj', pobj)
