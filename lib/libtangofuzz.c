@@ -20,12 +20,6 @@
 #include <sys/prctl.h>
 #include <linux/limits.h>
 
-#ifdef USE_SECCOMP
-#include <linux/filter.h>
-#include <linux/seccomp.h>
-#include <sys/syscall.h>
-#endif
-
 static uint8_t *edge_cnt;
 static size_t edge_sz;
 
@@ -83,53 +77,12 @@ static inline void __reset_cov_map() {
         edge_cnt[i] = 0;
 }
 
-#ifdef USE_SECCOMP
-__attribute__((no_sanitize("coverage")))
-static inline void _install_seccomp_filter() {
-    struct sock_filter filter[] = {
-        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_accept, 16, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_accept4, 15, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bind, 14, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_close, 13, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_dup, 12, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_dup2, 11, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_dup3, 10, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_listen, 9, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_poll, 8, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_ppoll, 7, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_read, 6, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_recvfrom, 5, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_recvmsg, 4, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_select, 3, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_shutdown, 2, 0),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_socket, 1, 0),
-        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE | SECCOMP_RET_DATA),
-    };
-    struct sock_fprog prog = {
-        .filter = filter,
-        .len = (unsigned short) (sizeof(filter)/sizeof(filter[0])),
-    };
-    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0))
-        exit(-256);
-
-    int flags = SECCOMP_FILTER_FLAG_TSYNC;
-    if (syscall(SYS_seccomp, SECCOMP_SET_MODE_FILTER, flags, &prog))
-        exit(-256);
-}
-#endif
-
 __attribute__((used, no_sanitize("coverage")))
 static void _forkserver() {
     int fifofd = -1;
     const char *wd = getenv("TANGO_WORKDIR");
     char fifopath[PATH_MAX];
     snprintf(fifopath, PATH_MAX, "%s/%s", wd, "input.pipe");
-
-#ifdef USE_SECCOMP
-    _install_seccomp_filter();
-#endif
 
     while(1) {
         __reset_cov_map();

@@ -8,7 +8,7 @@ from tango.unix import PtraceChannel, PtraceForkChannel, PtraceChannelFactory
 from tango.exceptions import ChannelBrokenException
 from tango.common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
 
-from typing import ByteString, Iterable
+from typing import ByteString, Iterable, Mapping, Any
 from subprocess import Popen
 from dataclasses import dataclass
 from functools import cached_property
@@ -28,9 +28,8 @@ __all__ = [
 class StdIOChannelFactory(PtraceChannelFactory, AbstractChannelFactory):
     fmt: FormatDescriptor = FormatDescriptor('raw')
 
-    def create(self, pobj: Popen, *args, **kwargs) -> AbstractChannel:
-        ch = StdIOChannel(pobj=pobj,
-                          timescale=self.timescale)
+    def create(self, pobj: Popen, netns: str) -> AbstractChannel:
+        ch = StdIOChannel(pobj=pobj, **self.fields)
         ch.connect()
         return ch
 
@@ -252,7 +251,7 @@ class StdIOForkChannelFactory(StdIOChannelFactory,
         capture_paths=['fuzzer.work_dir']):
     work_dir: str = None
 
-    def create(self, pobj: Popen, *args, **kwargs) -> AbstractChannel:
+    def create(self, pobj: Popen, netns: str) -> AbstractChannel:
         object.__setattr__(self, '_pobj', pobj)
         ch = self.forkchannel
         ch.connect()
@@ -260,9 +259,7 @@ class StdIOForkChannelFactory(StdIOChannelFactory,
 
     @cached_property
     def forkchannel(self):
-        return StdIOForkChannel(pobj=self._pobj,
-                          work_dir=self.work_dir,
-                          timescale=self.timescale)
+        return StdIOForkChannel(pobj=self._pobj, **self.fields)
 
 class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
     def __init__(self, work_dir: str, **kwargs):
@@ -274,12 +271,6 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
         self._setup_fifo()
         super().__init__(**kwargs)
         self._debugger.traceSeccomp()
-
-    def resume_process(self, process, signum=0):
-        if self._injected:
-            process.cont(signum)
-        else:
-            process.syscall(signum)
 
     def connect(self):
         self._reconnect = True
@@ -346,12 +337,6 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
             break_on_entry=True)
         del self._poll_server_waiting
         return proc
-
-    def _wakeup_forkserver(self):
-        if self._proc_trapped:
-            debug("Waking up forkserver :)")
-            self.resume_process(self._proc)
-            self._proc_trapped = False
 
     ## Callbacks
     def _poll_monitor(self):

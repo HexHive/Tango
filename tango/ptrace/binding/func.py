@@ -1,10 +1,12 @@
 from tango.ptrace import PtraceError
 from tango.ptrace.ctypes_tools import formatAddress
-from tango.ptrace.os_tools import RUNNING_LINUX, RUNNING_BSD, RUNNING_OPENBSD
+from tango.ptrace.os_tools import (RUNNING_LINUX, RUNNING_BSD, RUNNING_OPENBSD,
+    HAS_PROC)
 from tango.ptrace.cpu_info import CPU_64BITS, CPU_WORD_SIZE, CPU_POWERPC, CPU_AARCH64
 
 from os import strerror
-from ctypes import addressof, c_int, get_errno, set_errno, sizeof
+from ctypes import (addressof, c_int, get_errno, set_errno, sizeof, Structure,
+    Array)
 
 if RUNNING_OPENBSD:
     from tango.ptrace.binding.openbsd_struct import (
@@ -18,7 +20,8 @@ elif RUNNING_BSD:
 elif RUNNING_LINUX:
     from tango.ptrace.binding.linux_struct import (
         user_regs_struct as ptrace_registers_t,
-        user_fpregs_struct, siginfo, iovec_struct, ptrace_syscall_info)
+        user_fpregs_struct, siginfo, iovec_struct, ptrace_syscall_info,
+        sock_filter, sock_fprog)
     if not CPU_64BITS:
         from tango.ptrace.binding.linux_struct import user_fpxregs_struct
 else:
@@ -33,6 +36,7 @@ HAS_PTRACE_GETREGS = False
 HAS_PTRACE_GETREGSET = False
 HAS_PTRACE_SETREGS = False
 HAS_PTRACE_SETREGSET = False
+HAS_SECCOMP_FILTER = False
 
 # Special flags that are required to wait for cloned processes (threads)
 # See wait(2)
@@ -116,6 +120,119 @@ if RUNNING_LINUX:
     # Linux introduces the __WALL flag for wait
     # Revisit: __WALL is the default for ptraced children since Linux 4.7
     THREAD_TRACE_FLAGS = 0x40000000
+
+    ## BPF constants
+    # Instruction classes
+    BPF_LD = 0x00
+    BPF_LDX = 0x01
+    BPF_ST = 0x02
+    BPF_STX = 0x03
+    BPF_ALU = 0x04
+    BPF_JMP = 0x05
+    BPF_RET = 0x06
+    BPF_MISC = 0x07
+
+    # ld/ldx fields
+    BPF_W = 0x00 # 32-bit
+    BPF_H = 0x08 # 16-bit
+    BPF_B = 0x10 #  8-bit
+    BPF_IMM = 0x00
+    BPF_ABS = 0x20
+    BPF_IND = 0x40
+    BPF_MEM = 0x60
+    BPF_LEN = 0x80
+    BPF_MSH = 0xa0
+
+    # alu/jmp fields
+    BPF_ADD = 0x00
+    BPF_SUB = 0x10
+    BPF_MUL = 0x20
+    BPF_DIV = 0x30
+    BPF_OR = 0x40
+    BPF_AND = 0x50
+    BPF_LSH = 0x60
+    BPF_RSH = 0x70
+    BPF_NEG = 0x80
+    BPF_MOD = 0x90
+    BPF_XOR = 0xa0
+
+    BPF_JA = 0x00
+    BPF_JEQ = 0x10
+    BPF_JGT = 0x20
+    BPF_JGE = 0x30
+    BPF_JSET = 0x40
+    BPF_K = 0x00
+    BPF_X = 0x08
+
+    ## BPF Macros
+    BPF_CLASS = lambda code: ((code) & 0x07)
+    BPF_SIZE = lambda code: ((code) & 0x18)
+    BPF_MODE = lambda code: ((code) & 0xe0)
+    BPF_OP = lambda code: ((code) & 0xf0)
+    BPF_SRC = lambda code: ((code) & 0x08)
+    BPF_STMT = lambda code, k: sock_filter(code, 0, 0, k)
+    BPF_JUMP = lambda code, k, jt, jf: sock_filter(code, jt, jf, k)
+    BPF_PROG = lambda filt: sock_fprog(len(filt), filt)
+
+    def BPF_FILTER(*ops):
+        class sock_filter_array(Array):
+            _length_ = len(ops)
+            _type_ = sock_filter
+        return sock_filter_array(*ops)
+
+if HAS_PROC:
+    from tango.ptrace.linux_proc import readProc, ProcError
+    config = None
+    try:
+        configz = readProc('config.gz', mode='rb')
+    except ProcError:
+        import os, platform
+        path = f'/boot/config-{platform.release()}'
+        try:
+            with open(path, 'rt') as f:
+                config = f.read()
+        except IOError:
+            pass
+    else:
+        import zlib
+        config = zlib.decompress(configz)
+    if config:
+        if 'CONFIG_SECCOMP_FILTER=y' in config:
+            HAS_SECCOMP_FILTER = True
+
+            # Valid values for seccomp.mode and prctl(PR_SET_SECCOMP, <mode>)
+            SECCOMP_MODE_DISABLED = 0 # seccomp is not in use.
+            SECCOMP_MODE_STRICT = 1 # uses hard-coded filter.
+            SECCOMP_MODE_FILTER = 2 # uses user-supplied filter.
+
+            # Valid operations for seccomp syscall.
+            SECCOMP_SET_MODE_STRICT = 0
+            SECCOMP_SET_MODE_FILTER = 1
+            SECCOMP_GET_ACTION_AVAIL = 2
+            SECCOMP_GET_NOTIF_SIZES = 3
+
+            # Valid flags for SECCOMP_SET_MODE_FILTER
+            SECCOMP_FILTER_FLAG_TSYNC = 1 << 0
+            SECCOMP_FILTER_FLAG_LOG = 1 << 1
+            SECCOMP_FILTER_FLAG_SPEC_ALLOW = 1 << 2
+            SECCOMP_FILTER_FLAG_NEW_LISTENER = 1 << 3
+
+            # Return values
+            SECCOMP_RET_KILL_PROCESS = 0x80000000 # kill the process
+            SECCOMP_RET_KILL_THREAD = 0x00000000 # kill the thread
+            SECCOMP_RET_KILL = SECCOMP_RET_KILL_THREAD
+            SECCOMP_RET_TRAP = 0x00030000 # disallow and force a SIGSYS
+            SECCOMP_RET_ERRNO = 0x00050000 # returns an errno
+            SECCOMP_RET_USER_NOTIF = 0x7fc00000 # notifies userspace
+            SECCOMP_RET_TRACE = 0x7ff00000 # pass to a tracer or disallow
+            SECCOMP_RET_LOG = 0x7ffc0000 # allow after logging
+            SECCOMP_RET_ALLOW = 0x7fff0000 # allow
+
+            # Masks for the return value sections.
+            SECCOMP_RET_ACTION_FULL = 0xffff0000
+            SECCOMP_RET_ACTION = 0x7fff0000
+            SECCOMP_RET_DATA = 0x0000ffff
+
 
 PTRACE_O_TRACESYSGOOD = 0x00000001
 PTRACE_O_TRACEFORK = 0x00000002

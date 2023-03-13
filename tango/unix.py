@@ -5,7 +5,7 @@ from . import debug, info, warning, critical, error
 from tango.core import (BaseDriver, AbstractState, Transition,
     LoadableTarget, ValueProfiler, CountProfiler, AbstractChannel,
     AbstractChannelFactory)
-from tango.ptrace.binding import ptrace_traceme
+from tango.ptrace.binding import ptrace_traceme, HAS_SECCOMP_FILTER
 from tango.ptrace.cpu_info import CPU_WORD_SIZE
 from tango.ptrace.binding.cpu import CPU_INSTR_POINTER, CPU_STACK_POINTER
 from tango.ptrace.debugger import   (PtraceDebugger, PtraceProcess,
@@ -41,10 +41,19 @@ __all__ = [
 
 SOCKET_SYSCALL_NAMES = SOCKET_SYSCALL_NAMES.union(('read', 'write'))
 
+if HAS_SECCOMP_FILTER:
+    from tango.ptrace.binding import (BPF_LD, BPF_W, BPF_ABS, BPF_JMP, BPF_JEQ,
+        BPF_K, BPF_RET, BPF_STMT, BPF_JUMP, BPF_PROG, BPF_FILTER,
+        SECCOMP_RET_ALLOW, SECCOMP_RET_TRACE, SECCOMP_RET_DATA,
+        SECCOMP_FILTER_FLAG_TSYNC, SECCOMP_SET_MODE_FILTER)
+    from tango.ptrace.binding.linux_struct import seccomp_data
+    from tango.ptrace.syscall import SYSCALL_NUMBERS as NR
+
 class PtraceChannel(AbstractChannel):
-    def __init__(self, pobj: Popen, **kwargs):
+    def __init__(self, pobj: Popen, *, use_seccomp: bool, **kwargs):
         super().__init__(**kwargs)
         self._pobj = pobj
+        self._use_seccomp = use_seccomp
 
         # DEBUG options
         self._process_all = False
@@ -66,6 +75,8 @@ class PtraceChannel(AbstractChannel):
         self._debugger.traceFork()
         self._debugger.traceExec()
         self._debugger.traceClone()
+        if use_seccomp:
+            self._debugger.traceSeccomp()
         self._proc = self._debugger.addProcess(self._pobj.pid, is_attached=True)
 
         # FIXME this is never really used; it's just a placeholder that went
@@ -194,7 +205,10 @@ class PtraceChannel(AbstractChannel):
             return syscall
 
     def resume_process(self, process, signum=0):
-        process.syscall(signum)
+        if self._use_seccomp:
+            process.cont(signum)
+        else:
+            process.syscall(signum)
 
     def timeout_handler(self, stop_event):
         if not stop_event.wait(timeout * self._timescale):
@@ -481,20 +495,22 @@ class PtraceForkChannel(PtraceChannel):
             debug("Waking up forkserver :)")
             self.resume_process(self._proc)
 
-            # must actually wait for syscall, not any event
-            self._wakeup_forkserver_syscall_found = False
+            if not self._use_seccomp:
+                # must actually wait for syscall, not any event
+                self._wakeup_forkserver_syscall_found = False
 
-            # backup the old ignore_callbacks
-            for process in self._debugger:
-                process.syscall_state._ignore_callback = process.syscall_state.ignore_callback
-            self.monitor_syscalls(None,
-                self._wakeup_forkserver_ignore_callback,
-                self._wakeup_forkserver_break_callback,
-                self._wakeup_forkserver_syscall_callback, break_on_entry=True)
-            # restore the old ignore_callbacks
-            for process in self._debugger:
-                process.syscall_state.ignore_callback = process.syscall_state._ignore_callback
-                del process.syscall_state._ignore_callback
+                # backup the old ignore_callbacks
+                for process in self._debugger:
+                    process.syscall_state._ignore_callback = process.syscall_state.ignore_callback
+                self.monitor_syscalls(None,
+                    self._wakeup_forkserver_ignore_callback,
+                    self._wakeup_forkserver_break_callback,
+                    self._wakeup_forkserver_syscall_callback, break_on_entry=True)
+                # restore the old ignore_callbacks
+                for process in self._debugger:
+                    process.syscall_state.ignore_callback = process.syscall_state._ignore_callback
+                    del process.syscall_state._ignore_callback
+
             self._proc_trapped = False
 
     def close(self, terminate, **kwargs):
@@ -524,9 +540,18 @@ class PtraceForkChannel(PtraceChannel):
         self._wakeup_forkserver_syscall_found = True
         process.syscall()
 
-class PtraceChannelFactory(AbstractChannelFactory):
+@dataclass(frozen=True)
+class PtraceChannelFactory(AbstractChannelFactory,
+        capture_paths=('driver.use_seccomp',)):
+    use_seccomp: bool = False
+
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return super().match_config(config) and \
+            config['driver'].get('type') == 'unix'
+
     @abstractmethod
-    def create(self, pobj: Popen, *args, **kwargs) -> PtraceChannel:
+    def create(self, pobj: Popen, netns: str) -> PtraceChannel:
         pass
 
 @dataclass
@@ -600,6 +625,50 @@ class ProcessDriver(BaseDriver,
         with IPRoute() as ipr:
             ipr.link('set', index=1, state='up')
         ptrace_traceme()
+        if self._factory.use_seccomp:
+            self._install_seccomp_filter()
+
+    @staticmethod
+    def _install_seccomp_filter():
+        if not HAS_SECCOMP_FILTER:
+            raise NotImplementedError
+        filt = BPF_FILTER(
+            BPF_STMT(BPF_LD | BPF_W | BPF_ABS, seccomp_data.nr.offset),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['accept'], 16, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['accept4'], 15, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['bind'], 14, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['close'], 13, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['dup'], 12, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['dup2'], 11, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['dup3'], 10, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['listen'], 9, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['poll'], 8, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['ppoll'], 7, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['read'], 6, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['recvfrom'], 5, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['recvmsg'], 4, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['select'], 3, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['shutdown'], 2, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['socket'], 1, 0),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE | SECCOMP_RET_DATA),
+        )
+        prog = BPF_PROG(filt)
+        prctl = ctypes.pythonapi.prctl
+        prctl.restype = ctypes.c_int
+        prctl.argtypes = (ctypes.c_int,
+            ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong
+        )
+        PR_SET_NO_NEW_PRIVS = 38
+        if prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0):
+            raise RuntimeError("Failed to set no_new_privs")
+
+        syscall = ctypes.pythonapi.syscall
+        syscall.restype = ctypes.c_int
+        syscall.argtypes = (ctypes.c_uint64,)*4
+        if (res := syscall(NR['seccomp'], SECCOMP_SET_MODE_FILTER,
+                SECCOMP_FILTER_FLAG_TSYNC, ctypes.addressof(prog))):
+            raise RuntimeError("Failed to install seccomp bpf")
 
     @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
     def relaunch(self):

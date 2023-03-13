@@ -1,6 +1,6 @@
 from tango.ptrace.cpu_info import (
     CPU_64BITS, CPU_PPC32, CPU_PPC64, CPU_ARM32, CPU_AARCH64)
-from ctypes import (Structure, Union, sizeof,
+from ctypes import (Structure, Union, sizeof, POINTER,
                     c_char, c_ushort, c_int, c_uint, c_ulong, c_void_p,
                     c_uint8, c_uint16, c_uint32, c_uint64, c_size_t, c_int64)
 
@@ -310,3 +310,25 @@ class ptrace_syscall_info(Structure):
         ("_data", syscall_info_data),
     )
     _anonymous_ = ("_data",)
+
+class sock_filter(Structure):
+    _fields_ = (
+        ("code", c_uint16),
+        ("jt", c_uint8),
+        ("jf", c_uint8),
+        ("k", c_uint32),
+    )
+
+class sock_fprog(Structure):
+    _fields_ = (
+        ("len", c_uint16),
+        ("filter", POINTER(sock_filter)),
+    )
+
+class seccomp_data(Structure):
+    _fields_ = (
+        ("nr", c_uint32),
+        ("arch", c_uint32),
+        ("instruction_pointer", c_uint64),
+        ("args", c_uint64*6),
+    )

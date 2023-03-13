@@ -19,3 +19,8 @@ elif RUNNING_FREEBSD:
 else:
     SYSCALL_NAMES = {}
     SOCKET_SYSCALL_NAMES = set()
+
+SYSCALL_NUMBERS = dict(
+    # WARN we take the lower syscall number; might not always be correct
+    reversed(list(zip(SYSCALL_NAMES.values(), SYSCALL_NAMES.keys())))
+)

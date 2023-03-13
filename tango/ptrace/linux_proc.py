@@ -21,23 +21,23 @@ class ProcError(Exception):
     pass
 
 
-def openProc(path):
+def openProc(path, mode='rt'):
     """
     Open a proc entry in read only mode.
     """
     filename = "/proc/%s" % path
     try:
-        return open(filename)
+        return open(filename, mode=mode)
     except IOError as err:
         raise ProcError("Unable to open %r: %s" % (filename, err))
 
 
-def readProc(path):
+def readProc(path, *args, **kwargs):
     """
     Read the content of a proc entry.
     Eg. readProc("stat") to read /proc/stat.
     """
-    with openProc(path) as procfile:
+    with openProc(path, *args, **kwargs) as procfile:
         return procfile.read()
 
 

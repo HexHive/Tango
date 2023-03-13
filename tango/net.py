@@ -11,7 +11,7 @@ from subprocess  import Popen
 from dataclasses import dataclass
 from pyroute2.netns import setns
 from os import getpid
-from typing import ByteString, Tuple, Iterable
+from typing import ByteString, Tuple, Iterable, Mapping, Any
 from functools import cached_property
 import errno
 import struct
@@ -141,6 +141,11 @@ class TransportChannelFactory(NetworkChannelFactory,
     def __post_init__(self):
         object.__setattr__(self, 'fmt', self.protocol) # implicit casting through the descriptor
 
+    @property
+    def fields(self) -> Mapping[str, Any]:
+        d = super().fields
+        return self.exclude_keys(d, 'protocol')
+
 @dataclass(kw_only=True, frozen=True)
 class TCPChannelFactory(TransportChannelFactory,
         capture_paths=['channel.connect_timeout', 'channel.data_timeout']):
@@ -149,13 +154,8 @@ class TCPChannelFactory(TransportChannelFactory,
 
     protocol: str = "tcp"
 
-    def create(self, pobj: Popen, netns: str, *args, **kwargs) -> AbstractChannel:
-        ch = TCPChannel(pobj=pobj,
-                          netns=netns,
-                          endpoint=self.endpoint, port=self.port,
-                          timescale=self.timescale,
-                          connect_timeout=self.connect_timeout,
-                          data_timeout=self.data_timeout)
+    def create(self, pobj: Popen, netns: str) -> AbstractChannel:
+        ch = TCPChannel(pobj=pobj, netns=netns, **self.fields)
         ch.connect((self.endpoint, self.port))
         return ch
 
@@ -569,7 +569,7 @@ class TCPForkChannelFactory(TCPChannelFactory,
         capture_paths=['channel.fork_before_accept']):
     fork_before_accept: bool
 
-    def create(self, pobj: Popen, netns: str, *args, **kwargs) -> AbstractChannel:
+    def create(self, pobj: Popen, netns: str) -> AbstractChannel:
         object.__setattr__(self, '_pobj', pobj)
         object.__setattr__(self, '_netns', netns)
         ch = self.forkchannel
@@ -580,18 +580,10 @@ class TCPForkChannelFactory(TCPChannelFactory,
     def forkchannel(self):
         if self.fork_before_accept:
             return TCPForkBeforeAcceptChannel(pobj=self._pobj,
-                          netns=self._netns,
-                          endpoint=self.endpoint, port=self.port,
-                          timescale=self.timescale,
-                          connect_timeout=self.connect_timeout,
-                          data_timeout=self.data_timeout)
+                          netns=self._netns, **self.fields)
         else:
             return TCPForkAfterListenChannel(pobj=self._pobj,
-                          netns=self._netns,
-                          endpoint=self.endpoint, port=self.port,
-                          timescale=self.timescale,
-                          connect_timeout=self.connect_timeout,
-                          data_timeout=self.data_timeout)
+                          netns=self._netns, **self.fields)
 
 class TCPForkAfterListenChannel(TCPChannel, PtraceForkChannel):
     def __init__(self, **kwargs):
@@ -641,13 +633,8 @@ class UDPChannelFactory(TransportChannelFactory,
 
     protocol: str = "udp"
 
-    def create(self, pobj: Popen, netns: str, *args, **kwargs) -> AbstractChannel:
-        ch = UDPChannel(pobj=pobj,
-                          netns=netns,
-                          endpoint=self.endpoint, port=self.port,
-                          timescale=self.timescale,
-                          connect_timeout=self.connect_timeout,
-                          data_timeout=self.data_timeout)
+    def create(self, pobj: Popen, netns: str) -> AbstractChannel:
+        ch = UDPChannel(pobj=pobj, netns=netns, **self.fields)
         ch.connect((self.endpoint, self.port))
         return ch
 
@@ -967,7 +954,7 @@ class UDPForkChannelFactory(UDPChannelFactory,
         capture_paths=['channel.fork_before_bind']):
     fork_before_bind: bool
 
-    def create(self, pobj: Popen, netns: str, *args, **kwargs) -> AbstractChannel:
+    def create(self, pobj: Popen, netns: str) -> AbstractChannel:
         object.__setattr__(self, '_pobj', pobj)
         object.__setattr__(self, '_netns', netns)
         ch = self.forkchannel
@@ -978,18 +965,10 @@ class UDPForkChannelFactory(UDPChannelFactory,
     def forkchannel(self):
         if self.fork_before_bind:
             return UDPForkBeforeBindChannel(pobj=self._pobj,
-                              netns=self._netns,
-                              endpoint=self.endpoint, port=self.port,
-                              timescale=self.timescale,
-                              connect_timeout=self.connect_timeout,
-                              data_timeout=self.data_timeout)
+                              netns=self._netns, **self.fields)
         else:
             return UDPForkChannel(pobj=self._pobj,
-                              netns=self._netns,
-                              endpoint=self.endpoint, port=self.port,
-                              timescale=self.timescale,
-                              connect_timeout=self.connect_timeout,
-                              data_timeout=self.data_timeout)
+                              netns=self._netns, **self.fields)
 
 class UDPForkChannel(UDPChannel, PtraceForkChannel):
     def __init__(self, **kwargs):
