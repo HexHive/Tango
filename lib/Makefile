@@ -14,7 +14,10 @@ clean:
 
 libtangofuzz.o: libtangofuzz.c clean
 
-# -march=skylake-avx512 -mprefer-vector-width=512
+COV_CFLAGS := -O3 -fPIC -fPIE
+ifdef SKIP_COUNTS
+	COV_CFLAGS += -DSKIP_COUNTS
+endif
+
 coverage.so: coverage.c clean
-	$(CC) -O3 \
-		-fPIC -fPIE -shared $< -o $@
+	$(CC) ${COV_CFLAGS} -shared $< -o $@
