@@ -585,6 +585,11 @@ class TCPForkChannelFactory(TCPChannelFactory,
             return TCPForkAfterListenChannel(pobj=self._pobj,
                           netns=self._netns, **self.fields)
 
+    @property
+    def fields(self) -> Mapping[str, Any]:
+        d = super().fields
+        return self.exclude_keys(d, 'fork_before_accept')
+
 class TCPForkAfterListenChannel(TCPChannel, PtraceForkChannel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -969,6 +974,11 @@ class UDPForkChannelFactory(UDPChannelFactory,
         else:
             return UDPForkChannel(pobj=self._pobj,
                               netns=self._netns, **self.fields)
+
+    @property
+    def fields(self) -> Mapping[str, Any]:
+        d = super().fields
+        return self.exclude_keys(d, 'fork_before_bind')
 
 class UDPForkChannel(UDPChannel, PtraceForkChannel):
     def __init__(self, **kwargs):
