@@ -543,7 +543,7 @@ class PtraceForkChannel(PtraceChannel):
 @dataclass(frozen=True)
 class PtraceChannelFactory(AbstractChannelFactory,
         capture_paths=('driver.use_seccomp',)):
-    use_seccomp: bool = False
+    use_seccomp: bool = HAS_SECCOMP_FILTER
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
