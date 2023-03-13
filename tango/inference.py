@@ -381,8 +381,9 @@ class StateInferenceStrategy(UniformStrategy,
         init_done = np.count_nonzero(edge_mask)
         init_pending = edge_mask.size - init_done
         if should_predict:
-            projected_savings = init_pending
-            projected_done = 0
+            projected_pending = init_pending
+            dt_skips = 0
+            dt_tests = 0
 
         uidx, = np.where(np.any(~edge_mask, axis=1))
         for eqv_idx in uidx:
@@ -429,12 +430,13 @@ class StateInferenceStrategy(UniformStrategy,
 
                         # mark edge as tested
                         edge_mask[eqv_idx, dst_idx] = True
-                        projected_savings -= 1
+                        projected_pending -= 1
+                        dt_tests += 1
 
                         # report completion status
                         current_done = np.count_nonzero(edge_mask) - init_done
                         if should_predict and not should_validate:
-                            current_done += projected_done
+                            current_done += dt_skips
                         percent = f'{100*current_done/init_pending:.1f}%'
                         ValueProfiler('status')(f'cross_test ({percent})')
 
@@ -444,15 +446,15 @@ class StateInferenceStrategy(UniformStrategy,
                 vidx_all, = np.where(~edge_mask[eqv_idx,:])
                 vidx_ungrouped = np.setdiff1d(vidx_all, to_idx,
                     assume_unique=True)
-                projected_savings -= vidx_ungrouped.size
-                projected_done += np.setdiff1d(vidx_all, vidx_ungrouped,
+                projected_pending -= vidx_ungrouped.size
+                dt_skips += np.setdiff1d(vidx_all, vidx_ungrouped,
                     assume_unique=True).size
                 if not should_validate:
                     # we ignore cross-testing against grouped nodes under the
                     # assumption that DT predicted them correctly
                     vidx = vidx_ungrouped
             elif should_predict:
-                projected_savings -= np.count_nonzero(~edge_mask[eqv_idx,:])
+                projected_pending -= np.count_nonzero(~edge_mask[eqv_idx,:])
 
             if vidx is None:
                 # this happens in the following cases:
@@ -479,7 +481,7 @@ class StateInferenceStrategy(UniformStrategy,
 
                 if should_validate_idx:
                     if exists ^ (cap[eqv_idx, dst_idx] is not None):
-                            dt_misses += 1
+                        dt_misses += 1
                     else:
                         dt_hits += 1
                 if exists:
@@ -491,7 +493,7 @@ class StateInferenceStrategy(UniformStrategy,
                 # report completion status
                 current_done = np.count_nonzero(edge_mask) - init_done
                 if should_predict and not should_validate:
-                    current_done += projected_done
+                    current_done += dt_skips
                 percent = f'{100*current_done/init_pending:.1f}%'
                 ValueProfiler('status')(f'cross_test ({percent})')
 
@@ -502,10 +504,7 @@ class StateInferenceStrategy(UniformStrategy,
                 ValueMeanProfiler('dt_hit',
                     samples=self._inference_batch, decimal_digits=2)(dt_hits)
         if should_predict:
-            if not should_validate:
-                current_pending = np.count_nonzero(~edge_mask)
-                assert projected_savings == current_pending
-            percent = 100*projected_savings/init_pending
+            percent = 100 * dt_skips / (dt_tests + dt_skips)
             ValueMeanProfiler('dt_savings', samples=5)(percent)
 
         if self._extend_on_groups:
