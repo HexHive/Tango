@@ -1,11 +1,15 @@
-from tangofuzz.fuzzer import FuzzerConfig
-from tangofuzz.common import timeit
+# we disable profiling before importing tango
+import os
+os.environ['TANGO_NO_PROFILE'] = 'y'
 
+from tango.fuzzer import FuzzerConfig
+from tango.common import timeit
+
+from subprocess import PIPE
+from functools import wraps
 import asyncio
 import argparse
 import logging
-from subprocess import PIPE
-from functools import wraps
 
 def parse_args():
     top = argparse.ArgumentParser(description=(
@@ -46,20 +50,30 @@ def configure_verbosity(level):
     logging.getLogger().setLevel(numeric_level)
 
 async def measure_load_time(config, args):
-    # load once without measuring
-    ld = await config.loader
-    await ld.load_state(None, None)
+    gen = await config.instantiate('generator')
+    ld = await config.instantiate('loader')
+    try:
+        # load once without measuring
+        await ld.load_state(None).asend(None)
+    except StopAsyncIteration:
+        pass
 
     async def load_many():
         for _ in range(args.samples):
-            await ld.load_state(None, None)
+            try:
+                await ld.load_state(None).asend(None)
+            except StopAsyncIteration:
+                pass
     await timeit(load_many)()
 
 async def measure_send_time(config, args):
-    gen = await config.input_generator
+    gen = await config.instantiate('generator')
     inp = gen.load_input(args.file)
-    ld = await config.loader
-    await ld.load_state(None, None)
+    ld = await config.instantiate('loader')
+    try:
+        await ld.load_state(None).asend(None)
+    except StopAsyncIteration:
+        pass
 
     async def do_many():
         for _ in range(args.samples):
