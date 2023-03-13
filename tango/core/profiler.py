@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from contextvars import ContextVar
 from typing import Optional, Iterable
 import asyncio
+import os
 
 __all__ = [
     'initialize', 'get_profiler', 'get_all_profilers', 'is_profiling_active',
@@ -50,7 +51,7 @@ def is_profiling_active() -> bool:
 
 class AbstractProfilerMeta(ABCMeta):
     DEBUG = sys_gettrace() is not None
-    ProfilingNOP = DEBUG
+    ProfilingNOP = DEBUG or os.environ.get('TANGO_NO_PROFILE')
 
     def __call__(cls, name, /, *args, session_local: bool=True, **kwargs):
         if cls.ProfilingNOP:
