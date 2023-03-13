@@ -6,7 +6,7 @@ index 558f662e14..481ac2b4b0 100644
  /* Special sentinel to exit the program. */
  #define EXIT_THE_PROGRAM (-1)
  
-+#include "../fuzz/rand.inc"
++#include "../rand.inc"
 +
  /*
   * The LHASH callbacks ("hash" & "cmp") have been replaced by functions with

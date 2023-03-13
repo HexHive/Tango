@@ -26,7 +26,7 @@
 	},
 	"fuzzer": {
 		"lib": "./lib/",
-		"cwd": "./targets/tls/",
+		"cwd": "./targets/openssl/",
 		"workdir": "./workdir/",
 		"seeds": "./seeds/",
 		"resume": true
