@@ -4,7 +4,7 @@ from . import debug, info, warning
 
 from tango.core import (UniformStrategy, AbstractState, AbstractInput,
     BaseStateGraph, AbstractStateTracker, ValueProfiler, TimeElapsedProfiler,
-    ValueMeanProfiler)
+    ValueMeanProfiler, LambdaProfiler)
 from tango.cov import CoverageStateTracker
 from tango.webui import WebRenderer, WebDataLoader
 from tango.common import get_session_task_group, ComponentOwner
@@ -31,6 +31,7 @@ class InferenceMode(Enum):
 class RecoveredStateGraph(BaseStateGraph):
     def __init__(self, **kwargs):
         self.graph_cls.__init__(self)
+        LambdaProfiler("states")(lambda: len(self.nodes))
 
     def copy(self, **kwargs) -> RecoveredStateGraph:
         G = super(BaseStateGraph, self).copy(**kwargs)
