@@ -276,12 +276,12 @@ class ReactiveInputGenerator(BaseInputGenerator):
     def _calculate_reward(cls, source: AbstractState, destination: AbstractState, amplifier: float=10) -> float:
         bound = revenue = 0.
         if source != destination:
-            bound += len(destination._set_map) * 8
-            revenue += destination._set_count
+            bound += len(destination._feature_mask) * 8
+            revenue += destination._feature_count
         if (local_state := destination.tracker._local_state) is not None:
             # now we rely on local state changes
-            bound += len(local_state._set_map) * 8
-            revenue += local_state._set_count / amplifier
+            bound += len(local_state._feature_mask) * 8
+            revenue += local_state._feature_count / amplifier
         if bound > 0.:
             revenue /= bound
         # WARN reward in exp3 must belong to [0, 1)
@@ -292,12 +292,12 @@ class ReactiveInputGenerator(BaseInputGenerator):
     def _estimate_cost(state: AbstractState) -> float:
         if state is None:
             return .0
-        bound = len(state._set_map) * 8
+        bound = len(state._feature_mask) * 8
         cost = 0
         visited = set()
         while state is not None and state not in visited:
             visited.add(state)
-            cost += state._set_count
+            cost += state._feature_count
             # FIXME check other FIXME
             state = state._parent
         if cost == 0:
@@ -308,7 +308,7 @@ class ReactiveInputGenerator(BaseInputGenerator):
 
     @staticmethod
     def _count_features(source: AbstractState, destination: AbstractState) -> int:
-        return int(destination._set_count)
+        return int(destination._feature_count)
 
     @staticmethod
     def _update_weights(model: dict, actions_taken: list, normalized_reward: float, gamma: float=0.1):

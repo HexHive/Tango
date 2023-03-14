@@ -22,7 +22,7 @@ from ctypes       import (POINTER as P,
                           c_void_p as V,
                           c_char as c,
                           cast as C,
-                          byref)
+                          byref, c_int)
 import numpy as np
 import sys
 import os
@@ -30,12 +30,14 @@ import mmap
 import posix_ipc
 import numpy as np
 
+memcmp = pythonapi.memcmp
+memcmp.argtypes = (V, V, S)
+memcmp.restype = c_int
+
 __all__ = [
-    'CoverageState', 'CoverageReader', 'GlobalCoverage', 'CoverageTracker',
+    'CoverageState', 'CoverageReader', 'FeatureMap', 'CoverageTracker',
     'CoverageDriver', 'CoverageForkDriver'
 ]
-
-pythonapi.memcmp.argtypes = (V, V, S)
 
 HAMMING_LUT = np.zeros(256, dtype=np.uint8)
 HAMMING_LUT[1] = 1
@@ -111,27 +113,28 @@ class CoverageForkDriver(CoverageDriver, ProcessForkDriver):
     pass
 
 class CoverageState(BaseState):
-    __slots__ = '_parent', '_set_map', '_set_count', '_context'
+    __slots__ = '_parent', '_feature_mask', '_feature_count', '_feature_context'
 
-    def __init__(self, parent: CoverageState, set_map: Sequence, set_count: int,
-            global_cov: GlobalCoverage, **kwargs):
+    def __init__(self, parent: CoverageState,
+            feature_mask: Sequence, feature_count: int, feature_map: FeatureMap,
+            **kwargs):
         super().__init__(**kwargs)
         self._parent = parent
-        self._set_map = set_map
-        self._set_count = set_count
-        self._context = global_cov.clone()
-        self._context.revert(set_map, hash(self))
+        self._feature_mask = feature_mask
+        self._feature_count = feature_count
+        self._feature_context = feature_map.clone()
+        self._feature_context.revert(feature_mask, hash(self))
 
     def __eq__(self, other):
         # return hash(self) == hash(other)
         return isinstance(other, CoverageState) and \
                hash(self) == hash(other) and \
-               self._set_count == other._set_count
-               # np.array_equal(self._set_map, other._set_map) and \
-               # self._context == other._context
+               self._feature_count == other._feature_count
+               # np.array_equal(self._feature_mask, other._feature_mask) and \
+               # self._feature_context == other._feature_context
 
     def __repr__(self):
-        return f'({self._id}) +{self._set_count}'
+        return f'({self._id}) +{self._feature_count}'
 
 class CoverageReader:
     valid_chars = frozenset("-_. %s%s" % (ascii_letters, digits))
@@ -216,12 +219,12 @@ class CoverageReader:
             self._mem.unlink()
 
 
-class GlobalCoverage(ABC):
+class FeatureMap(ABC):
     def __new__(cls, *args, **kwargs):
         if (bind_lib := kwargs.get('bind_lib')):
-            return super(GlobalCoverage, CGlobalCoverage).__new__(CGlobalCoverage)
+            return super(FeatureMap, CFeatureMap).__new__(CFeatureMap)
         else:
-            return super(GlobalCoverage, NPGlobalCoverage).__new__(NPGlobalCoverage)
+            return super(FeatureMap, NPFeatureMap).__new__(NPFeatureMap)
 
     def __init__(self, length: int, **kwargs):
         self._length = length
@@ -231,15 +234,15 @@ class GlobalCoverage(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def revert(self, set_map: Sequence, map_hash: int):
+    def revert(self, feature_mask: Sequence, mask_hash: int):
         raise NotImplementedError
 
     @abstractmethod
-    def clone(self) -> GlobalCoverage:
+    def clone(self) -> FeatureMap:
         raise NotImplementedError
 
     @abstractmethod
-    def copy_from(self, other: GlobalCoverage):
+    def copy_from(self, other: FeatureMap):
         if self._length != other._length:
             raise RuntimeError("Mismatching coverage map sizes")
 
@@ -248,26 +251,26 @@ class GlobalCoverage(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def reset(self, set_map: Sequence, map_hash: int):
+    def reset(self, feature_mask: Sequence, mask_hash: int):
         raise NotImplementedError
 
     @abstractmethod
     def __eq__(self, other):
-        return isinstance(other, GlobalCoverage)
+        return isinstance(other, FeatureMap)
 
-class CGlobalCoverage(GlobalCoverage):
+class CFeatureMap(FeatureMap):
     def __init__(self, *args, bind_lib, **kwargs):
         super().__init__(*args, **kwargs)
-        self._set_arr = (b * self._length)()
+        self._feature_arr = (b * self._length)()
         self.clear()
 
         self._bind_lib = bind_lib
         self._bind_lib.diff.argtypes = (
             P(b), # global coverage array (set_arr)
             P(b), # local coverage array (coverage_map)
-            P(b), # pre-allocated set_map output buffer
+            P(b), # pre-allocated feature_mask output buffer
             S, # common size of the coverage buffers
-            P(I), # pre-allocated set_count output buffer
+            P(I), # pre-allocated feature_count output buffer
             P(I), # pre-allocated hash output buffer
             B, # boolean: apply in-place?
         )
@@ -275,87 +278,87 @@ class CGlobalCoverage(GlobalCoverage):
 
         self._bind_lib.apply.argtypes = (
             P(b), # global coverage array (set_arr)
-            P(b), # set_map buffer
+            P(b), # feature_mask buffer
             S # common size of the coverage buffers
         )
         self._bind_lib.apply.restype = B # success?
 
         self._bind_lib.reset.argtypes = (
             P(b), # global coverage array (set_arr)
-            P(b), # set_map buffer
+            P(b), # feature_mask buffer
             S # common size of the coverage buffers
         )
         self._bind_lib.reset.restype = B # success?
 
     def update(self, coverage_map: Sequence) -> (Sequence, int, int):
-        set_map = (b * self._length)()
-        set_count = I()
-        map_hash = I()
-        res = self._bind_lib.diff(self._set_arr, coverage_map, set_map, self._length,
-            byref(set_count), byref(map_hash),
+        feature_mask = (b * self._length)()
+        feature_count = I()
+        mask_hash = I()
+        res = self._bind_lib.diff(self._feature_arr, coverage_map, feature_mask,
+            self._length, byref(feature_count), byref(mask_hash),
             True
         )
-        return set_map, set_count.value, map_hash.value
+        return feature_mask, feature_count.value, mask_hash.value
 
-    def revert(self, set_map: Sequence, map_hash: int):
-        self._bind_lib.apply(self._set_arr, set_map, self._length)
+    def revert(self, feature_mask: Sequence, mask_hash: int):
+        self._bind_lib.apply(self._feature_arr, feature_mask, self._length)
 
-    def clone(self) -> CGlobalCoverage:
+    def clone(self) -> CFeatureMap:
         cpy = self.__class__(self._length, bind_lib=self._bind_lib)
         cpy.copy_from(self)
         return cpy
 
-    def copy_from(self, other: CGlobalCoverage):
+    def copy_from(self, other: CFeatureMap):
         super().copy_from(other)
-        memmove(self._set_arr, other._set_arr, self._length)
+        memmove(self._feature_arr, other._feature_arr, self._length)
 
     def clear(self):
-        memset(self._set_arr, 0, self._length)
+        memset(self._feature_arr, 0, self._length)
 
-    def reset(self, set_map: Sequence, map_hash: int):
-        self._bind_lib.reset(self._set_arr, set_map, self._length)
+    def reset(self, feature_mask: Sequence, mask_hash: int):
+        self._bind_lib.reset(self._feature_arr, feature_mask, self._length)
 
     def __eq__(self, other):
         return super().__eq__(other) and \
-            pythonapi.memcmp(self._set_arr, other._set_arr, self._length) == 0
+            memcmp(self._feature_arr, other._feature_arr, self._length) == 0
 
-class NPGlobalCoverage(GlobalCoverage):
+class NPFeatureMap(FeatureMap):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._set_arr = np.zeros(self._length, dtype=np.uint8)
+        self._feature_arr = np.zeros(self._length, dtype=np.uint8)
         self.clear()
 
     def update(self, coverage_map: Sequence) -> (Sequence, int, int):
         coverage_map = np.ctypeslib.as_array(coverage_map)
         kls_arr = CLASS_LUT[coverage_map]
-        set_map = (self._set_arr | kls_arr) ^ self._set_arr
-        self._set_arr ^= set_map
-        set_count = np.sum(HAMMING_LUT[set_map])
-        map_hash = hash(set_map.data.tobytes())
+        feature_mask = (self._feature_arr | kls_arr) ^ self._feature_arr
+        self._feature_arr ^= feature_mask
+        feature_count = np.sum(HAMMING_LUT[feature_mask])
+        mask_hash = hash(feature_mask.data.tobytes())
 
-        return set_map, set_count, map_hash
+        return feature_mask, feature_count, mask_hash
 
-    def revert(self, set_map: Sequence, map_hash: int):
-        self._set_arr ^= set_map
+    def revert(self, feature_mask: Sequence, mask_hash: int):
+        self._feature_arr ^= feature_mask
 
-    def clone(self) -> NPGlobalCoverage:
+    def clone(self) -> NPFeatureMap:
         cpy = self.__class__(self._length)
         cpy.copy_from(self)
         return cpy
 
-    def copy_from(self, other: NPGlobalCoverage):
+    def copy_from(self, other: NPFeatureMap):
         super().copy_from(other)
-        np.copyto(self._set_arr, other._set_arr)
+        np.copyto(self._feature_arr, other._feature_arr)
 
     def clear(self):
-        self._set_arr.fill(0)
+        self._feature_arr.fill(0)
 
-    def reset(self, set_map: Sequence, map_hash: int):
-        self._set_arr &= set_map
+    def reset(self, feature_mask: Sequence, mask_hash: int):
+        self._feature_arr &= feature_mask
 
     def __eq__(self, other):
         return super().__eq__(other) and \
-               np.array_equal(self._set_arr, other._set_arr)
+               np.array_equal(self._feature_arr, other._feature_arr)
 
 class CoverageTracker(BaseTracker,
         capture_components={ComponentType.driver},
@@ -398,9 +401,9 @@ class CoverageTracker(BaseTracker,
         self._reader = CoverageReader(self._shm_name, self._shm_size_name)
 
         # initialize a global coverage map
-        self._global = GlobalCoverage(self._reader.length, bind_lib=self._bind_lib)
-        self._scratch = GlobalCoverage(self._reader.length, bind_lib=self._bind_lib)
-        self._local = GlobalCoverage(self._reader.length, bind_lib=self._bind_lib)
+        self._global = FeatureMap(self._reader.length, bind_lib=self._bind_lib)
+        self._scratch = FeatureMap(self._reader.length, bind_lib=self._bind_lib)
+        self._local = FeatureMap(self._reader.length, bind_lib=self._bind_lib)
 
         self._local_state = None
         self._current_state = None
@@ -414,7 +417,7 @@ class CoverageTracker(BaseTracker,
         self.reset_state(self._current_state)
 
         LambdaProfiler('global_cov')(lambda: sum(
-            map(lambda x: x._set_count,
+            map(lambda x: x._feature_count,
                 filter(lambda x: x != self._entry_state,
                     self._state_graph.nodes
                 )
@@ -429,13 +432,13 @@ class CoverageTracker(BaseTracker,
     def current_state(self) -> CoverageState:
         return self.peek(self._current_state)
 
-    def _diff_global_to_state(self, global_map: GlobalCoverage, parent_state: AbstractState, *,
+    def _diff_global_to_state(self, global_map: FeatureMap, parent_state: AbstractState, *,
             do_not_cache: bool=False, allow_empty: bool=False) -> AbstractState:
         coverage_map = self._reader.array
-        set_map, set_count, map_hash = global_map.update(coverage_map)
-        if set_count or allow_empty:
-            return CoverageState(parent_state, set_map, set_count, global_map,
-                state_hash=map_hash, do_not_cache=do_not_cache, tracker=self)
+        feature_mask, feature_count, mask_hash = global_map.update(coverage_map)
+        if feature_count or allow_empty:
+            return CoverageState(parent_state, feature_mask, feature_count, global_map,
+                state_hash=mask_hash, do_not_cache=do_not_cache, tracker=self)
         else:
             return None
 
@@ -451,9 +454,9 @@ class CoverageTracker(BaseTracker,
             else:
                 # if peek_result was specified, we can skip the recalculation
                 next_state = peek_result
-                self._global.copy_from(next_state._context)
+                self._global.copy_from(next_state._feature_context)
                 # we un-revert the bitmaps to obtain the actual global context
-                self._global.revert(next_state._set_map, next_state._hash)
+                self._global.revert(next_state._feature_mask, next_state._hash)
 
             if not next_state:
                 next_state = source
@@ -464,7 +467,7 @@ class CoverageTracker(BaseTracker,
             return next_state
         else:
             if source:
-                self._global.revert(source._set_map, source._hash)
+                self._global.revert(source._feature_mask, source._hash)
             return source
 
     def peek(self, default_source: AbstractState=None, expected_destination: AbstractState=None, **kwargs) -> AbstractState:
@@ -472,7 +475,7 @@ class CoverageTracker(BaseTracker,
         if expected_destination:
             # when the destination is not None, we use its `context_map` as a
             # basis for calculating the coverage delta
-            glbl.copy_from(expected_destination._context)
+            glbl.copy_from(expected_destination._feature_context)
             parent = expected_destination._parent
         else:
             glbl.copy_from(self._global)
