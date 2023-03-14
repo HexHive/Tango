@@ -37,15 +37,25 @@ class RecoveredStateGraph(BaseStateGraph):
         G = super(BaseStateGraph, self).copy(**kwargs)
         return G
 
-class InferenceTracker(AbstractTracker):
-    def __init__(self, **kwargs):
-        self._graph = RecoveredStateGraph()
+class StateInferenceTracker(CoverageTracker):
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return config['strategy'].get('type') == 'inference'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # properties
+        self.mode = InferenceMode.Discovery
+        self.capability_matrix = np.empty((0,0), dtype=object)
+        self.nodes_seq = np.empty((0,), dtype=object)
+        self.equivalence_map = {}
+        self.recovered_graph = RecoveredStateGraph()
 
     def reconstruct_graph(self, adj):
         dt = [('transition', object)]
         A = adj.astype(dt)
 
-        G = nx.empty_graph(0, self._graph)
+        G = nx.empty_graph(0, self.recovered_graph)
         n, m = A.shape
 
         G.add_nodes_from(range(n))
@@ -68,123 +78,18 @@ class InferenceTracker(AbstractTracker):
         )
         G.add_edges_from(triples)
 
-    @classmethod
-    def match_config(cls, config: dict) -> bool:
-        # should never be instantiated alone
-        return False
-
-    @property
-    def state_graph(self) -> RecoveredStateGraph:
-        return self._graph
-
-    ## Empty methods that will never be accessed
-
-    def update_state(self, state: AbstractState, *,
-            input: AbstractInput, exc: Exception=None, **kwargs) -> Any:
-        raise NotImplementedError
-    def update_transition(self, source: AbstractState,
-            destination: AbstractState, input: AbstractInput, *,
-            state_changed: bool, exc: Exception=None, **kwargs) -> Any:
-        raise NotImplementedError
-
-    @property
-    def entry_state(self) -> AbstractState:
-        raise NotImplementedError
-
-    @property
-    def current_state(self) -> AbstractState:
-        raise NotImplementedError
-
-    def peek(self, default_source: AbstractState, expected_destination: AbstractState) -> AbstractState:
-        raise NotImplementedError
-
-    def reset_state(self, state: AbstractState):
-        raise NotImplementedError
-
-class ContextSwitchingTracker(AbstractTracker):
-    _capture_components = CoverageTracker._capture_components | \
-        InferenceTracker._capture_components
-    _capture_paths = CoverageTracker._capture_paths | \
-        InferenceTracker._capture_paths
-
-    def __init__(self, *args, **kwargs):
-        # properties
-        self.mode = InferenceMode.Discovery
-        self.cov_tracker = CoverageTracker(*args, **kwargs)
-        self.inf_tracker = InferenceTracker(*args, **kwargs)
-        self.capability_matrix = np.empty((0,0), dtype=object)
-        self.nodes_seq = np.empty((0,), dtype=object)
-        self.equivalence_map = {}
-
-    async def initialize(self):
-        await super().initialize()
-        await self.cov_tracker.initialize()
-        await self.inf_tracker.initialize()
-
-    async def finalize(self, owner: ComponentOwner):
-        await self.cov_tracker.finalize(owner)
-        await self.inf_tracker.finalize(owner)
-        await super().finalize(owner)
-
-    @classmethod
-    def match_config(cls, config: dict) -> bool:
-        return config['strategy'].get('type') == 'inference'
-
-    def __getattribute__(self, name):
-        if name in ('update_state', 'update_transition', 'entry_state',
-                'current_state', 'state_graph', 'peek', 'reset_state') or \
-                name.startswith('_'):
-            return getattr(self.current_tracker, name)
-        return super().__getattribute__(name)
-
-    @property
-    def current_tracker(self):
-        match self.mode:
-            case InferenceMode.Discovery:
-                return self.cov_tracker
-            case _:
-                return self.inf_tracker
-
     @property
     def unmapped_states(self):
-        G = self.cov_tracker.state_graph
+        G = self.state_graph
         nodes = G.nodes
         return nodes - self.equivalence_map.keys()
-
-    ## Empty methods that will never be accessed
-
-    def update_state(self, state: AbstractState, *,
-            input: AbstractInput, exc: Exception=None, **kwargs) -> Any:
-        raise NotImplementedError
-    def update_transition(self, source: AbstractState,
-            destination: AbstractState, input: AbstractInput, *,
-            state_changed: bool, exc: Exception=None, **kwargs) -> Any:
-        raise NotImplementedError
-
-    @property
-    def entry_state(self) -> AbstractState:
-        raise NotImplementedError
-
-    @property
-    def current_state(self) -> AbstractState:
-        raise NotImplementedError
-
-    @property
-    def state_graph(self) -> AbstractStateGraph:
-        raise NotImplementedError
-
-    def peek(self, default_source: AbstractState, expected_destination: AbstractState) -> AbstractState:
-        raise NotImplementedError
-
-    def reset_state(self, state: AbstractState):
-        raise NotImplementedError
 
 class StateInferenceStrategy(UniformStrategy,
         capture_components={'tracker'},
         capture_paths=['strategy.inference_batch',
             'strategy.extend_on_groups', 'strategy.recursive_collapse',
             'strategy.dt_predict', 'strategy.dt_validate']):
-    def __init__(self, *, tracker: ContextSwitchingTracker,
+    def __init__(self, *, tracker: StateInferenceTracker,
             inference_batch: Optional[str | int]=None,
             extend_on_groups: Optional[bool]=False,
             recursive_collapse: Optional[bool]=False,
@@ -229,7 +134,7 @@ class StateInferenceStrategy(UniformStrategy,
                 collapsed = cap[~mask,:][:,~mask]
                 if self._recursive_collapse:
                     collapsed = self._collapse_graph(cap[~mask,:][:,~mask])
-                self._tracker.inf_tracker.reconstruct_graph(collapsed)
+                self._tracker.reconstruct_graph(collapsed)
                 self._tracker.mode = InferenceMode.Discovery
                 self._crosstest_timer()
 
@@ -263,7 +168,7 @@ class StateInferenceStrategy(UniformStrategy,
         return a_idx, b_idx
 
     async def perform_cross_pollination(self):
-        G = self._tracker.cov_tracker.state_graph
+        G = self._tracker.state_graph
         eqv_map = self._tracker.equivalence_map
         nodes = np.array(G.nodes)
 
@@ -535,7 +440,7 @@ class StateInferenceStrategy(UniformStrategy,
                 dryrun=True)
             await self._explorer.driver.execute_input(input)
             # TODO add new states to graph and match against them too?
-            current_state = self._tracker.cov_tracker.peek(eqv_src, eqv_dst,
+            current_state = self._tracker.peek(eqv_src, eqv_dst,
                 do_not_cache=True)
             return current_state == eqv_dst
         finally:
@@ -730,7 +635,7 @@ class InferenceWebRenderer(WebRenderer):
 class InferenceWebDataLoader(WebDataLoader):
     @property
     def fresh_graph(self):
-        H = self._session._explorer.tracker.inf_tracker.state_graph
+        H = self._session._explorer.tracker.recovered_graph
         G = H.copy(fresh=True)
         # we also return a reference to the original in case attribute access is
         # needed
