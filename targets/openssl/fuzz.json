@@ -29,7 +29,6 @@
 		"type": "uniform"
 	},
 	"fuzzer": {
-		"lib": "./lib/",
 		"cwd": "./targets/openssl/",
 		"work_dir": "./workdir/",
 		"seeds": "./seeds/",
