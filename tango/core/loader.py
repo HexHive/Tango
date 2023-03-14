@@ -18,6 +18,11 @@ class AbstractLoader(AsyncComponent, ABC,
             -> AsyncGenerator[Transition, AbstractState]:
         pass
 
+    @abstractmethod
+    async def apply_transition(self, transition: Transition,
+            current_state: AbstractState) -> AbstractState:
+        pass
+
 class BaseLoader(AbstractLoader,
         capture_components={ComponentType.tracker}):
     def __init__(self, *, tracker: AbstractStateTracker):

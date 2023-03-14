@@ -1,13 +1,18 @@
 from tango.core import (BaseLoader, AbstractDriver,
-    LoadableTarget, AbstractState, Transition)
+    LoadableTarget, Path, AbstractState, Transition)
 from tango.unix import ProcessDriver
 from tango.common import ComponentOwner
-from typing       import AsyncGenerator
+from typing       import AsyncGenerator, Any
 
 __all__ = ['ReplayStateLoader', 'ReplayForkStateLoader']
 
 class ReplayStateLoader(BaseLoader,
         capture_components={'driver'}):
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return super().match_config(config) and \
+            config['loader'].get('type') == 'replay'
+
     def __init__(self, *, driver: AbstractDriver, **kwargs):
         super().__init__(**kwargs)
         self._driver = driver
@@ -17,8 +22,35 @@ class ReplayStateLoader(BaseLoader,
         self._startup = getattr(generator, 'startup_input', None)
         await super().finalize(owner)
 
+    async def apply_transition(self, transition: Transition,
+            parent_state: AbstractState) -> AbstractState:
+        source, destination, input = transition
+        current_state = parent_state or source
+        # check if source matches the current state
+        if source != current_state:
+            raise StabilityException(
+                f"source state ({source}) did not match current state ({current_state})"
+            )
+        # execute the input
+        await self._driver.execute_input(input)
+
+        current_state = self._tracker.peek(source, destination)
+        # check if destination matches the current state
+        if destination != current_state:
+            faulty_state = destination
+            raise StabilityException(
+                f"destination state ({destination}) did not match current state ({current_state})"
+            )
+        return current_state
+
+    async def load_path(self, path: Path):
+        src, _, _ = path[0]
+        last_state = self._tracker.peek(expected_destination=src)
+        for transition in path:
+            last_state = await self.apply_transition(transition, last_state)
+
     async def load_state(self, state_or_path: LoadableTarget) \
-            -> AsyncGenerator[Transition, AbstractState]:
+            -> AsyncGenerator[Transition, Any]:
         if isinstance(path := state_or_path, AbstractState):
             raise TypeError(f"{self.__class__.__name__} can only load paths!")
 
@@ -32,29 +64,7 @@ class ReplayStateLoader(BaseLoader,
         if not path:
             return
 
-        last_state = None
-        for source, destination, input in path:
-            current_state = self._tracker.peek(last_state, source)
-            yield (last_state, source, None)
-            # check if source matches the current state
-            if source != current_state:
-                raise StabilityException(
-                    f"source state ({source}) did not match current state ({current_state})"
-                )
-            # execute the input
-            await self._driver.execute_input(input)
-
-            current_state = self._tracker.peek(source, destination)
-            yield (source, destination, input)
-            # check if destination matches the current state
-            if destination != current_state:
-                faulty_state = destination
-                raise StabilityException(
-                    f"destination state ({destination}) did not match current state ({current_state})"
-                )
-            last_state = current_state
-
-    @classmethod
-    def match_config(cls, config: dict) -> bool:
-        return super().match_config(config) and \
-            config['loader'].get('type') == 'replay'
+        full_path = list(path)
+        await self.load_path(full_path)
+        for transition in full_path:
+            yield transition
