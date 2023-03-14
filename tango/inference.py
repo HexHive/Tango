@@ -3,9 +3,9 @@ from __future__ import annotations
 from . import debug, info, warning
 
 from tango.core import (UniformStrategy, AbstractState, AbstractInput,
-    BaseStateGraph, AbstractStateTracker, ValueProfiler, TimeElapsedProfiler,
+    BaseStateGraph, AbstractTracker, ValueProfiler, TimeElapsedProfiler,
     ValueMeanProfiler, LambdaProfiler)
-from tango.cov import CoverageStateTracker
+from tango.cov import CoverageTracker
 from tango.webui import WebRenderer, WebDataLoader
 from tango.common import get_session_task_group, ComponentOwner
 
@@ -37,7 +37,7 @@ class RecoveredStateGraph(BaseStateGraph):
         G = super(BaseStateGraph, self).copy(**kwargs)
         return G
 
-class InferenceTracker(AbstractStateTracker):
+class InferenceTracker(AbstractTracker):
     def __init__(self, **kwargs):
         self._graph = RecoveredStateGraph()
 
@@ -101,16 +101,16 @@ class InferenceTracker(AbstractStateTracker):
     def reset_state(self, state: AbstractState):
         raise NotImplementedError
 
-class ContextSwitchingTracker(AbstractStateTracker):
-    _capture_components = CoverageStateTracker._capture_components | \
+class ContextSwitchingTracker(AbstractTracker):
+    _capture_components = CoverageTracker._capture_components | \
         InferenceTracker._capture_components
-    _capture_paths = CoverageStateTracker._capture_paths | \
+    _capture_paths = CoverageTracker._capture_paths | \
         InferenceTracker._capture_paths
 
     def __init__(self, *args, **kwargs):
         # properties
         self.mode = InferenceMode.Discovery
-        self.cov_tracker = CoverageStateTracker(*args, **kwargs)
+        self.cov_tracker = CoverageTracker(*args, **kwargs)
         self.inf_tracker = InferenceTracker(*args, **kwargs)
         self.capability_matrix = np.empty((0,0), dtype=object)
         self.nodes_seq = np.empty((0,), dtype=object)

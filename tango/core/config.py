@@ -2,7 +2,7 @@ from . import  info
 
 from tango.core.dataio  import AbstractChannelFactory
 from tango.core.loader  import AbstractLoader
-from tango.core.tracker  import AbstractStateTracker
+from tango.core.tracker  import AbstractTracker
 from tango.core.explorer import AbstractExplorer
 from tango.core.generator import AbstractInputGenerator
 from tango.core.strategy import AbstractStrategy

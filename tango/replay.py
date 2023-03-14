@@ -4,9 +4,9 @@ from tango.unix import ProcessDriver
 from tango.common import ComponentOwner
 from typing       import AsyncGenerator, Any
 
-__all__ = ['ReplayStateLoader', 'ReplayForkStateLoader']
+__all__ = ['ReplayLoader', 'ReplayForkLoader']
 
-class ReplayStateLoader(BaseLoader,
+class ReplayLoader(BaseLoader,
         capture_components={'driver'}):
     @classmethod
     def match_config(cls, config: dict) -> bool:

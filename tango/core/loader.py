@@ -1,4 +1,4 @@
-from tango.core.tracker import AbstractState, AbstractStateTracker
+from tango.core.tracker import AbstractState, AbstractTracker
 from tango.core.types import Transition, LoadableTarget
 from tango.common import AsyncComponent, ComponentType
 
@@ -25,5 +25,5 @@ class AbstractLoader(AsyncComponent, ABC,
 
 class BaseLoader(AbstractLoader,
         capture_components={ComponentType.tracker}):
-    def __init__(self, *, tracker: AbstractStateTracker):
+    def __init__(self, *, tracker: AbstractTracker):
         self._tracker = tracker

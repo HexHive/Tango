@@ -1,7 +1,7 @@
 from __future__   import annotations
 from . import debug, info
 
-from tango.core import (AbstractState, BaseState, BaseStateTracker,
+from tango.core import (AbstractState, BaseState, BaseTracker,
     AbstractInput, LambdaProfiler, ValueMeanProfiler, CountProfiler)
 from tango.unix import ProcessDriver, ProcessForkDriver
 from tango.common import ComponentType, ComponentOwner
@@ -31,7 +31,7 @@ import posix_ipc
 import numpy as np
 
 __all__ = [
-    'CoverageState', 'CoverageReader', 'GlobalCoverage', 'CoverageStateTracker',
+    'CoverageState', 'CoverageReader', 'GlobalCoverage', 'CoverageTracker',
     'CoverageDriver', 'CoverageForkDriver'
 ]
 
@@ -88,7 +88,7 @@ class CoverageDriver(ProcessDriver,
         # result in cyclic dependencies, but since both components are defined
         # and confined within this module, they are expected to be tightly
         # coupled and be aware of this dependency
-        self._tracker: CoverageStateTracker = owner['tracker']
+        self._tracker: CoverageTracker = owner['tracker']
         await super().finalize(owner)
 
     async def execute_input(self, input: AbstractInput):
@@ -357,7 +357,7 @@ class NPGlobalCoverage(GlobalCoverage):
         return super().__eq__(other) and \
                np.array_equal(self._set_arr, other._set_arr)
 
-class CoverageStateTracker(BaseStateTracker,
+class CoverageTracker(BaseTracker,
         capture_components={ComponentType.driver},
         capture_paths=['tracker.native_lib']):
     def __init__(self, *, driver: ProcessDriver, native_lib=None, **kwargs):

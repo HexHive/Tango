@@ -3,7 +3,7 @@ from . import debug, info, warning, critical
 
 from tango.exceptions import (StabilityException, StateNotReproducibleException,
     StatePrecisionException)
-from tango.core.tracker import AbstractState, AbstractStateTracker
+from tango.core.tracker import AbstractState, AbstractTracker
 from tango.core.input import (AbstractInput, BaseInput, PreparedInput,
     BaseDecorator)
 from tango.core.driver import AbstractDriver
@@ -59,7 +59,7 @@ class BaseExplorer(AbstractExplorer,
             ComponentType.loader, ComponentType.tracker, ComponentType.driver},
         capture_paths=['explorer.reload_attempts']):
     def __init__(self, *,
-            loader: AbstractLoader, tracker: AbstractStateTracker,
+            loader: AbstractLoader, tracker: AbstractTracker,
             driver: AbstractDriver, reload_attempts: str='50', **kwargs):
         super().__init__(**kwargs)
         self._loader = loader
@@ -74,7 +74,7 @@ class BaseExplorer(AbstractExplorer,
         await super().finalize(owner)
 
     @property
-    def tracker(self) -> AbstractStateTracker:
+    def tracker(self) -> AbstractTracker:
         return self._tracker
 
     @property
@@ -148,7 +148,7 @@ class BaseExplorer(AbstractExplorer,
             # must clear last state's input whenever a new state is
             # loaded
             #
-            # WARN if using SnapshotStateLoader, the snapshot must be
+            # WARN if using SnapshotLoader, the snapshot must be
             # taken when the state is first reached, not when a
             # transition is about to happen. Otherwise, last_input may
             # be None, but the snapshot may have residual effect from

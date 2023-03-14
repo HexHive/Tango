@@ -19,7 +19,7 @@ import networkx as nx
 import collections
 
 __all__ = [
-    'AbstractState', 'BaseState', 'AbstractStateTracker', 'BaseStateTracker',
+    'AbstractState', 'BaseState', 'AbstractTracker', 'BaseTracker',
     'AbstractStateGraph', 'BaseStateGraph', 'IUpdateCallback',
     'Transition', 'Path', 'PathGenerator'
 ]
@@ -66,14 +66,14 @@ class AbstractStateMeta(ABCMeta):
 class AbstractState(ABC, metaclass=AbstractStateMeta):
     __slots__ = '_id', '_hash', '_tracker'
 
-    def __init__(self, *, tracker: AbstractStateTracker):
+    def __init__(self, *, tracker: AbstractTracker):
         self._tracker = tracker
 
     def __hash__(self) -> int:
         return self._hash
 
     @property
-    def tracker(self) -> AbstractStateTracker:
+    def tracker(self) -> AbstractTracker:
         return self._tracker
 
     @property
@@ -441,7 +441,7 @@ class IUpdateCallback(ABC):
             state_changed: bool, exc: Exception=None, **kwargs) -> Any:
         pass
 
-class AbstractStateTracker(AsyncComponent, IUpdateCallback, ABC,
+class AbstractTracker(AsyncComponent, IUpdateCallback, ABC,
         component_type=ComponentType.tracker):
     @property
     @abstractmethod
@@ -476,7 +476,7 @@ class AbstractStateTracker(AsyncComponent, IUpdateCallback, ABC,
         """
         pass
 
-class BaseStateTracker(AbstractStateTracker):
+class BaseTracker(AbstractTracker):
     async def finalize(self, owner: ComponentOwner):
         self._state_graph = BaseStateGraph(entry_state=self.entry_state)
 
