@@ -74,44 +74,6 @@ CLASS_LUT = np.zeros(256, dtype=np.uint8)
 for i in range(len(CLASS_LUT)):
     CLASS_LUT[i] = _count_class_lookup(i)
 
-class CoverageDriver(ProcessDriver,
-        capture_paths=('driver.clear_coverage',)):
-    @classmethod
-    def match_config(cls, config: dict):
-        return super().match_config(config) and \
-            config['tracker'].get('type') == 'coverage'
-
-    def __init__(self, *, clear_coverage: Optional[bool]=True, **kwargs):
-        super().__init__(**kwargs)
-        self._clear_cov = clear_coverage
-
-    async def finalize(self, owner: ComponentOwner):
-        # WARN this bypasses the expected component hierarchy and would usually
-        # result in cyclic dependencies, but since both components are defined
-        # and confined within this module, they are expected to be tightly
-        # coupled and be aware of this dependency
-        self._tracker: CoverageTracker = owner['tracker']
-        await super().finalize(owner)
-
-    async def execute_input(self, input: AbstractInput):
-        try:
-            idx = 0
-            async for instruction in input:
-                idx += 1
-                if self._clear_cov:
-                    memset(self._tracker._reader.array, 0,
-                        self._tracker._reader.size)
-                await instruction.perform(self._channel)
-        except Exception as ex:
-            raise LoadedException(ex, lambda: input[:idx]) from ex
-        finally:
-            ValueMeanProfiler("input_len", samples=100)(idx)
-            CountProfiler("total_instructions")(idx)
-
-# this class exists only to allow matching with forkserver==true
-class CoverageForkDriver(CoverageDriver, ProcessForkDriver):
-    pass
-
 class FeatureSnapshot(BaseState):
     __slots__ = (
         '_parent', '_feature_mask', '_feature_count', '_feature_context',
@@ -363,10 +325,49 @@ class NPFeatureMap(FeatureMap):
         return super().__eq__(other) and \
                np.array_equal(self._feature_arr, other._feature_arr)
 
+class CoverageDriver(ProcessDriver,
+        capture_paths=('driver.clear_coverage',)):
+    @classmethod
+    def match_config(cls, config: dict):
+        return super().match_config(config) and \
+            config['tracker'].get('type') == 'coverage'
+
+    def __init__(self, *, clear_coverage: Optional[bool]=False, **kwargs):
+        super().__init__(**kwargs)
+        self._clear_cov = clear_coverage
+
+    async def finalize(self, owner: ComponentOwner):
+        # WARN this bypasses the expected component hierarchy and would usually
+        # result in cyclic dependencies, but since both components are defined
+        # and confined within this module, they are expected to be tightly
+        # coupled and be aware of this dependency
+        self._tracker: CoverageTracker = owner['tracker']
+        assert isinstance(self._tracker, CoverageTracker)
+        await super().finalize(owner)
+
+    async def execute_input(self, input: AbstractInput):
+        try:
+            idx = 0
+            async for instruction in input:
+                idx += 1
+                if self._clear_cov:
+                    memset(self._tracker._reader.array, 0,
+                        self._tracker._reader.size)
+                await instruction.perform(self._channel)
+        except Exception as ex:
+            raise LoadedException(ex, lambda: input[:idx]) from ex
+        finally:
+            ValueMeanProfiler("input_len", samples=100)(idx)
+            CountProfiler("total_instructions")(idx)
+
+# this class exists only to allow matching with forkserver==true
+class CoverageForkDriver(CoverageDriver, ProcessForkDriver):
+    pass
+
 class CoverageTracker(BaseTracker,
         capture_components={ComponentType.driver},
         capture_paths=['tracker.native_lib']):
-    def __init__(self, *, driver: ProcessDriver, native_lib=None, **kwargs):
+    def __init__(self, *, driver: CoverageDriver, native_lib=None, **kwargs):
         super().__init__(**kwargs)
         self._driver = driver
 
