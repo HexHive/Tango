@@ -4,7 +4,7 @@ from . import debug, info, warning, critical
 
 from tango.core import (UniformStrategy, AbstractState, AbstractInput,
     BaseStateGraph, AbstractTracker, ValueProfiler, TimeElapsedProfiler,
-    ValueMeanProfiler, LambdaProfiler)
+    ValueMeanProfiler, LambdaProfiler, AbstractLoader)
 from tango.cov import CoverageTracker
 from tango.webui import WebRenderer, WebDataLoader
 from tango.common import get_session_task_group, ComponentOwner
@@ -87,12 +87,13 @@ class StateInferenceTracker(CoverageTracker):
         return nodes - self.equivalence_map.keys()
 
 class StateInferenceStrategy(UniformStrategy,
-        capture_components={'tracker'},
+        capture_components={'tracker', 'loader'},
         capture_paths=['strategy.inference_batch',
             'strategy.extend_on_groups', 'strategy.recursive_collapse',
             'strategy.dt_predict', 'strategy.dt_extrapolate',
             'strategy.dt_validate']):
     def __init__(self, *, tracker: StateInferenceTracker,
+            loader: AbstractLoader,
             inference_batch: Optional[str | int]=None,
             extend_on_groups: Optional[bool]=False,
             recursive_collapse: Optional[bool]=False,
@@ -101,6 +102,7 @@ class StateInferenceStrategy(UniformStrategy,
             dt_validate: Optional[bool]=False, **kwargs):
         super().__init__(**kwargs)
         self._tracker = tracker
+        self._loader = loader
         self._inference_batch = int(inference_batch or 50)
         self._extend_on_groups = extend_on_groups
         self._recursive_collapse = recursive_collapse
@@ -490,7 +492,7 @@ class StateInferenceStrategy(UniformStrategy,
         try:
             assert eqv_src == await self._explorer.reload_state(eqv_src,
                 dryrun=True)
-            await self._explorer.loader.apply_transition(
+            await self._loader.apply_transition(
                 (eqv_src, eqv_dst, input), eqv_src, do_not_cache=True)
             return True
         except StabilityException as ex:
