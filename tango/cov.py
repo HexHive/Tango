@@ -560,7 +560,7 @@ class CoverageReplayLoader(ReplayLoader,
         self._restore = restore_cov_map
 
     async def apply_transition(self, transition: Transition,
-            current_state: AbstractState, **kwargs) -> AbstractState:
+            current_state: FeatureSnapshot, **kwargs) -> FeatureSnapshot:
         _, dst, _ = transition
         if self._restore and dst._parent:
             # inject the coverage map context of the expected dst
