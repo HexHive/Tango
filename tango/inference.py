@@ -176,30 +176,42 @@ class StateInferenceStrategy(UniformStrategy,
 
                 collapsed = cap[~mask,:][:,~mask]
                 if self._recursive_collapse:
-                    collapsed = self._collapse_graph(cap[~mask,:][:,~mask])
+                    collapsed, eqv_map = self._collapse_until_stable(
+                        collapsed, eqv_map)
                 self._tracker.reconstruct_graph(collapsed)
                 self._tracker.mode = InferenceMode.Discovery
                 self._crosstest_timer()
 
     @classmethod
-    def _collapse_graph(cls, adj):
+    def _collapse_until_stable(cls, adj, eqv_map):
         last_adj = adj
         while True:
-            # construct equivalence sets
-            stilde = cls._construct_equivalence_sets(adj, dual_axis=True)
-            # remove strictly subsumed nodes
-            adj, stilde, node_mask, sub_map = cls._eliminate_subsumed_nodes(adj,
-                stilde, dual_axis=True)
-            # collapse capability matrix where equivalence states exist
-            adj, eqv_map, node_mask = cls._collapse_adj_matrix(adj, stilde,
-                node_mask, sub_map)
+            adj, eqv_map, node_mask = cls._collapse_graph(adj, eqv_map,
+                dual_axis=True)
             # mask out collapsed nodes
             adj = adj[~node_mask,:][:,~node_mask]
             if adj.shape == last_adj.shape:
                 break
-            debug(f"Reduced from {last_adj.shape} to {adj.shape}")
             last_adj = adj
-        return last_adj
+        return adj, eqv_map
+
+    @classmethod
+    def _collapse_graph(cls, adj, orig_eqv=None, dual_axis=False):
+        orig_eqv = orig_eqv or {i: i for i in range(adj.shape[0])}
+
+        # construct equivalence sets
+        stilde = cls._construct_equivalence_sets(adj, dual_axis=dual_axis)
+        # remove strictly subsumed nodes
+        adj, stilde, node_mask, sub_map = cls._eliminate_subsumed_nodes(adj,
+            stilde, dual_axis=dual_axis)
+        # collapse capability matrix where equivalence states exist
+        ext_adj, eqv_map, node_mask = cls._collapse_adj_matrix(adj, stilde,
+            node_mask, sub_map)
+
+        # reconstruct eqv_map based on orig_eqv
+        eqv_map = {i: eqv_map[s] for i, s in orig_eqv.items()}
+
+        return ext_adj, eqv_map, node_mask
 
     @staticmethod
     def intersect1d_nosort(a, b, /):
@@ -237,14 +249,8 @@ class StateInferenceStrategy(UniformStrategy,
         # get a capability matrix extended with cross-pollination
         await self._extend_cap_matrix(cap, nodes, edge_mask, from_idx, to_idx)
 
-        # construct equivalence sets
-        stilde = self._construct_equivalence_sets(cap)
-
-        # remove strictly subsumed nodes
-        cap, stilde, node_mask, sub_map = self._eliminate_subsumed_nodes(cap, stilde)
-
-        # collapse capability matrix where equivalence states exist
-        cap, eqv_map, node_mask = self._collapse_adj_matrix(cap, stilde, node_mask, sub_map)
+        # collapse, single-axis
+        cap, eqv_map, node_mask = self._collapse_graph(cap)
 
         if self._dt_predict:
             X = cap[node_mask,:][:,node_mask] != None
