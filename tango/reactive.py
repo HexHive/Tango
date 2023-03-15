@@ -108,8 +108,8 @@ class ReactiveHavocMutator(BaseMutator):
 HAVOC_MIN_WEIGHT = 1e-3
 
 class ReactiveInputGenerator(BaseInputGenerator):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self._seen_transitions = set()
         self._state_model = dict()
         # self._model_history = dict()
