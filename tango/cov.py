@@ -10,7 +10,7 @@ from tango.exceptions import LoadedException
 from abc import ABC, abstractmethod
 from typing       import Sequence, Callable, Optional
 from collections  import OrderedDict
-from functools    import cache
+from functools    import cache, cached_property
 from string import ascii_letters, digits
 from uuid         import uuid4
 from ctypes       import pythonapi, memset, memmove, addressof, sizeof, CDLL
@@ -354,6 +354,10 @@ class CoverageDriver(ProcessDriver,
                     memset(self._tracker._reader.array, 0,
                         self._tracker._reader.size)
                 await instruction.perform(self._channel)
+                # we invalidate the current_state cache
+                # WARN we use pop with a default value in case the cache is
+                # invalidated twice in a row.
+                self._tracker.__dict__.pop('current_state', None)
         except Exception as ex:
             raise LoadedException(ex, lambda: input[:idx]) from ex
         finally:
@@ -432,7 +436,7 @@ class CoverageTracker(BaseTracker,
     def entry_state(self) -> FeatureSnapshot:
         return self._entry_state
 
-    @property
+    @cached_property
     def current_state(self) -> FeatureSnapshot:
         return self.peek(self._current_state)
 
