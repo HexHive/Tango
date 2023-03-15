@@ -261,6 +261,13 @@ class StateInferenceStrategy(UniformStrategy,
 
     async def _extend_cap_matrix(self, cap, nodes, edge_mask, eqv_map,
             from_idx, to_idx):
+        def report_progress():
+            current_done = np.count_nonzero(edge_mask) - init_done
+            if should_predict and not should_validate:
+                current_done += dt_skips
+            percent = f'{100*current_done/init_pending:.1f}%'
+            ValueProfiler('status')(f'cross_test ({percent})')
+
         # get a sequence of the old nodes in the new order
         eqv_nodes = nodes[to_idx]
         # set up a mask for processing new nodes only in cap
@@ -342,11 +349,7 @@ class StateInferenceStrategy(UniformStrategy,
                         dt_tests += 1
 
                         # report completion status
-                        current_done = np.count_nonzero(edge_mask) - init_done
-                        if should_predict and not should_validate:
-                            current_done += dt_skips
-                        percent = f'{100*current_done/init_pending:.1f}%'
-                        ValueProfiler('status')(f'cross_test ({percent})')
+                        report_progress()
 
                     children = dt.children_left if exists else dt.children_right
                     stack.append(children[cur])
@@ -399,11 +402,7 @@ class StateInferenceStrategy(UniformStrategy,
                 edge_mask[eqv_idx, dst_idx] = True
 
                 # report completion status
-                current_done = np.count_nonzero(edge_mask) - init_done
-                if should_predict and not should_validate:
-                    current_done += dt_skips
-                percent = f'{100*current_done/init_pending:.1f}%'
-                ValueProfiler('status')(f'cross_test ({percent})')
+                report_progress()
 
             if should_validate:
                 assert np.all(edge_mask[eqv_idx,])
