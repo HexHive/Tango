@@ -246,7 +246,7 @@ class BaseExplorer(AbstractExplorer,
                     # modify it, but at this stage, we may want to restore state
                     # using that path
                     self._last_path = self._current_path.copy()
-                    src = await self.reload_state(self._last_state, dryrun=True)
+                    src = await self.reload_state(self._last_path, dryrun=True)
                     assert self._last_state == src
                     await self._loader.apply_transition(
                         (src, self._current_state, last_input), src,
