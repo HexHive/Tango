@@ -330,7 +330,7 @@ class StateInferenceStrategy(UniformStrategy,
             percent = f'{100*current_done/init_pending:.1f}%'
             ValueProfiler('status')(f'cross_test ({percent})')
 
-        eqv_nodes, node_fwd_map, eqv_arr, eqv_states = \
+        _, node_fwd_map, _, eqv_states = \
             self._tracker.reindex(from_idx, to_idx)
         eqvs = np.array(list(eqv_states.values()), dtype=object)
 
