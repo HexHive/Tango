@@ -693,6 +693,24 @@ class StateInferenceStrategy(UniformStrategy,
 
         return adj, eqv_map, eqv_mask
 
+    def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
+            **kwargs):
+        super().update_state(state, *args, exc=exc, **kwargs)
+        if state is None:
+            return
+        if not exc:
+            try:
+                j = self._tracker.nodes[state]
+                sidx = self._tracker.equivalence_map[state]
+                eqv = self._tracker.equivalence_states[sidx]
+                for i in eqv:
+                    if i == j:
+                        continue
+                    sblg = self._tracker.node_arr[i]
+                    self._energy_map[sblg] += 1
+            except KeyError:
+                pass
+
 class InferenceWebRenderer(WebRenderer):
     @classmethod
     def match_config(cls, config: dict) -> bool:
