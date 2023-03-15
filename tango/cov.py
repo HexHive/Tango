@@ -1,8 +1,10 @@
 from __future__   import annotations
-from . import debug, info
+from . import debug, info, warning
 
-from tango.core import (AbstractState, BaseState, BaseTracker,
-    AbstractInput, LambdaProfiler, ValueMeanProfiler, CountProfiler)
+from tango.core import (BaseState, BaseTracker, AbstractInput, LambdaProfiler,
+    ValueMeanProfiler, CountProfiler, Path, BaseExplorer, LoadableTarget,
+    BaseInput)
+from tango.replay import ReplayLoader
 from tango.unix import ProcessDriver, ProcessForkDriver
 from tango.common import ComponentType, ComponentOwner
 from tango.exceptions import LoadedException
@@ -78,7 +80,7 @@ for i in range(len(CLASS_LUT)):
 class FeatureSnapshot(BaseState):
     __slots__ = (
         '_parent', '_feature_mask', '_feature_count', '_feature_context',
-        '_debug_coverage_map'
+        '_raw_coverage'
     )
 
     def __init__(self, parent: FeatureSnapshot,
@@ -89,6 +91,7 @@ class FeatureSnapshot(BaseState):
         self._feature_mask = feature_mask
         self._feature_count = feature_count
         self._feature_context = feature_map.clone()
+        self._raw_coverage = feature_map._reader.clone_array()
 
     def __eq__(self, other):
         # return hash(self) == hash(other)
@@ -168,6 +171,9 @@ class CoverageReader:
         memmove(onto, self._array, self._size)
         return onto
 
+    def write_array(self, data: Array):
+        memmove(self._array, data, self._size)
+
     @property
     def array(self):
         return self._array
@@ -205,7 +211,6 @@ class FeatureMap(ABC):
     def __init__(self, reader: CoverageReader, **kwargs):
         self._reader = reader
         self._length = reader.length
-        self._coverage_map = reader.ctype()
         self._shared_map = reader.array
 
     @abstractmethod
@@ -232,7 +237,6 @@ class FeatureMap(ABC):
     def copy_from(self, other: FeatureMap):
         if self._length != other._length:
             raise RuntimeError("Mismatching coverage map sizes")
-        memmove(self._coverage_map, other._coverage_map, self._length)
 
     @abstractmethod
     def clear(self):
@@ -521,7 +525,9 @@ class CoverageTracker(BaseTracker,
         next_state = self.extract_snapshot(fmap, parent, commit=False,
             allow_empty=parent is None, **kwargs)
         if not next_state:
-            next_state = default_source
+            next_state = FeatureSnapshot(parent, default_source._feature_mask,
+                default_source._feature_count, default_source._feature_context,
+                tracker=self, state_hash=hash(default_source), **kwargs)
         return next_state
 
     def reset_state(self, state: FeatureSnapshot):
@@ -539,3 +545,48 @@ class CoverageTracker(BaseTracker,
         next_state = self.extract_snapshot(self._local, self._local_state,
             allow_empty=True, do_not_cache=True)
         self._local_state = next_state
+
+class CoverageReplayLoader(ReplayLoader,
+        capture_components={'driver', 'tracker'},
+        capture_paths=('loader.restore_cov_map',)):
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return super().match_config(config) and \
+            config['tracker'].get('type') == 'coverage'
+
+    def __init__(self, *, driver: CoverageDriver, tracker: CoverageTracker,
+            restore_cov_map: bool=True, **kwargs):
+        super().__init__(driver=driver, tracker=tracker, **kwargs)
+        self._restore = restore_cov_map
+
+    async def apply_transition(self, transition: Transition,
+            current_state: AbstractState, **kwargs) -> AbstractState:
+        _, dst, _ = transition
+        if self._restore and dst._parent:
+            # inject the coverage map context of the expected dst
+            self._tracker._reader.write_array(dst._parent._raw_coverage)
+
+        state = await super().apply_transition(transition, current_state,
+            **kwargs)
+        return state
+
+class CoverageExplorer(BaseExplorer,
+        capture_components={'tracker'}):
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return super().match_config(config) and \
+            config['tracker'].get('type') == 'coverage'
+
+    def __init__(self, *, tracker: CoverageTracker, **kwargs):
+        super().__init__(tracker=tracker, **kwargs)
+
+    async def _minimize_transition(self, state_or_path: LoadableTarget,
+            dst: FeatureSnapshot, input: BaseInput) -> BaseInput:
+        inp = await super()._minimize_transition(state_or_path, dst, input)
+        # At this point, the destination state has been reproduced, and a
+        # minimized path to it has been found. However, the state was initially
+        # found using a non-minimized path, which, despite yielding the same
+        # feature set, could have a different coverage map (features are bins).
+        # To force the state to be updated, we delete it from the state cache.
+        FeatureSnapshot.invalidate(dst)
+        return inp
