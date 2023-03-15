@@ -136,7 +136,8 @@ class StateInferenceStrategy(UniformStrategy,
             recursive_collapse: Optional[bool]=False,
             dt_predict: Optional[bool]=False,
             dt_extrapolate: Optional[bool]=False,
-            dt_validate: Optional[bool]=False, **kwargs):
+            dt_validate: Optional[bool]=False,
+            group_state_schedule: Optional[bool]=False, **kwargs):
         super().__init__(**kwargs)
         self._tracker = tracker
         self._loader = loader
@@ -146,6 +147,7 @@ class StateInferenceStrategy(UniformStrategy,
         self._dt_predict = dt_predict
         self._dt_extrapolate = dt_extrapolate
         self._dt_validate = dt_validate
+        self._group_state_schedule = group_state_schedule
         if dt_predict:
             self._dt_clf = tree.DecisionTreeClassifier()
             self._dt_fit = False
@@ -696,7 +698,7 @@ class StateInferenceStrategy(UniformStrategy,
     def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
             **kwargs):
         super().update_state(state, *args, exc=exc, **kwargs)
-        if state is None:
+        if not self._group_state_schedule or not state:
             return
         if not exc:
             try:
@@ -757,7 +759,8 @@ class InferenceInputGenerator(ReactiveInputGenerator,
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
-            config['strategy'].get('type') == 'inference'
+            config['strategy'].get('type') == 'inference' and \
+            config['strategy'].get('group_mutation_feedback')
 
     def __init__(self, *, tracker: StateInferenceTracker, **kwargs):
         super().__init__(**kwargs)
