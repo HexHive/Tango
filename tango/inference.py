@@ -432,10 +432,6 @@ class StateInferenceStrategy(UniformStrategy,
 
     async def _perform_partial_cross_pollination(self, eqv_src: AbstractState,
             eqv_dst: AbstractState, input: AbstractInput):
-        # hacky for now; switch back to coverage states temporarily
-        restore_mode = self._tracker.mode
-        self._tracker.mode = InferenceMode.Discovery
-
         try:
             assert eqv_src == await self._explorer.reload_state(eqv_src,
                 dryrun=True)
@@ -448,8 +444,6 @@ class StateInferenceStrategy(UniformStrategy,
             return False
         except Exception:
             return False
-        finally:
-            self._tracker.mode = restore_mode
 
     @staticmethod
     def _update_cap_matrix(cap, src_idx, dst_idx, inputs):
