@@ -22,7 +22,8 @@ from ctypes       import (POINTER as P,
                           c_void_p as V,
                           c_char as c,
                           cast as C,
-                          byref, c_int)
+                          c_int,
+                          byref, Array)
 import numpy as np
 import sys
 import os
@@ -88,7 +89,6 @@ class FeatureSnapshot(BaseState):
         self._feature_mask = feature_mask
         self._feature_count = feature_count
         self._feature_context = feature_map.clone()
-        self._feature_context.revert(feature_mask, hash(self))
 
     def __eq__(self, other):
         # return hash(self) == hash(other)
@@ -125,11 +125,12 @@ class CoverageReader:
 
         tag = self.ensure_tag(tag)
 
-        _type = b * self._length
-        self._size = sizeof(_type)
+        self._type = b * self._length
+        self._size = sizeof(self._type)
 
-        self._mem, self._map = self.init_array(tag, _type, self._size, create, force)
-        self._array = _type.from_address(self.address_of_buffer(self._map))
+        self._mem, self._map = self.init_array(tag, self._type, self._size,
+            create, force)
+        self._array = self._type.from_address(self.address_of_buffer(self._map))
 
     @classmethod
     def ensure_tag(cls, tag):
@@ -161,6 +162,12 @@ class CoverageReader:
     def address_of_buffer(buf):
         return addressof(c.from_buffer(buf))
 
+    def clone_array(self, onto: Optional[Array]=None):
+        if onto is None:
+            onto = self._type()
+        memmove(onto, self._array, self._size)
+        return onto
+
     @property
     def array(self):
         return self._array
@@ -172,6 +179,10 @@ class CoverageReader:
     @property
     def size(self):
         return self._size
+
+    @property
+    def ctype(self):
+        return self._type
 
     @property
     def address(self):
@@ -191,15 +202,26 @@ class FeatureMap(ABC):
         else:
             return super(FeatureMap, NPFeatureMap).__new__(NPFeatureMap)
 
-    def __init__(self, length: int, **kwargs):
-        self._length = length
+    def __init__(self, reader: CoverageReader, **kwargs):
+        self._reader = reader
+        self._length = reader.length
+        self._coverage_map = reader.ctype()
+        self._shared_map = reader.array
 
     @abstractmethod
-    def update(self, coverage_map: Sequence) -> (Sequence, int, int):
+    def extract(self, *, commit: bool) -> (Sequence, int, int):
+        raise NotImplementedError
+
+    @abstractmethod
+    def commit(self, feature_mask: Sequence, mask_hash: int):
         raise NotImplementedError
 
     @abstractmethod
     def revert(self, feature_mask: Sequence, mask_hash: int):
+        raise NotImplementedError
+
+    @abstractmethod
+    def reset(self, feature_mask: Sequence, mask_hash: int):
         raise NotImplementedError
 
     @abstractmethod
@@ -210,13 +232,10 @@ class FeatureMap(ABC):
     def copy_from(self, other: FeatureMap):
         if self._length != other._length:
             raise RuntimeError("Mismatching coverage map sizes")
+        memmove(self._coverage_map, other._coverage_map, self._length)
 
     @abstractmethod
     def clear(self):
-        raise NotImplementedError
-
-    @abstractmethod
-    def reset(self, feature_mask: Sequence, mask_hash: int):
         raise NotImplementedError
 
     @abstractmethod
@@ -255,21 +274,27 @@ class CFeatureMap(FeatureMap):
         )
         self._bind_lib.reset.restype = B # success?
 
-    def extract(self, coverage_map: Sequence) -> (Sequence, int, int):
+    def extract(self, *, commit: bool=False) \
+            -> (Sequence, int, int):
         feature_mask = (b * self._length)()
         feature_count = I()
         mask_hash = I()
+        coverage_map = self._shared_map
         res = self._bind_lib.diff(self._feature_arr, coverage_map, feature_mask,
-            self._length, byref(feature_count), byref(mask_hash),
-            True
-        )
+            self._length, byref(feature_count), byref(mask_hash), commit)
         return feature_mask, feature_count.value, mask_hash.value
+
+    def commit(self, feature_mask: Sequence, mask_hash: int):
+        self._bind_lib.apply(self._feature_arr, feature_mask, self._length)
 
     def revert(self, feature_mask: Sequence, mask_hash: int):
         self._bind_lib.apply(self._feature_arr, feature_mask, self._length)
 
+    def reset(self, feature_mask: Sequence, mask_hash: int):
+        self._bind_lib.reset(self._feature_arr, feature_mask, self._length)
+
     def clone(self) -> CFeatureMap:
-        cpy = self.__class__(self._length, bind_lib=self._bind_lib)
+        cpy = self.__class__(self._reader, bind_lib=self._bind_lib)
         cpy.copy_from(self)
         return cpy
 
@@ -279,9 +304,6 @@ class CFeatureMap(FeatureMap):
 
     def clear(self):
         memset(self._feature_arr, 0, self._length)
-
-    def reset(self, feature_mask: Sequence, mask_hash: int):
-        self._bind_lib.reset(self._feature_arr, feature_mask, self._length)
 
     def __eq__(self, other):
         return super().__eq__(other) and \
@@ -293,21 +315,29 @@ class NPFeatureMap(FeatureMap):
         self._feature_arr = np.zeros(self._length, dtype=np.uint8)
         self.clear()
 
-    def extract(self, coverage_map: Sequence) -> (Sequence, int, int):
-        coverage_map = np.ctypeslib.as_array(coverage_map)
+    def extract(self, *, commit: bool=False) \
+            -> (Sequence, int, int):
+        coverage_map = np.ctypeslib.as_array(self._shared_map)
         kls_arr = CLASS_LUT[coverage_map]
         feature_mask = (self._feature_arr | kls_arr) ^ self._feature_arr
-        self._feature_arr ^= feature_mask
         feature_count = np.sum(HAMMING_LUT[feature_mask])
         mask_hash = hash(feature_mask.data.tobytes())
 
+        if commit:
+            self._feature_arr ^= feature_mask
         return feature_mask, feature_count, mask_hash
+
+    def commit(self, feature_mask: Sequence, mask_hash: int):
+        self._feature_arr |= feature_mask
 
     def revert(self, feature_mask: Sequence, mask_hash: int):
         self._feature_arr ^= feature_mask
 
+    def reset(self, feature_mask: Sequence, mask_hash: int):
+        self._feature_arr &= feature_mask
+
     def clone(self) -> NPFeatureMap:
-        cpy = self.__class__(self._length)
+        cpy = self.__class__(self._reader)
         cpy.copy_from(self)
         return cpy
 
@@ -317,9 +347,6 @@ class NPFeatureMap(FeatureMap):
 
     def clear(self):
         self._feature_arr.fill(0)
-
-    def reset(self, feature_mask: Sequence, mask_hash: int):
-        self._feature_arr &= feature_mask
 
     def __eq__(self, other):
         return super().__eq__(other) and \
@@ -409,9 +436,9 @@ class CoverageTracker(BaseTracker,
         self._reader = CoverageReader(self._shm_name, self._shm_size_name)
 
         # initialize feature maps
-        self._global = FeatureMap(self._reader.length, bind_lib=self._bind_lib)
-        self._scratch = FeatureMap(self._reader.length, bind_lib=self._bind_lib)
-        self._local = FeatureMap(self._reader.length, bind_lib=self._bind_lib)
+        self._global = FeatureMap(self._reader, bind_lib=self._bind_lib)
+        self._scratch = FeatureMap(self._reader, bind_lib=self._bind_lib)
+        self._local = FeatureMap(self._reader, bind_lib=self._bind_lib)
 
         self._local_state = None
         self._current_state = None
@@ -441,15 +468,16 @@ class CoverageTracker(BaseTracker,
         return self.peek(self._current_state)
 
     def extract_snapshot(self, feature_map: FeatureMap,
-            parent_state: FeatureSnapshot, *,
+            parent_state: FeatureSnapshot, *, commit: bool=True,
             allow_empty: bool=False, **kwargs) -> FeatureSnapshot:
-        coverage_map = self._reader.array
-        feature_mask, feature_count, mask_hash = feature_map.extract(coverage_map)
+        feature_mask, feature_count, mask_hash = feature_map.extract(commit=False)
         if feature_count or allow_empty:
-            return FeatureSnapshot(parent_state, feature_mask, feature_count, feature_map,
-                state_hash=mask_hash, do_not_cache=do_not_cache, tracker=self)
-        else:
-            return None
+            state = FeatureSnapshot(
+                parent_state, feature_mask, feature_count, feature_map,
+                tracker=self, state_hash=mask_hash, **kwargs)
+            if commit:
+                feature_map.commit(feature_mask, mask_hash)
+            return state
 
     def update_state(self, source: FeatureSnapshot, /, *, input: AbstractInput,
             exc: Exception=None, peek_result: Optional[FeatureSnapshot]=None) \
@@ -490,7 +518,7 @@ class CoverageTracker(BaseTracker,
             fmap.copy_from(self._global)
             parent = default_source
 
-        next_state = self.extract_snapshot(fmap, parent,
+        next_state = self.extract_snapshot(fmap, parent, commit=False,
             allow_empty=parent is None, **kwargs)
         if not next_state:
             next_state = default_source
