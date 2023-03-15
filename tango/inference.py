@@ -49,8 +49,11 @@ class StateInferenceTracker(CoverageTracker):
         # properties
         self.mode = InferenceMode.Discovery
         self.capability_matrix = np.empty((0,0), dtype=object)
-        self.nodes_seq = np.empty((0,), dtype=object)
+        self.nodes = {}
+        self.node_arr = np.empty((0,), dtype=object)
         self.equivalence_map = {}
+        self.equivalence_arr = np.empty((0,), dtype=int)
+        self.equivalence_states = {}
         self.recovered_graph = RecoveredStateGraph()
 
     def reconstruct_graph(self, adj):
@@ -83,8 +86,41 @@ class StateInferenceTracker(CoverageTracker):
     @property
     def unmapped_states(self):
         G = self.state_graph
-        nodes = G.nodes
-        return nodes - self.equivalence_map.keys()
+        return G.nodes - self.nodes.keys()
+
+    def set_nodes(self, nodes: Sequence[FeatureSnapshot],
+            eqv_map: Mapping[int, int]):
+        self.nodes.clear()
+        self.nodes.update({ nodes[i]: i for i in range(len(nodes)) })
+        self.node_arr = np.array(list(nodes), dtype=object)
+        self.equivalence_map = {nodes[l]: s_idx for l, s_idx in eqv_map.items()}
+
+        # the nodes array
+        idx = np.arange(self.node_arr.size)
+        self.equivalence_arr = np.vectorize(eqv_map.get, otypes=(int,))(idx)
+        # get the index of the unique equivalence set each node maps to
+        _, membership = np.unique(self.equivalence_arr, axis=0,
+            return_inverse=True)
+        # re-arrange eqv set indices so that members are grouped together
+        order = np.argsort(membership)
+        # get the boundaries of each eqv set in the ordered nodes array
+        groups, split = np.unique(membership[order], return_index=True)
+        # split the ordered nodes array into eqv groups
+        eqvs = np.split(idx[order], split[1:])
+        self.equivalence_states = {
+            sidx: eqvs[i] for i, sidx in enumerate(groups)
+        }
+
+    def reindex(self, from_idx, to_idx):
+        re_node_arr = self.node_arr[from_idx]
+        re_node_fwd_map = { u: v for u, v in zip(from_idx, to_idx) }
+        re_eqv_arr = self.equivalence_arr[from_idx]
+        re_eqv_states = {
+            sidx: to_idx[np.intersect1d(from_idx, eqv,
+                assume_unique=True, return_indices=True)[1]]
+            for sidx, eqv in self.equivalence_states.items()
+        }
+        return re_node_arr, re_node_fwd_map, re_eqv_arr, re_eqv_states
 
 class StateInferenceStrategy(UniformStrategy,
         capture_components={'tracker', 'loader'},
@@ -136,8 +172,7 @@ class StateInferenceStrategy(UniformStrategy,
                 self._crosstest_timer()
                 cap, eqv_map, mask, nodes = await self.perform_cross_pollination()
                 self._tracker.capability_matrix = cap[mask,:][:,mask]
-                self._tracker.equivalence_map = eqv_map
-                self._tracker.nodes_seq = nodes
+                self._tracker.set_nodes(nodes, eqv_map)
 
                 collapsed = cap[~mask,:][:,~mask]
                 if self._recursive_collapse:
@@ -177,11 +212,10 @@ class StateInferenceStrategy(UniformStrategy,
 
     async def perform_cross_pollination(self):
         G = self._tracker.state_graph
-        eqv_map = self._tracker.equivalence_map
         nodes = np.array(G.nodes)
 
         to_idx, from_idx = self.intersect1d_nosort(nodes,
-            self._tracker.nodes_seq)
+            self._tracker.node_arr)
 
         # get current adjacency matrix
         adj = G.adjacency_matrix
@@ -201,7 +235,7 @@ class StateInferenceStrategy(UniformStrategy,
         cap = self._overlay_capabilities(cap, adj, from_idx, to_idx)
 
         # get a capability matrix extended with cross-pollination
-        await self._extend_cap_matrix(cap, nodes, edge_mask, eqv_map, from_idx, to_idx)
+        await self._extend_cap_matrix(cap, nodes, edge_mask, from_idx, to_idx)
 
         # construct equivalence sets
         stilde = self._construct_equivalence_sets(cap)
@@ -223,7 +257,6 @@ class StateInferenceStrategy(UniformStrategy,
         # translate indices back to nodes
         for i in np.where(node_mask)[0]:
             eqv_map.setdefault(i, -1)
-        eqv_map = {nodes[l]: s_idx for l, s_idx in eqv_map.items()}
 
         return cap, eqv_map, node_mask, nodes
 
@@ -266,7 +299,6 @@ class StateInferenceStrategy(UniformStrategy,
             spread_untested = spread_untested.reshape((eqv.shape[0], untested.shape[0]))
             spread = np.zeros((eqv.shape[0], idx_bc.shape[0]), dtype=bool)
             spread[:, untested] = spread_untested
-            # uniform_spread = ~np.eye(eqv.shape[0], idx_bc.shape[0], dtype=bool)
             edge_mask[*grid_bc] |= ~spread
 
         return projected_pending - projected_done
@@ -280,8 +312,11 @@ class StateInferenceStrategy(UniformStrategy,
             cap[*grid_bc] = mixed
             edge_mask[*grid_bc] = True
 
-    async def _extend_cap_matrix(self, cap, nodes, edge_mask, eqv_map,
-            from_idx, to_idx):
+    async def _extend_cap_matrix(self, cap, nodes, edge_mask, from_idx, to_idx):
+        init_done = np.count_nonzero(edge_mask)
+        init_pending = edge_mask.size - init_done
+        projected_pending = init_pending
+
         def report_progress():
             current_done = np.count_nonzero(edge_mask) - init_done
             if should_predict and not should_validate:
@@ -289,28 +324,13 @@ class StateInferenceStrategy(UniformStrategy,
             percent = f'{100*current_done/init_pending:.1f}%'
             ValueProfiler('status')(f'cross_test ({percent})')
 
-        # get a sequence of the old nodes in the new order
-        eqv_nodes = nodes[to_idx]
+        eqv_nodes, node_fwd_map, eqv_arr, eqv_states = \
+            self._tracker.reindex(from_idx, to_idx)
+        eqvs = np.array(list(eqv_states.values()), dtype=object)
+
         # set up a mask for processing new nodes only in cap
         eqv_mask = np.ones(cap.shape[0], dtype=bool)
         eqv_mask[to_idx] = False
-        # eqv_arr[i] := eqv_map[eqv_nodes[i]]
-        eqv_arr = np.vectorize(eqv_map.get, otypes=(int,))(eqv_nodes)
-
-        # the nodes array
-        idx = np.arange(eqv_nodes.shape[0])
-        # get the index of the unique equivalence set each node maps to
-        _, membership = np.unique(eqv_arr, axis=0, return_inverse=True)
-        # re-arrange eqv set indices so that members are grouped together
-        order = np.argsort(membership)
-        # get the boundaries of each eqv set in the ordered nodes array
-        groups, split = np.unique(membership[order], return_index=True)
-        # split the ordered nodes array into eqv groups
-        eqvs = np.split(idx[order], split[1:])
-
-        init_done = np.count_nonzero(edge_mask)
-        init_pending = edge_mask.size - init_done
-        projected_pending = init_pending
 
         should_predict = self._dt_predict and self._dt_fit
         if self._extend_on_groups:
@@ -345,13 +365,12 @@ class StateInferenceStrategy(UniformStrategy,
                         # and for grouped nodes, it is all True.
                         continue
                     # the DT is trained on the previous mapping
-                    dst_idx = to_idx[from_idx == dt.feature[cur]]
+                    dst_idx = node_fwd_map.get(dt.feature[cur])
                     if not dst_idx:
                         # the snapshot no longer exists, we try both sides
                         stack.append(dt.children_left[cur])
                         stack.append(dt.children_right[cur])
                         continue
-                    dst_idx = dst_idx[0]
 
                     if edge_mask[eqv_idx, dst_idx]:
                         # can occur when multiple paths are traversed
@@ -385,9 +404,8 @@ class StateInferenceStrategy(UniformStrategy,
                     assume_unique=True).size
 
                 if self._dt_extrapolate:
-                    _, _, candidates_idx = np.intersect1d(groups, candidates,
-                        assume_unique=True, return_indices=True)
-                    candidates_eqv = np.array(eqvs, dtype=object)[candidates_idx]
+                    candidates_eqv = np.vectorize(eqv_states.get,
+                        otypes=(object,))(candidates)
 
                     if len(candidates_eqv) > 1:
                         # we have more than one possible equivalence set;
