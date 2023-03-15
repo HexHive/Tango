@@ -401,10 +401,12 @@ class CoverageForkDriver(CoverageDriver, ProcessForkDriver):
 
 class CoverageTracker(BaseTracker,
         capture_components={ComponentType.driver},
-        capture_paths=['tracker.native_lib']):
-    def __init__(self, *, driver: CoverageDriver, native_lib=None, **kwargs):
+        capture_paths=['tracker.native_lib', 'tracker.verify_raw_coverage']):
+    def __init__(self, *, driver: CoverageDriver, native_lib=None,
+            verify_raw_coverage: bool=False, **kwargs):
         super().__init__(**kwargs)
         self._driver = driver
+        self._verify = verify_raw_coverage
 
         if native_lib:
             self._bind_lib = CDLL(native_lib)
@@ -533,6 +535,12 @@ class CoverageTracker(BaseTracker,
     def reset_state(self, state: FeatureSnapshot):
         super().reset_state(state)
         self._current_state = state
+
+        if self._verify:
+            real_cov = np.asarray(self._reader.array)
+            state_cov = np.asarray(state._raw_coverage)
+            if not np.array_equal(real_cov, state_cov):
+                raise RuntimeError("State coverage did not match actual map.")
 
         # reset local map
         self._local.clear()
