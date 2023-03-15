@@ -298,8 +298,10 @@ class BaseExplorer(AbstractExplorer,
             src = await self.reload_state(state_or_path, dryrun=True)
             exp_input = input[begin:]
             try:
-                await self._loader.apply_transition((src, dst, exp_input), src)
-            except Exception:
+                await self._loader.apply_transition((src, dst, exp_input), src,
+                    do_not_cache=True)
+            except Exception as ex:
+                debug(f'{ex=}')
                 success = False
 
             if success:
@@ -328,8 +330,10 @@ class BaseExplorer(AbstractExplorer,
                 tmp_lin_input = lin_input[:cur] + lin_input[cur + step:]
                 try:
                     await self._loader.apply_transition(
-                        (src, dst, tmp_lin_input), src)
-                except Exception:
+                        (src, dst, tmp_lin_input), src,
+                        do_not_cache=True)
+                except Exception as ex:
+                    debug(f'{ex=}')
                     success = False
 
                 if success:
@@ -346,14 +350,17 @@ class BaseExplorer(AbstractExplorer,
         src = await self.reload_state(state_or_path, dryrun=True)
         success = True
         try:
-            await self._loader.apply_transition((src, dst, lin_input), src)
-        except Exception:
+            await self._loader.apply_transition((src, dst, lin_input), src,
+                do_not_cache=True)
+        except Exception as ex:
+            debug(f'{ex=}')
             success = False
             if reduced:
                 # finally, we fall back to validating the original input
                 lin_input = input
                 src = await self.reload_state(state_or_path, dryrun=True)
-                await self._loader.apply_transition((src, dst, lin_input), src)
+                await self._loader.apply_transition((src, dst, lin_input), src,
+                    do_not_cache=True)
                 success = True
 
         if not success:
