@@ -5,6 +5,7 @@ from tango.common import AsyncComponent, get_session_task_group
 
 from collections import defaultdict
 from aiohttp import web, web_urldispatcher
+from functools import partial
 import os
 import asyncio
 import logging
@@ -31,12 +32,24 @@ class WebRenderer(AsyncComponent, component_type='webui',
         catch_all=True):
     def __init__(self, session: FuzzerSession, *,
             http_host: str='localhost', http_port: int=8080,
-            www_path: str=WWW_PATH):
+            www_path: str=WWW_PATH,
+            draw_graph: bool=True,
+            bubble_update_period: float=0.1, bubble_reload_period: float=1,
+            **kwargs):
         self._session = session
         self._http_host = http_host
         self._http_port = http_port
         self._www_path = www_path
         self._hitcounter = defaultdict(int)
+
+        self._draw_graph = draw_graph
+        self._bubble_update_period = bubble_update_period
+        self._bubble_reload_period = bubble_reload_period
+
+        self._webui_kwargs = kwargs | {'draw_graph': draw_graph}
+
+    def get_webui_factory(self):
+        return partial(WebDataLoader, **self._webui_kwargs)
 
     def setup_counters(self):
         async def update(obj, *args, ret, **kwargs):
@@ -51,12 +64,14 @@ class WebRenderer(AsyncComponent, component_type='webui',
                 })
 
         tg = get_session_task_group()
-        tg.create_task(
-            get_profiler('update_state').listener(period=0.1)(update)
-            )
-        tg.create_task(
-            get_profiler('reload_target').listener(period=1)(update)
-        )
+        if self._draw_graph and all(x >= 0 for x in
+                (self._bubble_update_period, self._bubble_reload_period)):
+            tg.create_task(
+                get_profiler('update_state').listener(
+                    period=self._bubble_update_period)(update))
+            tg.create_task(
+                get_profiler('reload_target').listener(
+                    period=self._bubble_reload_period)(update))
 
     async def run(self):
         self.setup_counters()
@@ -104,7 +119,8 @@ class WebRenderer(AsyncComponent, component_type='webui',
             ws = web.WebSocketResponse(compress=False)
             await ws.prepare(request)
 
-            data_loader = WebDataLoader(ws, self._session, self._hitcounter)
+            data_loader = self.get_webui_factory()(
+                ws, self._session, self._hitcounter)
             gather_tasks = asyncio.gather(*data_loader.tasks)
             try:
                 await gather_tasks
@@ -132,11 +148,15 @@ class WebDataLoader:
     DEFAULT_EDGE_COLOR = (0, 0, 0)
     LAST_UPDATE_EDGE_COLOR = (202, 225, 255)
 
-    def __init__(self, websocket, session, hitcounter, last_update_fade_out=1.0):
+    def __init__(self, websocket, session, hitcounter, *,
+            draw_graph: bool,
+            draw_update_period: float=0.1, draw_reload_period: float=1,
+            draw_update_fadeout: float=1, stats_update_period: float=1):
         self._ws = websocket
         self._session = session
         self._hitcounter = hitcounter
-        self._fade = last_update_fade_out
+
+        self._draw_update_fadeout = draw_update_fadeout
 
         self._node_added = {}
         self._node_visited = {}
@@ -144,22 +164,23 @@ class WebDataLoader:
         self._edge_visited = {}
 
         self.tasks = []
-        self.tasks.append(asyncio.create_task(
-                get_profiler('update_state').listener(period=0.1)(self.track_node)
-            )
-        )
-        self.tasks.append(asyncio.create_task(
-                get_profiler('update_transition').listener(period=0.1)(self.track_edge)
-            )
-        )
-        self.tasks.append(asyncio.create_task(
-                get_profiler('reload_target').listener(period=1)(self.update_graph)
-            )
-        )
-        self.tasks.append(asyncio.create_task(
-                get_profiler('perform_instruction').listener(period=0.1)(self.update_stats)
-            )
-        )
+
+        if draw_graph and all(x >= 0 for x in
+                (draw_update_period, draw_reload_period, draw_update_fadeout)):
+            self.tasks.append(asyncio.create_task(
+                    get_profiler('update_state').listener(
+                        period=draw_update_period)(self.track_node)))
+            self.tasks.append(asyncio.create_task(
+                    get_profiler('update_transition').listener(
+                        period=draw_update_period)(self.track_edge)))
+            self.tasks.append(asyncio.create_task(
+                    get_profiler('reload_target').listener(
+                        period=draw_reload_period)(self.update_graph)))
+
+        if stats_update_period >= 0:
+            self.tasks.append(asyncio.create_task(
+                    get_profiler('perform_instruction').listener(
+                        period=stats_update_period)(self.update_stats)))
 
     @classmethod
     def format_color(cls, r, g, b, a=None):
@@ -220,7 +241,7 @@ class WebDataLoader:
                 to_delete.append(node)
                 continue
             age = (now() - self._node_visited.get(node, self.NA_DATE)).total_seconds()
-            coeff = self.fade_coeff(self._fade, age)
+            coeff = self.fade_coeff(self._draw_update_fadeout, age)
             lerp = self.lerp_color(
                 self.DEFAULT_NODE_COLOR,
                 self.LAST_UPDATE_NODE_COLOR,
@@ -228,7 +249,7 @@ class WebDataLoader:
             fillcolor = self.format_color(*lerp)
 
             age = (now() - self._node_added.get(node, self.NA_DATE)).total_seconds()
-            coeff = self.fade_coeff(self._fade, age)
+            coeff = self.fade_coeff(self._draw_update_fadeout, age)
             penwidth = self.lerp(
                 self.DEFAULT_NODE_PEN_WIDTH,
                 self.NEW_NODE_PEN_WIDTH,
@@ -252,7 +273,7 @@ class WebDataLoader:
 
         for src, dst, data in G.edges(data=True):
             age = (now() - self._edge_visited.get((src, dst), self.NA_DATE)).total_seconds()
-            coeff = self.fade_coeff(self._fade, age)
+            coeff = self.fade_coeff(self._draw_update_fadeout, age)
             lerp = self.lerp_color(
                 self.DEFAULT_EDGE_COLOR,
                 self.LAST_UPDATE_EDGE_COLOR,
@@ -260,7 +281,7 @@ class WebDataLoader:
             color = self.format_color(*lerp)
 
             age = (now() - self._edge_added.get((src, dst), self.NA_DATE)).total_seconds()
-            coeff = self.fade_coeff(self._fade, age)
+            coeff = self.fade_coeff(self._draw_update_fadeout, age)
             penwidth = self.lerp(
                 self.DEFAULT_EDGE_PEN_WIDTH,
                 self.NEW_EDGE_PEN_WIDTH,

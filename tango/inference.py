@@ -10,6 +10,7 @@ from tango.webui import WebRenderer, WebDataLoader
 from tango.common import get_session_task_group, ComponentOwner
 from tango.exceptions import StabilityException
 
+from functools import partial
 from aiohttp import web
 from typing import Optional, Sequence
 from enum import Enum, auto
@@ -616,20 +617,8 @@ class InferenceWebRenderer(WebRenderer):
     def match_config(cls, config: dict) -> bool:
         return config['strategy'].get('type') == 'inference'
 
-    async def _handle_websocket(self, request):
-        async def _handler():
-            ws = web.WebSocketResponse(compress=False)
-            await ws.prepare(request)
-
-            data_loader = InferenceWebDataLoader(ws, self._session, self._hitcounter)
-            gather_tasks = asyncio.gather(*data_loader.tasks)
-            try:
-                await gather_tasks
-            except (RuntimeError, ConnectionResetError) as ex:
-                debug(f'Websocket handler terminated ({ex=})')
-            finally:
-                gather_tasks.cancel()
-        await get_session_task_group().create_task(_handler())
+    def get_webui_factory(self):
+        return partial(InferenceWebDataLoader, **self._webui_kwargs)
 
 class InferenceWebDataLoader(WebDataLoader):
     @property
