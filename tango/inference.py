@@ -798,9 +798,9 @@ class InferenceInputGenerator(ReactiveInputGenerator,
             eqv = [source]
 
         normalized_reward = self._calculate_reward(source, destination)
-        for node in eqv:
-            node_model = self._state_model[node]
-            if mut._actions_taken:
+        if mut._actions_taken:
+            for node in eqv:
+                node_model = self._state_model[node]
                 self._update_weights(node_model['actions'], mut._actions,
                     normalized_reward)
 
@@ -814,8 +814,8 @@ class InferenceInputGenerator(ReactiveInputGenerator,
             for node in eqv:
                 node_model = self._state_model[node]
                 node_model['features'] += fcount
+                node_model['cum_features'] += fcount
                 ancestors.add(node)
-            ancestors.discard(source)
 
             # propagate feature counts to ancestors
             state = source
