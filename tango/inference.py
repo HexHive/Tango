@@ -124,6 +124,7 @@ class StateInferenceStrategy(UniformStrategy,
             case InferenceMode.Discovery:
                 if len(self._tracker.unmapped_states) >= self._inference_batch:
                     self._tracker.mode = InferenceMode.CrossPollination
+                    self._step_interrupted = True
                 else:
                     await super().step(input)
             case InferenceMode.CrossPollination:

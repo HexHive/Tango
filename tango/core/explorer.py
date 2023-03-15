@@ -233,6 +233,9 @@ class BaseExplorer(AbstractExplorer,
                 try:
                     last_input = await self._minimize_transition(
                         self._last_path, self._current_state, last_input)
+                    # we update the reference to the current state, in case
+                    # minimization invalidated it
+                    self._current_state = self._tracker.current_state
                 except Exception as ex:
                     # Minimization failed, again probably due to an
                     # indeterministic target

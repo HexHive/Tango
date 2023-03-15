@@ -582,11 +582,12 @@ class CoverageExplorer(BaseExplorer,
 
     async def _minimize_transition(self, state_or_path: LoadableTarget,
             dst: FeatureSnapshot, input: BaseInput) -> BaseInput:
-        inp = await super()._minimize_transition(state_or_path, dst, input)
-        # At this point, the destination state has been reproduced, and a
-        # minimized path to it has been found. However, the state was initially
-        # found using a non-minimized path, which, despite yielding the same
-        # feature set, could have a different coverage map (features are bins).
-        # To force the state to be updated, we delete it from the state cache.
-        FeatureSnapshot.invalidate(dst)
+        try:
+            inp = await super()._minimize_transition(state_or_path, dst, input)
+        finally:
+            # The state was initially found using a non-minimized path, which,
+            # despite yielding the same feature set, could have a different
+            # coverage map (features are bins). To force the state to be
+            # updated, we delete it from the state cache.
+            FeatureSnapshot.invalidate(dst)
         return inp
