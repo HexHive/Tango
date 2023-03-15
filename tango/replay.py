@@ -24,9 +24,9 @@ class ReplayLoader(BaseLoader,
         await super().finalize(owner)
 
     async def apply_transition(self, transition: Transition,
-            parent_state: AbstractState) -> AbstractState:
+            current_state: AbstractState, **kwargs) -> AbstractState:
         source, destination, input = transition
-        current_state = parent_state or source
+        current_state = current_state or source
         # check if source matches the current state
         if source != current_state:
             raise StabilityException(
@@ -36,7 +36,7 @@ class ReplayLoader(BaseLoader,
         # execute the input
         await self._driver.execute_input(input)
 
-        current_state = self._tracker.peek(source, destination)
+        current_state = self._tracker.peek(source, destination, **kwargs)
         # check if destination matches the current state
         if destination != current_state:
             raise StabilityException(

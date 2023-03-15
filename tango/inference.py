@@ -8,6 +8,7 @@ from tango.core import (UniformStrategy, AbstractState, AbstractInput,
 from tango.cov import CoverageTracker
 from tango.webui import WebRenderer, WebDataLoader
 from tango.common import get_session_task_group, ComponentOwner
+from tango.exceptions import StabilityException
 
 from aiohttp import web
 from typing import Optional, Sequence
@@ -438,11 +439,15 @@ class StateInferenceStrategy(UniformStrategy,
         try:
             assert eqv_src == await self._explorer.reload_state(eqv_src,
                 dryrun=True)
-            await self._explorer.driver.execute_input(input)
+            await self._explorer.loader.apply_transition(
+                (eqv_src, eqv_dst, input), eqv_src, do_not_cache=True)
+            return True
+        except StabilityException as ex:
             # TODO add new states to graph and match against them too?
-            current_state = self._tracker.peek(eqv_src, eqv_dst,
-                do_not_cache=True)
-            return current_state == eqv_dst
+            # current_state = ex.current_state
+            return False
+        except Exception:
+            return False
         finally:
             self._tracker.mode = restore_mode
 

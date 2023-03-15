@@ -248,14 +248,17 @@ class BaseExplorer(AbstractExplorer,
                     self._last_path = self._current_path.copy()
                     src = await self.reload_state(self._last_state, dryrun=True)
                     assert self._last_state == src
-                    await self._driver.execute_input(input)
-                    actual_state = self._tracker.peek(
-                        src, self._current_state)
-                    if self._current_state != actual_state:
-                        raise StatePrecisionException(
-                        f"The path to {self._current_state} is imprecise")
-                except (StateNotReproducibleException,
-                        StatePrecisionException):
+                    await self._loader.apply_transition(
+                        (src, self._current_state, last_input), src,
+                        do_not_cache=True)
+                except StateNotReproducibleException:
+                    # * StateNotReproducibleException:
+                    #   This occurs when the reload_state() encountered an error
+                    #   trying to reproduce a state, most likely due to an
+                    #   indeterministic target
+                    warning(f"Encountered indetermenistic state ({self._current_state})")
+                    raise
+                except StabilityException as ex:
                     # * StatePrecisionException:
                     #   This occurs when the predecessor state was reached
                     #   through a different path than that used by
@@ -263,13 +266,10 @@ class BaseExplorer(AbstractExplorer,
                     #   the predecessor state may have built on top of internal
                     #   program state that was not reproduced by reload_state()
                     #   to arrive at the current successor state.
-                    #
-                    # * StateNotReproducibleException, StatePrecisionException:
-                    #   This occurs when the reload_state() encountered an error
-                    #   trying to reproduce a state, most likely due to an
-                    #   indeterministic target
-                    debug(f"Encountered imprecise state ({self._current_state})")
-                    raise
+                    warning(f"Validation failed {ex=}")
+                    raise StatePrecisionException(
+                            f"The path to {self._current_state} is imprecise") \
+                        from ex
                 except Exception as ex:
                     warning(f'{ex}')
                     raise
@@ -299,11 +299,10 @@ class BaseExplorer(AbstractExplorer,
             src = await self.reload_state(state_or_path, dryrun=True)
             exp_input = input[begin:]
             try:
-                await self._driver.execute_input(exp_input)
+                await self._loader.apply_transition((src, dst, exp_input), src)
             except Exception:
                 success = False
 
-            success &= dst == self._tracker.peek(src, dst)
             if success:
                 reduced = True
                 break
@@ -329,11 +328,11 @@ class BaseExplorer(AbstractExplorer,
                 src = await self.reload_state(state_or_path, dryrun=True)
                 tmp_lin_input = lin_input[:cur] + lin_input[cur + step:]
                 try:
-                    await self._driver.execute_input(tmp_lin_input)
+                    await self._loader.apply_transition(
+                        (src, dst, tmp_lin_input), src)
                 except Exception:
                     success = False
 
-                success &= dst == self._tracker.peek(src, dst)
                 if success:
                     reduced = True
                     lin_input = tmp_lin_input.flatten(inplace=True)
@@ -346,14 +345,18 @@ class BaseExplorer(AbstractExplorer,
 
         # Phase 3: make sure the reduced transition is correct
         src = await self.reload_state(state_or_path, dryrun=True)
-        await self._driver.execute_input(lin_input)
-        success = (dst == self._tracker.peek(src, dst))
-        if not success and reduced:
-            # finally, we fall back to validating the original input
-            lin_input = input
-            src = await self.reload_state(state_or_path, dryrun=True)
-            await self._driver.execute_input(lin_input)
-            success = (dst == self._tracker.peek(src, dst))
+        success = True
+        try:
+            await self._loader.apply_transition((src, dst, lin_input), src)
+        except Exception:
+            success = False
+            if reduced:
+                # finally, we fall back to validating the original input
+                lin_input = input
+                src = await self.reload_state(state_or_path, dryrun=True)
+                await self._loader.apply_transition((src, dst, lin_input), src)
+                success = True
+
         if not success:
             raise StatePrecisionException("destination state did not match current state")
 
