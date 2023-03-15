@@ -282,8 +282,7 @@ class BaseExplorer(AbstractExplorer,
 
         return True, unseen, last_input
 
-    async def _minimize_transition(self,
-            state_or_path: LoadableTarget[AbstractState, BaseInput],
+    async def _minimize_transition(self, state_or_path: LoadableTarget,
             dst: AbstractState, input: BaseInput):
         reduced = False
         orig_len = reduced_len = len(input)
