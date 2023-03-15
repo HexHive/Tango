@@ -258,7 +258,7 @@ class BaseExplorer(AbstractExplorer,
                     #   indeterministic target
                     warning(f"Encountered indetermenistic state ({self._current_state})")
                     raise
-                except StabilityException as ex:
+                except (StabilityException, StatePrecisionException) as ex:
                     # * StatePrecisionException:
                     #   This occurs when the predecessor state was reached
                     #   through a different path than that used by
@@ -357,10 +357,10 @@ class BaseExplorer(AbstractExplorer,
             success = False
             if reduced:
                 # finally, we fall back to validating the original input
-                lin_input = input
                 src = await self.reload_state(state_or_path, dryrun=True)
-                await self._loader.apply_transition((src, dst, lin_input), src,
+                await self._loader.apply_transition((src, dst, input), src,
                     do_not_cache=True)
+                reduced = False
                 success = True
 
         if not success:
