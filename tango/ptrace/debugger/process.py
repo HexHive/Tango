@@ -349,17 +349,19 @@ class PtraceProcess(object):
             if event_cls == ProcessExit and event.process == self:
                 return
 
-            # Event different than a signal? Raise an exception
-            if event_cls != ProcessSignal:
-                raise event
-
-            # Send the signal to the process
-            signum = event.signum
             try:
-                if signum not in (SIGTRAP, SIGSTOP):
-                    event.process.cont(signum)
-                else:
+                if event_cls is ProcessSignal:
+                    # Send the signal to the process
+                    signum = event.signum
+                    if event.signum not in (SIGTRAP, SIGSTOP):
+                        event.process.cont(event.signum)
+                    else:
+                        event.process.cont()
+                elif event.is_syscall_stop():
                     event.process.cont()
+                else:
+                    # Event different than a signal? Raise an exception
+                    raise event
             except PtraceError as ex:
                 warning(f"{event.process} received {event} while waiting for exit,"
                     f" but the signal could not be delivered {ex=}.")
