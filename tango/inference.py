@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from . import debug, info, warning
+from . import debug, info, warning, critical
 
 from tango.core import (UniformStrategy, AbstractState, AbstractInput,
     BaseStateGraph, AbstractTracker, ValueProfiler, TimeElapsedProfiler,
@@ -90,12 +90,14 @@ class StateInferenceStrategy(UniformStrategy,
         capture_components={'tracker'},
         capture_paths=['strategy.inference_batch',
             'strategy.extend_on_groups', 'strategy.recursive_collapse',
-            'strategy.dt_predict', 'strategy.dt_validate']):
+            'strategy.dt_predict', 'strategy.dt_extrapolate',
+            'strategy.dt_validate']):
     def __init__(self, *, tracker: StateInferenceTracker,
             inference_batch: Optional[str | int]=None,
             extend_on_groups: Optional[bool]=False,
             recursive_collapse: Optional[bool]=False,
             dt_predict: Optional[bool]=False,
+            dt_extrapolate: Optional[bool]=False,
             dt_validate: Optional[bool]=False, **kwargs):
         super().__init__(**kwargs)
         self._tracker = tracker
@@ -103,6 +105,7 @@ class StateInferenceStrategy(UniformStrategy,
         self._extend_on_groups = extend_on_groups
         self._recursive_collapse = recursive_collapse
         self._dt_predict = dt_predict
+        self._dt_extrapolate = dt_extrapolate
         self._dt_validate = dt_validate
         if dt_predict:
             self._dt_clf = tree.DecisionTreeClassifier()
@@ -295,11 +298,11 @@ class StateInferenceStrategy(UniformStrategy,
         # the nodes array
         idx = np.arange(eqv_nodes.shape[0])
         # get the index of the unique equivalence set each node maps to
-        groups, membership = np.unique(eqv_arr, axis=0, return_inverse=True)
+        _, membership = np.unique(eqv_arr, axis=0, return_inverse=True)
         # re-arrange eqv set indices so that members are grouped together
         order = np.argsort(membership)
         # get the boundaries of each eqv set in the ordered nodes array
-        _, split = np.unique(membership[order], return_index=True)
+        groups, split = np.unique(membership[order], return_index=True)
         # split the ordered nodes array into eqv groups
         eqvs = np.split(idx[order], split[1:])
 
@@ -329,12 +332,13 @@ class StateInferenceStrategy(UniformStrategy,
                 # traverse the dt
                 dt = self._dt_clf.tree_
                 stack = [0]
-                candidates = []
+                candidates = np.empty((0,), dtype=int)
                 while stack:
                     cur = stack.pop()
                     if dt.children_left[cur] == dt.children_right[cur]:
                         # we've reached a leaf node
-                        candidates.extend(dt.value[cur][0].nonzero()[0])
+                        ((sidx,)) = dt.value[cur][0].nonzero()
+                        candidates = np.append(candidates, sidx)
                         # at this point, egde_mask[:,to_idx] has been covered;
                         # and for grouped nodes, it is all True.
                         continue
@@ -377,6 +381,36 @@ class StateInferenceStrategy(UniformStrategy,
                 projected_pending -= vidx_ungrouped.size
                 dt_skips += np.setdiff1d(vidx_all, vidx_ungrouped,
                     assume_unique=True).size
+
+                if self._dt_extrapolate:
+                    _, _, candidates_idx = np.intersect1d(groups, candidates,
+                        assume_unique=True, return_indices=True)
+                    candidates_eqv = np.array(eqvs, dtype=object)[candidates_idx]
+
+                    if len(candidates_eqv) > 1:
+                        # we have more than one possible equivalence set;
+                        # we train a small DT to differentiate the two, based on
+                        # their updated cap matrices
+                        # FIXME this assumes that all of to_idx is processed
+                        # before new snapshots; instead, this should be enforced
+                        # by constructing uidx with to_idx first
+                        critical("Multiple candidates are not yet supported!")
+                        candidates_eqv = candidates_eqv[(0,),:]
+
+                    assert len(candidates_eqv) == 1
+                    eqv, = candidates_eqv
+                    # snapshot indices which the group can reproduce
+                    cap_eqv, = np.where(
+                        np.logical_or.reduce(cap[eqv] != None, axis=0))
+                    # get the set of new snapshots that we did not test, that
+                    # the group can reproduce
+                    vidx_extra = np.intersect1d(vidx_ungrouped, cap_eqv,
+                        assume_unique=True)
+                    # update the pending tests to include only extrapolated
+                    savings = vidx_ungrouped.size - vidx_extra.size
+                    vidx_ungrouped = vidx_extra
+                    projected_pending += savings
+
                 if not should_validate:
                     # we ignore cross-testing against grouped nodes under the
                     # assumption that DT predicted them correctly
