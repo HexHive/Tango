@@ -63,6 +63,10 @@ class AbstractStateMeta(ABCMeta):
         new.__init__(*args, **kwargs)
         return new
 
+    @classmethod
+    def invalidate(cls, state: AbstractState):
+        cls._cache.pop(state._hash, None)
+
 class AbstractState(ABC, metaclass=AbstractStateMeta):
     __slots__ = '_id', '_hash', '_tracker'
 
