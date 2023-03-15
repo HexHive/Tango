@@ -89,7 +89,7 @@ class StateInferenceTracker(CoverageTracker):
         G = self.state_graph
         return G.nodes - self.nodes.keys()
 
-    def set_nodes(self, nodes: Sequence[FeatureSnapshot],
+    def set_nodes(self, nodes: Sequence[AbstractState],
             eqv_map: Mapping[int, int]):
         self.nodes.clear()
         self.nodes.update({ nodes[i]: i for i in range(len(nodes)) })
