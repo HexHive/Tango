@@ -230,15 +230,29 @@ class StateInferenceStrategy(UniformStrategy,
         return adj
 
     def _spread_crosstests(self, cap, eqvs, eqv_mask, edge_mask):
+        projected_done = 0
+        projected_pending = 0
         for eqv in eqvs:
             if not eqv.size:
                 continue
-            idx_bc = np.where(eqv_mask)[0]
+            idx_bc, = np.where(eqv_mask)
             grid_bc = np.meshgrid(eqv, idx_bc, indexing='ij')
             mixed = np.logical_or.reduce(edge_mask[*grid_bc])
+
+            # we count how many tests were skipped just by broadcasting existing
+            # capabilities
+            tmp_mask = edge_mask[*grid_bc]
+            projected_pending += np.count_nonzero(~tmp_mask)
             edge_mask[*grid_bc] |= mixed
-            untested = np.where(~edge_mask[*grid_bc][0])[0]
+            projected_done += np.count_nonzero(tmp_mask != edge_mask[*grid_bc])
+
+            untested, = np.where(~edge_mask[*grid_bc][0])
             untested_idx = np.arange(len(eqv) * len(untested))
+
+            # for n untested nodes, we perform n tests in total, instead of
+            # |eqv|*n; projected_done are then |eqv|*n-n
+            projected_done += len(untested_idx) - len(untested)
+
             spread_idx = self._nprng.choice(untested_idx, untested.shape[0],
                 replace=False)
             spread_untested = np.zeros((eqv.shape[0], untested.shape[0]),
@@ -249,6 +263,8 @@ class StateInferenceStrategy(UniformStrategy,
             spread[:, untested] = spread_untested
             # uniform_spread = ~np.eye(eqv.shape[0], idx_bc.shape[0], dtype=bool)
             edge_mask[*grid_bc] |= ~spread
+
+        return projected_pending - projected_done
 
     @classmethod
     def _broadcast_capabilities(cls, cap, eqvs, eqv_mask, edge_mask):
@@ -287,16 +303,17 @@ class StateInferenceStrategy(UniformStrategy,
         # split the ordered nodes array into eqv groups
         eqvs = np.split(idx[order], split[1:])
 
-        if self._extend_on_groups:
-            # spread the responsibility of tests across members of the set
-            self._spread_crosstests(cap, eqvs, eqv_mask, edge_mask)
-
-        should_predict = self._dt_predict and self._dt_fit
-
         init_done = np.count_nonzero(edge_mask)
         init_pending = edge_mask.size - init_done
+        projected_pending = init_pending
+
+        should_predict = self._dt_predict and self._dt_fit
+        if self._extend_on_groups:
+            # spread the responsibility of tests across members of the set
+            actual_done = self._spread_crosstests(cap, eqvs, eqv_mask, edge_mask)
+            projected_pending -= actual_done
+
         if should_predict:
-            projected_pending = init_pending
             dt_skips = 0
             dt_tests = 0
 
@@ -364,7 +381,7 @@ class StateInferenceStrategy(UniformStrategy,
                     # we ignore cross-testing against grouped nodes under the
                     # assumption that DT predicted them correctly
                     vidx = vidx_ungrouped
-            elif should_predict:
+            else:
                 projected_pending -= np.count_nonzero(~edge_mask[eqv_idx,:])
 
             if vidx is None:
@@ -413,6 +430,9 @@ class StateInferenceStrategy(UniformStrategy,
         if should_predict:
             percent = 100 * dt_skips / (dt_tests + dt_skips)
             ValueMeanProfiler('dt_savings', samples=5)(percent)
+
+        percent = 100 * projected_pending / init_pending
+        ValueMeanProfiler('total_savings', samples=5)(percent)
 
         if self._extend_on_groups:
             self._broadcast_capabilities(cap, eqvs, eqv_mask, edge_mask)
