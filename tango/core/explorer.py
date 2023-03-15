@@ -135,7 +135,6 @@ class BaseExplorer(AbstractExplorer,
                 else:
                     if inp:
                         self._current_path.append((previous, current, inp))
-                    nxt = self._tracker.peek(previous, current)
         except StopAsyncIteration:
             return current
 
