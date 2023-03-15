@@ -51,6 +51,14 @@ class Fuzzer:
 
     @staticmethod
     def construct_overrides(override_list: list[tuple[str, str]]) -> dict:
+        def is_number_repl_isdigit(s):
+            """ Returns True if string is a number. """
+            """https://stackoverflow.com/a/23639915 """
+            return s.lstrip('-') \
+                .replace('.','',1) \
+                .replace('e-','',1) \
+                .replace('e','',1) \
+                .isdigit()
         if not override_list:
             return
         overrides = dict()
@@ -65,7 +73,7 @@ class Fuzzer:
             key = keys[-1]
             if value.lower() in ('true', 'false'):
                 value = (value == 'true')
-            elif value.isnumeric():
+            elif is_number_repl_isdigit(value):
                 value = literal_eval(value)
             d[key] = value
         return overrides
