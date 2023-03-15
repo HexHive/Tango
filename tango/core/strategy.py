@@ -99,7 +99,7 @@ class BaseStrategy(AbstractStrategy,
             try:
                 return await self._reload_target_once()
             except StateNotReproducibleException as ex:
-                warning(f"Target state {ex._faulty_state} not reachable anymore!")
+                warning(f"Target state {ex.faulty_state} not reachable anymore!")
             except (asyncio.CancelledError, LoadedException):
                 # LoadedExceptions can bubble up the exception handlers because
                 # they only concern the loader/channel

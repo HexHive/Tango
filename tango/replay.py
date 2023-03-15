@@ -2,6 +2,7 @@ from tango.core import (BaseLoader, AbstractDriver,
     LoadableTarget, Path, AbstractState, Transition)
 from tango.unix import ProcessDriver
 from tango.common import ComponentOwner
+from tango.exceptions import StabilityException
 from typing       import AsyncGenerator, Any
 
 __all__ = ['ReplayLoader', 'ReplayForkLoader']
@@ -29,7 +30,8 @@ class ReplayLoader(BaseLoader,
         # check if source matches the current state
         if source != current_state:
             raise StabilityException(
-                f"source state ({source}) did not match current state ({current_state})"
+                f"source state ({source}) did not match current state ({current_state})",
+                current_state
             )
         # execute the input
         await self._driver.execute_input(input)
@@ -37,9 +39,9 @@ class ReplayLoader(BaseLoader,
         current_state = self._tracker.peek(source, destination)
         # check if destination matches the current state
         if destination != current_state:
-            faulty_state = destination
             raise StabilityException(
-                f"destination state ({destination}) did not match current state ({current_state})"
+                f"destination state ({destination}) did not match current state ({current_state})",
+                current_state
             )
         return current_state
 

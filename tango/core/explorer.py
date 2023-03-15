@@ -164,7 +164,7 @@ class BaseExplorer(AbstractExplorer,
                 self._last_state = current_state
         except StateNotReproducibleException as ex:
             if not dryrun:
-                self._tracker.update_state(ex._faulty_state, input=None, exc=ex)
+                self._tracker.update_state(ex.faulty_state, input=None, exc=ex)
             await self._state_reload_cb(loadable, exc=ex)
             raise
         return current_state
@@ -438,7 +438,8 @@ class BaseExplorerContext(BaseDecorator):
                 # self._tracker.update(self._last_state, last_input, peek_result=self._current_state)
                 if exp._current_state != exp._tracker.update_state(last_state,
                         input=last_input):
-                    raise StabilityException("Failed to obtain consistent behavior")
+                    raise StabilityException("Failed to obtain consistent behavior",
+                        exp._tracker.current_state)
 
                 if updated:
                     exp._tracker.update_transition(

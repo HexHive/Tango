@@ -115,7 +115,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
             # FIXME not very clean, consider using arbitration protocols
             return self._generator.startup_input
         elif isinstance(exc, StateNotReproducibleException):
-            faulty_state = exc._faulty_state
+            faulty_state = exc.faulty_state
             self._strategy.update_state(faulty_state, input=None, exc=exc)
             if hasattr(loadable, '__iter__'):
                 # find and invalidate the transition along the path that

@@ -20,7 +20,9 @@ class LoadedException(RuntimeError):
         return self._ex
 
 class StabilityException(RuntimeError):
-    pass
+    def __init__(self, msg, current_state):
+        super().__init__(msg)
+        self.current_state = current_state
 
 class StatePrecisionException(RuntimeError):
     pass
@@ -46,4 +48,4 @@ class ProcessCrashedException(ProcessTerminatedException):
 class StateNotReproducibleException(RuntimeError):
     def __init__(self, msg, faulty_state):
         super().__init__(msg)
-        self._faulty_state = faulty_state
+        self.faulty_state = faulty_state
