@@ -385,7 +385,7 @@ class IterCachingDecorator(BaseDecorator):
         decorated_method = getattr(self._input, fn_name)
         return self._orig.__self__
 
-class SlicingDecorator(BaseDecorator):
+class SlicingDecorator(IterCachingDecorator):
     def __init__(self, idx):
         super().__init__()
         if isinstance(idx, slice):
@@ -431,7 +431,7 @@ class SlicingDecorator(BaseDecorator):
             fmt = f'{self._start}:{self._stop}:{self._step}'
         return f'SlicedInput:0x{input.id:08X} (0x{self._input_id:08X}[{fmt}])'
 
-class JoiningDecorator(BaseDecorator):
+class JoiningDecorator(IterCachingDecorator):
     def __init__(self, *,
             prefix: Sequence[AbstractInput]=(),
             suffix: Sequence[AbstractInput]=(), flatten_joined: bool=True):
