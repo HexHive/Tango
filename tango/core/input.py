@@ -7,7 +7,7 @@ from tango.core.dataio import FormatDescriptor, AbstractInstruction
 from abc import ABC, ABCMeta, abstractmethod
 from typing import Union, Sequence, Iterable, Iterator, AsyncIterator, BinaryIO
 from functools import partial, partialmethod
-from itertools import islice, chain
+from itertools import islice, chain, tee
 import inspect
 import types
 import struct
@@ -15,9 +15,9 @@ import io
 import os
 
 __all__ = [
-    'AbstractInput', 'BaseInput', 'BaseDecorator', 'SlicingDecorator',
-    'JoiningDecorator', 'MemoryCachingDecorator', 'PreparedInput',
-    'SerializedInput', 'SerializedInputMeta', 'Serializer',
+    'AbstractInput', 'BaseInput', 'BaseDecorator', 'IterCachingDecorator',
+    'SlicingDecorator', 'JoiningDecorator', 'MemoryCachingDecorator',
+    'PreparedInput', 'SerializedInput', 'SerializedInputMeta', 'Serializer',
     'EmptyInput'
 ]
 
@@ -190,21 +190,18 @@ class BaseDecoratorMeta(type):
         return kls
 
 class BaseDecorator(metaclass=BaseDecoratorMeta):
-    DECORATOR_MAX_DEPTH = 10
 
-    def __call__(self, input, inplace=False) -> AbstractInput:
+    def __call__(self, input, *, inplace=False, methods=None) -> AbstractInput:
         self._handle_copy(input, inplace=inplace)
+        methods = methods or self.DECORATABLE_METHODS
 
-        for name in self.DECORATABLE_METHODS:
+        for name in methods:
             func = getattr(self, name)
             oldfunc = getattr(input, name, None)
             newfunc = partialmethod(partial(func), oldfunc).__get__(self._input)
             setattr(self._input, name, newfunc)
 
-        if self._input.___decorator_depth___ > self.DECORATOR_MAX_DEPTH:
-            return MemoryCachingDecorator()(self._input, inplace=inplace)
-        else:
-            return self._input
+        return self._input
 
     def _handle_copy(self, input, *, inplace) -> AbstractInput:
         self._input_id = input.id
@@ -222,10 +219,11 @@ class BaseDecorator(metaclass=BaseDecoratorMeta):
     def ___repr___(self, input, orig):
         return f"{self.__class__.__name__}({orig()})"
 
-    def undecorate(self):
+    def undecorate(self, *, methods=None):
         assert getattr(self, '_input', None) is not None, \
                 "Decorator has not been called before!"
-        for name in self.DECORATABLE_METHODS:
+        methods = methods or self.DECORATABLE_METHODS
+        for name in methods:
             newfunc = getattr(self._input, name, None)
             # extract `orig` from the partial function
             oldfunc = newfunc._partialmethod.args[0]
@@ -357,6 +355,44 @@ class MemoryCachingDecorator(BaseDecorator):
 
     def ___len___(self):
         return self._cached_len
+
+class IterCachingDecorator(BaseDecorator):
+    DECORATOR_MAX_DEPTH = 10
+
+    def __call__(self, input, *, inplace=False, methods=None) -> AbstractInput:
+        methods = methods or self.DECORATABLE_METHODS
+        fn_name = '___iter___'
+        filtered = methods - {fn_name}
+        decorated = super().__call__(input, inplace=inplace, methods=filtered)
+        if fn_name in methods:
+            func = getattr(self, fn_name)
+            olditer = getattr(input, fn_name, None)
+            # We use a tee so that repeated accesses to the decorated input do
+            # not result in repeated accesses to the original, which may have
+            # unintended side effects.
+            self._orig = olditer
+            self._tee = self._orig()
+            newfunc = partialmethod(
+                partial(func), self.get_iter).__get__(self._input)
+            setattr(decorated, fn_name, newfunc)
+
+        if decorated.___decorator_depth___ > self.DECORATOR_MAX_DEPTH:
+            return MemoryCachingDecorator()(decorated, inplace=inplace)
+        else:
+            return decorated
+
+    def get_iter(self):
+        self._tee, res = tee(self._tee, 2)
+        return res
+
+    def pop(self) -> AbstractInput:
+        fn_name = '___iter___'
+        if not self.DECORATABLE_METHODS or not hasattr(self, '_input') or \
+                not fn_name in self.DECORATABLE_METHODS:
+            return super().pop()
+
+        decorated_method = getattr(self._input, fn_name)
+        return self._orig.__self__
 
 class DecoratedInput(BaseInput):
     def __init__(self, decorator: BaseDecorator, depth: int=0):
