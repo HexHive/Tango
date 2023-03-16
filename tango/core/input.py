@@ -368,9 +368,12 @@ class JoiningDecorator(BaseDecorator):
         ids = (f'0x{x.id:08X}' for x in self._others)
         return f'JoinedInput:0x{input.id:08X} ({" || ".join((id, *ids))})'
 
-class MemoryCachingDecorator(BaseDecorator):
-    def __call__(self, input, inplace=False): # -> AbstractInput:
-        new_input = self._handle_copy(input, inplace=inplace)
+class MemoryCachingDecorator(AbstractDecorator):
+    def __call__(self, input, *, inplace=False) -> AbstractInput:
+        if not inplace or not input.decorated:
+            new_input = DecoratedInput(self, depth=1)
+        else:
+            new_input = input
 
         new_input._cached_repr = repr(input)
         new_input._cached_iter = tuple(input)
@@ -382,6 +385,7 @@ class MemoryCachingDecorator(BaseDecorator):
             new_func = types.MethodType(func, new_input)
             setattr(new_input, name, new_func)
 
+        self._input = new_input
         self.undecorate()
         return new_input
 
