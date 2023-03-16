@@ -387,21 +387,22 @@ class IterCachingDecorator(BaseDecorator):
 
 class SlicingDecorator(BaseDecorator):
     def __init__(self, idx):
-        self._idx = idx
-        if isinstance(self._idx, slice):
-            self._start = self._idx.start or 0
-            self._stop = self._idx.stop
-            self._step = self._idx.step or 1
+        super().__init__()
+        if isinstance(idx, slice):
+            self._start = idx.start or 0
+            self._stop = idx.stop
+            self._step = idx.step or 1
         else:
-            self._start = self._idx
-            self._stop = self._idx + 1
+            self._start = idx
+            self._stop = idx + 1
             self._step = 1
 
     def __call__(self, input, **kwargs) -> AbstractInput:
         if self._start == 0 and self._stop == None and self._step == 1:
             return input
-        elif input.decorated and isinstance(input.___decorator___, self.__class__) \
-                and input.___decorator___._step == self._step:
+        elif input.decorated and \
+                isinstance(input.___decorator___, self.__class__) and \
+                input.___decorator___._step == self._step:
             input, other = input.pop_decorator()
             new_start = self._start + other._start
             if self._stop is not None:
@@ -413,7 +414,7 @@ class SlicingDecorator(BaseDecorator):
             self._start = new_start
             self._stop = new_stop
 
-        return super().__call__(input, inplace=inplace)
+        return super().__call__(input, **kwargs)
 
     def ___iter___(self, input, orig):
         return islice(orig(), self._start, self._stop, self._step)
@@ -484,7 +485,8 @@ class PreparedInput(BaseInput):
     A buffered input. All instructions are readily available and can be exported
     to a file.
     """
-    def __init__(self, *, instructions: Sequence[AbstractInstruction]=None, **kwargs):
+    def __init__(self, *, instructions: Sequence[AbstractInstruction]=None,
+            **kwargs):
         super().__init__(**kwargs)
         self._instructions = []
         if instructions:
