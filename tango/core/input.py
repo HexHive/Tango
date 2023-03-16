@@ -138,7 +138,7 @@ class BaseInput(AbstractInput):
         return SlicingDecorator(idx)(self)
 
     def ___add___(self, other: AbstractInput) -> BaseInput:
-        return JoiningDecorator(other)(self)
+        return JoiningDecorator(suffix=(other,))(self)
 
     def flatten(self, inplace: bool=False) -> BaseInput:
         return MemoryCachingDecorator()(self, inplace=inplace)
@@ -353,22 +353,53 @@ class SlicingDecorator(BaseDecorator):
         return f'SlicedInput:0x{input.id:08X} (0x{self._input_id:08X}[{fmt}])'
 
 class JoiningDecorator(BaseDecorator):
-    def __init__(self, *others):
-        self._others = [o for o in others if not isinstance(o, EmptyInput)]
+    def __init__(self, *,
+            prefix: Sequence[AbstractInput]=(),
+            suffix: Sequence[AbstractInput]=(), flatten_joined: bool=True):
+        super().__init__()
+        prefix = filter(lambda x: not isinstance(x, EmptyInput), prefix)
+        suffix = filter(lambda x: not isinstance(x, EmptyInput), suffix)
 
-    def __call__(self, input, inplace=False): # -> AbstractInput:
+        if flatten_joined:
+            self._prefix = tuple(y
+                for x in map(self._flatten_joined, prefix)
+                    for y in x)
+            self._suffix = tuple(y
+                for x in map(self._flatten_joined, suffix)
+                    for y in x)
+        else:
+            self._prefix = tuple(prefix)
+            self._suffix = tuple(suffix)
+
+    @classmethod
+    def _flatten_joined(cls, inp: AbstractInput) -> Sequence[AbstractInput]:
+        if inp.decorated and isinstance(inp.___decorator___, cls):
+            inp, other = inp.pop_decorator()
+            prefix = sum((cls._flatten_joined(x) for x in other._prefix),
+                start=())
+            suffix = sum((cls._flatten_joined(x) for x in other._suffix),
+                start=())
+            return (*prefix, inp, *suffix)
+        else:
+            return (inp,)
+
+    def __call__(self, input, **kwargs) -> AbstractInput:
+        if not self._prefix and not self._suffix:
+            return input
         if input.decorated and isinstance(input.___decorator___, self.__class__):
             input, other = input.pop_decorator()
-            self._others = other._others + self._others
-        return super().__call__(input, inplace=inplace)
+            self._prefix = self._prefix + other._prefix
+            self._suffix = other._suffix + self._suffix
+        return super().__call__(input, **kwargs)
 
     def ___iter___(self, input, orig):
-        return chain(orig(), *self._others)
+        return chain(*self._prefix, orig(), *self._suffix)
 
     def ___repr___(self, input, orig):
         id = f'0x{self._input_id:08X}'
-        ids = (f'0x{x.id:08X}' for x in self._others)
-        return f'JoinedInput:0x{input.id:08X} ({" || ".join((id, *ids))})'
+        pres = (f'0x{x.id:08X}' for x in self._prefix)
+        sufs = (f'0x{x.id:08X}' for x in self._suffix)
+        return f'JoinedInput:0x{input.id:08X} ({" || ".join((*pres, id, *sufs))})'
 
 class MemoryCachingDecorator(AbstractDecorator):
     def __call__(self, input, *, inplace=False) -> AbstractInput:
