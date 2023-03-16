@@ -11,7 +11,7 @@ from tango.webui import WebRenderer, WebDataLoader
 from tango.common import get_session_task_group, ComponentOwner
 from tango.exceptions import StabilityException
 
-from functools import partial
+from functools import partial, cached_property
 from aiohttp import web
 from typing import Optional, Sequence
 from enum import Enum, auto
@@ -84,13 +84,14 @@ class StateInferenceTracker(CoverageTracker):
         )
         G.add_edges_from(triples)
 
-    @property
+    @cached_property
     def unmapped_states(self):
         G = self.state_graph
         return G.nodes - self.nodes.keys()
 
     def set_nodes(self, nodes: Sequence[AbstractState],
             eqv_map: Mapping[int, int]):
+        self.__dict__.pop('unmapped_states', None)
         self.nodes.clear()
         self.nodes.update({ nodes[i]: i for i in range(len(nodes)) })
         self.node_arr = np.array(list(nodes), dtype=object)
