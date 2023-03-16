@@ -325,13 +325,15 @@ class SlicingDecorator(BaseDecorator):
         elif input.decorated and isinstance(input.___decorator___, self.__class__) \
                 and input.___decorator___._step == self._step:
             input, other = input.pop_decorator()
-            self._start += other._start
+            new_start = self._start + other._start
             if self._stop is not None:
-                self._stop = other._start + (self._stop - self._start)
+                new_stop = new_start + (self._stop - self._start)
                 assert other._stop is None or \
-                    other._stop >= self._stop
+                    other._stop >= new_stop
             else:
-                self._stop = other._stop
+                new_stop = other._stop
+            self._start = new_start
+            self._stop = new_stop
 
         return super().__call__(input, inplace=inplace)
 
