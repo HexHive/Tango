@@ -423,7 +423,7 @@ class BaseExplorerContext(BaseDecorator):
             yield instruction
             # the generator execution is suspended until next() is called so
             # the BaseExplorer update is only called after the instruction
-            # is executed by the loader
+            # is performed by the driver
 
             try:
                 last_state = exp._last_state
