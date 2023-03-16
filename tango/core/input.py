@@ -307,6 +307,84 @@ class BaseDecorator(AbstractDecorator):
         # handle special descriptor objects
         return getattr(method, '__objclass__', None)
 
+class MemoryCachingDecorator(AbstractDecorator):
+    def __call__(self, input, *, inplace=False) -> AbstractInput:
+        if not inplace or not input.decorated:
+            new_input = DecoratedInput(self, depth=1)
+        else:
+            new_input = input
+
+        new_input._cached_repr = repr(input)
+        new_input._cached_iter = tuple(input)
+        new_input._cached_len = len(new_input._cached_iter)
+
+        cls = self.__class__
+        for name in self.DECORATABLE_METHODS:
+            func = getattr(cls, name)
+            new_func = types.MethodType(func, new_input)
+            setattr(new_input, name, new_func)
+
+        self._input = new_input
+        self.undecorate()
+        return new_input
+
+    def undecorate(self):
+        assert getattr(self, '_input', None) is not None, \
+                "Decorator has not been called before!"
+        self._input.___decorator_depth___ = 0
+        self._input.___decorator___ = None
+        self._input = None
+
+    def pop(self) -> AbstractInput:
+        raise NotImplementedError("This should never be reachable!")
+
+    def ___iter___(self):
+        return iter(self._cached_iter)
+
+    def ___repr___(self):
+        return self._cached_repr
+
+    def ___len___(self):
+        return self._cached_len
+
+class IterCachingDecorator(BaseDecorator):
+    DECORATOR_MAX_DEPTH = 10
+
+    def __call__(self, input, *, inplace=False, methods=None) -> AbstractInput:
+        methods = methods or self.DECORATABLE_METHODS
+        fn_name = '___iter___'
+        filtered = methods - {fn_name}
+        decorated = super().__call__(input, inplace=inplace, methods=filtered)
+        if fn_name in methods:
+            func = getattr(self, fn_name)
+            olditer = getattr(input, fn_name, None)
+            # We use a tee so that repeated accesses to the decorated input do
+            # not result in repeated accesses to the original, which may have
+            # unintended side effects.
+            self._orig = olditer
+            self._tee = self._orig()
+            newfunc = partialmethod(
+                partial(func), self.get_iter).__get__(self._input)
+            setattr(decorated, fn_name, newfunc)
+
+        if decorated.___decorator_depth___ > self.DECORATOR_MAX_DEPTH:
+            return MemoryCachingDecorator()(decorated, inplace=inplace)
+        else:
+            return decorated
+
+    def get_iter(self):
+        self._tee, res = tee(self._tee, 2)
+        return res
+
+    def pop(self) -> AbstractInput:
+        fn_name = '___iter___'
+        if not self.DECORATABLE_METHODS or not hasattr(self, '_input') or \
+                not fn_name in self.DECORATABLE_METHODS:
+            return super().pop()
+
+        decorated_method = getattr(self._input, fn_name)
+        return self._orig.__self__
+
 class SlicingDecorator(BaseDecorator):
     def __init__(self, idx):
         self._idx = idx
@@ -400,85 +478,6 @@ class JoiningDecorator(BaseDecorator):
         pres = (f'0x{x.id:08X}' for x in self._prefix)
         sufs = (f'0x{x.id:08X}' for x in self._suffix)
         return f'JoinedInput:0x{input.id:08X} ({" || ".join((*pres, id, *sufs))})'
-
-class MemoryCachingDecorator(AbstractDecorator):
-    def __call__(self, input, *, inplace=False) -> AbstractInput:
-        if not inplace or not input.decorated:
-            new_input = DecoratedInput(self, depth=1)
-        else:
-            new_input = input
-
-        new_input._cached_repr = repr(input)
-        new_input._cached_iter = tuple(input)
-        new_input._cached_len = len(new_input._cached_iter)
-
-        cls = self.__class__
-        for name in self.DECORATABLE_METHODS:
-            func = getattr(cls, name)
-            new_func = types.MethodType(func, new_input)
-            setattr(new_input, name, new_func)
-
-        self._input = new_input
-        self.undecorate()
-        return new_input
-
-    def undecorate(self):
-        assert getattr(self, '_input', None) is not None, \
-                "Decorator has not been called before!"
-        self._input.___decorator_depth___ = 0
-        self._input.___decorator___ = None
-        self._input = None
-
-    def pop(self) -> AbstractInput:
-        raise NotImplementedError("This should never be reachable!")
-
-    def ___iter___(self):
-        return iter(self._cached_iter)
-
-    def ___repr___(self):
-        return self._cached_repr
-
-    def ___len___(self):
-        return self._cached_len
-
-class IterCachingDecorator(BaseDecorator):
-    DECORATOR_MAX_DEPTH = 10
-
-    def __call__(self, input, *, inplace=False, methods=None) -> AbstractInput:
-        methods = methods or self.DECORATABLE_METHODS
-        fn_name = '___iter___'
-        filtered = methods - {fn_name}
-        decorated = super().__call__(input, inplace=inplace, methods=filtered)
-        if fn_name in methods:
-            func = getattr(self, fn_name)
-            olditer = getattr(input, fn_name, None)
-            # We use a tee so that repeated accesses to the decorated input do
-            # not result in repeated accesses to the original, which may have
-            # unintended side effects.
-            self._orig = olditer
-            self._tee = self._orig()
-            newfunc = partialmethod(
-                partial(func), self.get_iter).__get__(self._input)
-            setattr(decorated, fn_name, newfunc)
-
-        if decorated.___decorator_depth___ > self.DECORATOR_MAX_DEPTH:
-            return MemoryCachingDecorator()(decorated, inplace=inplace)
-        else:
-            return decorated
-
-    def get_iter(self):
-        self._tee, res = tee(self._tee, 2)
-        return res
-
-    def pop(self) -> AbstractInput:
-        fn_name = '___iter___'
-        if not self.DECORATABLE_METHODS or not hasattr(self, '_input') or \
-                not fn_name in self.DECORATABLE_METHODS:
-            return super().pop()
-
-        decorated_method = getattr(self._input, fn_name)
-        return self._orig.__self__
-
 
 class PreparedInput(BaseInput):
     """
