@@ -385,6 +385,16 @@ class IterCachingDecorator(BaseDecorator):
         decorated_method = getattr(self._input, fn_name)
         return self._orig.__self__
 
+    def ___iter___(self, input, orig):
+        return orig()
+
+    def ___repr___(self, input, orig):
+        return f"shielded({orig()})"
+
+    @classmethod
+    def shield(cls, input, inplace=True) -> AbstractInput:
+        return cls()(input, inplace=inplace, methods={'___iter___'})
+
 class SlicingDecorator(IterCachingDecorator):
     def __init__(self, idx):
         super().__init__()
