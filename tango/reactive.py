@@ -200,6 +200,8 @@ class ReactiveInputGenerator(BaseInputGenerator):
         if state_changed or mut._actions_taken:
             self._log_model(source, destination, *ancestors)
 
+        return normalized_reward, mut._actions_taken, mut._actions
+
     def _init_state_model(self, state: AbstractState, copy_from: AbstractState=None):
         if copy_from is None:
             # initialize model to map of actions to tuple(weight, prob)
