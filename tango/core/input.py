@@ -15,10 +15,10 @@ import io
 import os
 
 __all__ = [
-    'AbstractInput', 'BaseInput', 'BaseDecorator', 'IterCachingDecorator',
-    'SlicingDecorator', 'JoiningDecorator', 'MemoryCachingDecorator',
-    'PreparedInput', 'SerializedInput', 'SerializedInputMeta', 'Serializer',
-    'EmptyInput'
+    'AbstractInput', 'BaseInput', 'AbstractDecorator', 'BaseDecorator',
+    'IterCachingDecorator', 'SlicingDecorator', 'JoiningDecorator',
+    'MemoryCachingDecorator', 'PreparedInput', 'SerializedInput',
+    'SerializedInputMeta', 'Serializer', 'EmptyInput'
 ]
 
 class AbstractInput(ABC):
@@ -176,7 +176,7 @@ class EmptyInput(BaseInput):
         return other
 
 class DecoratedInput(BaseInput):
-    def __init__(self, decorator: BaseDecorator, depth: int=0):
+    def __init__(self, decorator: AbstractDecorator, depth: int=0):
         super().__init__()
         self.___decorator___ = decorator
         self.___decorator_depth___ = depth
@@ -192,12 +192,12 @@ class DecoratedInput(BaseInput):
     def decorated(self):
         return (self.___decorator_depth___ > 0) or self.___decorator___
 
-    def pop_decorator(self) -> (AbstractInput, BaseDecorator):
+    def pop_decorator(self) -> (AbstractInput, AbstractDecorator):
         decorator = self.___decorator___
         return decorator.pop(), decorator
 
-    def search_decorator_stack(self, select: Callable[[BaseDecorator], bool],
-            *, max_depth: int=0) -> BaseDecorator:
+    def search_decorator_stack(self, select: Callable[[AbstractDecorator], bool],
+            *, max_depth: int=0) -> AbstractDecorator:
         depth = 0
         input = self
         while True:
@@ -210,22 +210,32 @@ class DecoratedInput(BaseInput):
                 return decorator
             depth += 1
 
-class BaseDecoratorMeta(type):
+class AbstractDecoratorMeta(ABCMeta):
     ALL_DECORATABLE_METHODS = {'___iter___', '___aiter___', '___len___',
         '___add___', '___getitem___', '___repr___', '___eq___'}
 
     def __new__(metacls, name, bases, namespace):
         if 'DECORATABLE_METHODS' not in namespace:
             kls_dec_methods = metacls.ALL_DECORATABLE_METHODS & namespace.keys()
+            mro_dec_methods = kls_dec_methods.copy()
             for base in bases:
                 if hasattr(base, 'DECORATABLE_METHODS'):
-                    kls_dec_methods |= base.DECORATABLE_METHODS
-            namespace['DECORATABLE_METHODS'] = kls_dec_methods
+                    mro_dec_methods |= base.DECORATABLE_METHODS
+            namespace['DECORATABLE_METHODS'] = mro_dec_methods
+            namespace['OWN_DECORATABLE_METHODS'] = kls_dec_methods
         kls = super().__new__(metacls, name, bases, namespace)
         return kls
 
-class BaseDecorator(metaclass=BaseDecoratorMeta):
+class AbstractDecorator(ABC, metaclass=AbstractDecoratorMeta):
+    @abstractmethod
+    def __call__(self, input: AbstractInput):
+        return input
 
+    @abstractmethod
+    def pop(self) -> AbstractInput:
+        raise NotImplementedError
+
+class BaseDecorator(AbstractDecorator):
     def __call__(self, input, *, inplace=False, methods=None) -> AbstractInput:
         self._handle_copy(input, inplace=inplace)
         methods = methods or self.DECORATABLE_METHODS
@@ -251,9 +261,6 @@ class BaseDecorator(metaclass=BaseDecoratorMeta):
         ValueMeanProfiler("decorator_depth", samples=100)(depth)
         return self._input
 
-    def ___repr___(self, input, orig):
-        return f"{self.__class__.__name__}({orig()})"
-
     def undecorate(self, *, methods=None):
         assert getattr(self, '_input', None) is not None, \
                 "Decorator has not been called before!"
@@ -266,33 +273,39 @@ class BaseDecorator(metaclass=BaseDecoratorMeta):
         self._input.___decorator___ = None
         self._input = None
 
-    @classmethod
-    def get_parent_class(cls, method):
-        """
-        Gets the class that defined the method.
-        Courtesy of:
-        https://stackoverflow.com/questions/3589311/get-defining-class-of-unbound-method-object-in-python-3/25959545#25959545
-        """
-        if isinstance(method, partial):
-            return cls.get_parent_class(method.func)
-        if inspect.ismethod(method) or (inspect.isbuiltin(method) and getattr(method, '__self__', None) is not None and getattr(method.__self__, '__class__', None)):
-            for cls in inspect.getmro(method.__self__.__class__):
-                if method.__name__ in cls.__dict__:
-                    return cls
-            method = getattr(method, '__func__', method)  # fallback to __qualname__ parsing
-        return getattr(method, '__objclass__', None)  # handle special descriptor objects
-
     def pop(self) -> AbstractInput:
         if not self.DECORATABLE_METHODS or not hasattr(self, '_input'):
             # an "empty" decorator decorates no inputs
             return None
         # a decorator usually decorates at least one method, which allows us to
         # extract the `orig` argument and return its owner
-        decorated_method = getattr(self._input, next(iter(self.DECORATABLE_METHODS)))
+        decorated_method = getattr(self._input, next(iter(self.OWN_DECORATABLE_METHODS)))
         # decorated methods are partial functions with args[0] == orig
         orig = decorated_method._partialmethod.args[0]
         owner = orig.__self__
         return owner
+
+    def ___repr___(self, input, orig):
+        return f"{self.__class__.__name__}({orig()})"
+
+    @classmethod
+    def get_parent_class(cls, method):
+        """
+        Gets the class that defined the method.
+        Courtesy of: https://stackoverflow.com/a/25959545
+        """
+        if isinstance(method, partial):
+            return cls.get_parent_class(method.func)
+        if inspect.ismethod(method) or (inspect.isbuiltin(method) and \
+                getattr(method, '__self__', None) is not None and \
+                getattr(method.__self__, '__class__', None)):
+            for cls in inspect.getmro(method.__self__.__class__):
+                if method.__name__ in cls.__dict__:
+                    return cls
+            # fallback to __qualname__ parsing
+            method = getattr(method, '__func__', method)
+        # handle special descriptor objects
+        return getattr(method, '__objclass__', None)
 
 class SlicingDecorator(BaseDecorator):
     def __init__(self, idx):
