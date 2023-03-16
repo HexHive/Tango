@@ -23,7 +23,8 @@ __all__ = [
 class AbstractStrategy(AsyncComponent, IUpdateCallback, ABC,
         component_type=ComponentType.strategy,
         capture_components={ComponentType.generator}):
-    def __init__(self, *, generator: AbstractInputGenerator):
+    def __init__(self, *, generator: AbstractInputGenerator, **kwargs):
+        super().__init__(**kwargs)
         self._generator = generator
 
     @abstractmethod

@@ -25,5 +25,6 @@ class AbstractLoader(AsyncComponent, ABC,
 
 class BaseLoader(AbstractLoader,
         capture_components={ComponentType.tracker}):
-    def __init__(self, *, tracker: AbstractTracker):
+    def __init__(self, *, tracker: AbstractTracker, **kwargs):
+        super().__init__(**kwargs)
         self._tracker = tracker

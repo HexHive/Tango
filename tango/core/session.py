@@ -44,13 +44,14 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
     This class initializes and tracks the global state of the fuzzer.
     """
     def __init__(self, *, explorer: BaseExplorer,
-            generator: BaseInputGenerator, strategy: BaseStrategy):
+            generator: BaseInputGenerator, strategy: BaseStrategy, **kwargs):
         """
         FuzzerSession initializer.
         Takes the fuzzer configuration, initial seeds, and other parameters as
         arguments.
         Initializes the target and establishes a communication channel.
         """
+        super().__init__(**kwargs)
         self._explorer = explorer
         self._generator = generator
         self._strategy = strategy

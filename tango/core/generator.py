@@ -47,7 +47,8 @@ class BaseInputGenerator(AbstractInputGenerator,
         capture_components={ComponentType.channel_factory},
         capture_paths=['generator.startup', 'generator.seeds', 'fuzzer.work_dir']):
     def __init__(self, *, work_dir: str, channel_factory: AbstractChannelFactory,
-            startup: Optional[str]=None, seeds: Optional[str]=None):
+            startup: Optional[str]=None, seeds: Optional[str]=None, **kwargs):
+        super().__init__(**kwargs)
         self._seed_dir = seeds
         self._work_dir = work_dir
         self._startup_path = startup

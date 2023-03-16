@@ -5,7 +5,7 @@ from tango.core.profiler import FrequencyProfiler, EventProfiler, CountProfiler
 
 from abc         import ABC, abstractmethod
 from typing      import ByteString, Any, Iterable
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
 from math        import isclose
 from asyncio     import sleep
 
@@ -71,6 +71,13 @@ class AbstractChannelFactory(AsyncComponent, ABC,
     """
     fmt: FormatDescriptor
     timescale: TimescaleDescriptor = TimescaleDescriptor()
+
+    def __new__(cls, *args, **kwargs):
+        captured = {f.name for f in fields(cls)}
+        kwargs = {k: v for k, v in kwargs.items() if k not in captured}
+        obj = super().__new__(cls)
+        AsyncComponent.__init__(obj, **kwargs)
+        return obj
 
     @abstractmethod
     def create(self) -> AbstractChannel:

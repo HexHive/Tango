@@ -45,8 +45,8 @@ class StateInferenceTracker(CoverageTracker):
     def match_config(cls, config: dict) -> bool:
         return config['strategy'].get('type') == 'inference'
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         # properties
         self.mode = InferenceMode.Discovery
         self.capability_matrix = np.empty((0,0), dtype=object)

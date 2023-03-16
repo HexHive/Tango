@@ -721,6 +721,9 @@ class Component:
     Todo:
         * Implement a non-async version of configurable components
     """
+    def __init__(self, **kwargs):
+        if kwargs:
+            warning(f'{self} received but did not capture {kwargs=}')
 
     @classmethod
     def match_config(cls, config: dict) -> bool:

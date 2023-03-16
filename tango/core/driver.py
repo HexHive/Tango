@@ -33,7 +33,8 @@ class AbstractDriver(AsyncComponent, ABC,
 
 class BaseDriver(AbstractDriver,
         capture_components={ComponentType.channel_factory}):
-    def __init__(self, channel_factory: AbstractChannelFactory):
+    def __init__(self, channel_factory: AbstractChannelFactory, **kwargs):
+        super().__init__(**kwargs)
         self._factory = channel_factory
 
     async def execute_input(self, input: AbstractInput):

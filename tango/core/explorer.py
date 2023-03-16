@@ -25,7 +25,8 @@ __all__ = [
 
 class AbstractExplorer(AsyncComponent, ABC,
         component_type=ComponentType.explorer):
-    def __init__(self):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self._state_reload_cb = self._nop_cb
         self._state_update_cb = self._nop_cb
         self._transition_update_cb = self._nop_cb

@@ -36,6 +36,7 @@ class WebRenderer(AsyncComponent, component_type='webui',
             draw_graph: bool=True,
             bubble_update_period: float=0.1, bubble_reload_period: float=1,
             **kwargs):
+        super().__init__(**kwargs)
         self._session = session
         self._http_host = http_host
         self._http_port = http_port
