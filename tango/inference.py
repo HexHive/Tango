@@ -755,16 +755,50 @@ class InferenceWebDataLoader(WebDataLoader):
 
 # FIXME this component could benefit from composability
 class InferenceInputGenerator(ReactiveInputGenerator,
-        capture_components={'tracker'}):
+        capture_components={'tracker'},
+        capture_paths=('generator.broadcast_mutation_feedback',)):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
-            config['strategy'].get('type') == 'inference' and \
-            config['strategy'].get('group_mutation_feedback')
+            config['strategy'].get('type') == 'inference'
 
-    def __init__(self, *, tracker: StateInferenceTracker, **kwargs):
+    def __init__(self, *, tracker: StateInferenceTracker,
+            broadcast_mutation_feedback: bool=False, **kwargs):
         super().__init__(**kwargs)
         self._tracker = tracker
+        self._broadcast_mutation_feedback = broadcast_mutation_feedback
+
+    def generate(self, state: AbstractState) -> AbstractInput:
+        if not self._broadcast_mutation_feedback:
+            return super().generate(state)
+
+        sidx = self._tracker.equivalence_map[state]
+        eqv = self._tracker.equivalence_states[sidx]
+        eqv = list(map(self._tracker.node_arr.__getitem__, eqv))
+
+        out_edges = list(s.out_edges for s in eqv)
+        if out_edges:
+            _, dst, data = self._entropy.choice(out_edges)
+            candidate = data['minimized']
+        else:
+            in_edges = list(s.in_edges for s in eqv)
+            if in_edges:
+                _, dst, data = self._entropy.choice(in_edges)
+                candidate = data['minimized']
+            elif self.seeds:
+                candidate = self._entropy.choice(self.seeds)
+            else:
+                candidate = EmptyInput()
+
+        if (model := self._state_model.get(state)) is None:
+            model = self._init_state_model(state)
+
+        havoc_actions = self._entropy.choices(havoc_handlers,
+            weights=map(lambda t: model['actions'][t][1], havoc_handlers), # we use probabilities as weights
+            k=RAND(MUT_HAVOC_STACK_POW2, self._entropy) + 1
+        )
+
+        return ReactiveHavocMutator(self._entropy, havoc_actions)(candidate)
 
     def update_transition(self, source: AbstractState,
             destination: AbstractState, input: AbstractInput, /, *,
