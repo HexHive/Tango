@@ -1,12 +1,13 @@
-from tango.core.input import BaseDecorator
+from tango.core.input import AbstractDecorator, BaseDecorator
 
 from random import Random
 from contextlib import contextmanager
 
-__all__ = ['BaseMutator']
+__all__ = ['AbstractMutator', 'BaseMutator']
 
-class BaseMutator(BaseDecorator):
-    def __init__(self, entropy: Random):
+class AbstractMutator(AbstractDecorator):
+    def __init__(self, *, entropy: Random, **kwargs):
+        super().__init__(**kwargs)
         self._entropy = entropy
         self._state0 = self._entropy.getstate()
 
@@ -25,6 +26,9 @@ class BaseMutator(BaseDecorator):
             yield entropy
         finally:
             self._entropy.setstate(self._temp.getstate())
+
+class BaseMutator(AbstractMutator, BaseDecorator):
+    pass
 
 class SeedlessRandom(Random):
     """

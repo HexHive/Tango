@@ -35,8 +35,8 @@ class ReactiveHavocMutator(BaseMutator):
         RECEIVE = 1
         DELAY = 2
 
-    def __init__(self, entropy: Random, havoc_actions: Iterable):
-        super().__init__(entropy)
+    def __init__(self, havoc_actions: Iterable, **kwargs):
+        super().__init__(**kwargs)
         self._actions = havoc_actions
         self._actions_taken = False
 
@@ -151,7 +151,7 @@ class ReactiveInputGenerator(BaseInputGenerator):
             k=RAND(MUT_HAVOC_STACK_POW2, self._entropy) + 1
         )
 
-        return ReactiveHavocMutator(self._entropy, havoc_actions)(candidate)
+        return ReactiveHavocMutator(havoc_actions, entropy=self._entropy)(candidate)
 
     def update_state(self, state: AbstractState, /, *, input: AbstractInput,
             orig_input: AbstractInput, exc: Exception=None, **kwargs):

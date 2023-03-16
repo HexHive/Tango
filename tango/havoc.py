@@ -554,4 +554,4 @@ class RandomInputGenerator(BaseInputGenerator):
             else:
                 candidate = EmptyInput()
 
-        return HavocMutator(self._entropy)(candidate)
+        return HavocMutator(entropy=self._entropy)(candidate)
