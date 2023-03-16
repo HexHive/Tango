@@ -397,8 +397,8 @@ class SlicingDecorator(BaseDecorator):
             self._stop = self._idx + 1
             self._step = 1
 
-    def __call__(self, input, inplace=False): # -> AbstractInput:
-        if self._start == 0 and self._stop == None:
+    def __call__(self, input, **kwargs) -> AbstractInput:
+        if self._start == 0 and self._stop == None and self._step == 1:
             return input
         elif input.decorated and isinstance(input.___decorator___, self.__class__) \
                 and input.___decorator___._step == self._step:
