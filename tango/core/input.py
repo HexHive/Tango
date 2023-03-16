@@ -175,6 +175,41 @@ class EmptyInput(BaseInput):
     def ___add___(self, other: AbstractInput) -> AbstractInput:
         return other
 
+class DecoratedInput(BaseInput):
+    def __init__(self, decorator: BaseDecorator, depth: int=0):
+        super().__init__()
+        self.___decorator___ = decorator
+        self.___decorator_depth___ = depth
+
+    def ___iter___(self):
+        raise NotImplementedError
+
+    def __del__(self):
+        if self.decorated:
+            self.___decorator___.undecorate()
+
+    @property
+    def decorated(self):
+        return (self.___decorator_depth___ > 0) or self.___decorator___
+
+    def pop_decorator(self) -> (AbstractInput, BaseDecorator):
+        decorator = self.___decorator___
+        return decorator.pop(), decorator
+
+    def search_decorator_stack(self, select: Callable[[BaseDecorator], bool],
+            *, max_depth: int=0) -> BaseDecorator:
+        depth = 0
+        input = self
+        while True:
+            if not input.decorated:
+                raise RuntimeError("Reached end of decorator stack")
+            elif max_depth > 0 and depth >= max_depth:
+                raise RuntimeError("Max search depth exceeded")
+            input, decorator = input.pop_decorator()
+            if select(decorator):
+                return decorator
+            depth += 1
+
 class BaseDecoratorMeta(type):
     ALL_DECORATABLE_METHODS = {'___iter___', '___aiter___', '___len___',
         '___add___', '___getitem___', '___repr___', '___eq___'}
@@ -394,39 +429,6 @@ class IterCachingDecorator(BaseDecorator):
         decorated_method = getattr(self._input, fn_name)
         return self._orig.__self__
 
-class DecoratedInput(BaseInput):
-    def __init__(self, decorator: BaseDecorator, depth: int=0):
-        super().__init__()
-        self.___decorator___ = decorator
-        self.___decorator_depth___ = depth
-
-    def ___iter___(self):
-        raise NotImplementedError
-
-    def __del__(self):
-        if self.decorated:
-            self.___decorator___.undecorate()
-
-    @property
-    def decorated(self):
-        return (self.___decorator_depth___ > 0) or self.___decorator___
-
-    def pop_decorator(self) -> (AbstractInput, BaseDecorator):
-        decorator = self.___decorator___
-        return decorator.pop(), decorator
-
-    def search_decorator_stack(self, select: Callable[[BaseDecorator], bool], max_depth: int=None) -> BaseDecorator:
-        depth = 0
-        input = self
-        while True:
-            if not input.decorated:
-                raise RuntimeError("Reached end of decorator stack")
-            elif max_depth and depth >= max_depth:
-                raise RuntimeError("Max search depth exceeded")
-            input, decorator = input.pop_decorator()
-            if select(decorator):
-                return decorator
-            depth += 1
 
 class PreparedInput(BaseInput):
     """
