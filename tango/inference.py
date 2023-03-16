@@ -128,7 +128,7 @@ class StateInferenceStrategy(UniformStrategy,
         capture_paths=['strategy.inference_batch',
             'strategy.extend_on_groups', 'strategy.recursive_collapse',
             'strategy.dt_predict', 'strategy.dt_extrapolate',
-            'strategy.dt_validate']):
+            'strategy.dt_validate', 'strategy.group_state_schedule']):
     def __init__(self, *, tracker: StateInferenceTracker,
             loader: AbstractLoader,
             inference_batch: Optional[str | int]=None,
