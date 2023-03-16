@@ -128,7 +128,7 @@ class StateInferenceStrategy(UniformStrategy,
         capture_paths=['strategy.inference_batch',
             'strategy.extend_on_groups', 'strategy.recursive_collapse',
             'strategy.dt_predict', 'strategy.dt_extrapolate',
-            'strategy.dt_validate', 'strategy.group_state_schedule']):
+            'strategy.dt_validate', 'strategy.broadcast_state_schedule']):
     def __init__(self, *, tracker: StateInferenceTracker,
             loader: AbstractLoader,
             inference_batch: Optional[str | int]=None,
@@ -137,7 +137,7 @@ class StateInferenceStrategy(UniformStrategy,
             dt_predict: Optional[bool]=False,
             dt_extrapolate: Optional[bool]=False,
             dt_validate: Optional[bool]=False,
-            group_state_schedule: Optional[bool]=False, **kwargs):
+            broadcast_state_schedule: Optional[bool]=False, **kwargs):
         super().__init__(**kwargs)
         self._tracker = tracker
         self._loader = loader
@@ -147,7 +147,7 @@ class StateInferenceStrategy(UniformStrategy,
         self._dt_predict = dt_predict
         self._dt_extrapolate = dt_extrapolate
         self._dt_validate = dt_validate
-        self._group_state_schedule = group_state_schedule
+        self._broadcast_state_schedule = broadcast_state_schedule
         if dt_predict:
             self._dt_clf = tree.DecisionTreeClassifier()
             self._dt_fit = False
@@ -698,7 +698,7 @@ class StateInferenceStrategy(UniformStrategy,
     def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
             **kwargs):
         super().update_state(state, *args, exc=exc, **kwargs)
-        if not self._group_state_schedule or not state:
+        if not self._broadcast_state_schedule or not state:
             return
         if not exc:
             try:
