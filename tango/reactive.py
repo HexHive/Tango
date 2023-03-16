@@ -196,20 +196,6 @@ class ReactiveInputGenerator(BaseInputGenerator):
                 self._state_model[state]['cum_features'] += fcount
                 # FIXME verify that state._parent == state.[ancestor]
                 state = state._parent
-            ancestors.clear()
-
-            if mut._actions_taken:
-                # propagate discounted reward to ancestors
-                state = source
-                depth = 0
-                while True:
-                    # FIXME check other FIXME
-                    state = state._parent
-                    depth += 1
-                    if state is None or state in ancestors: # loops should not exist, but this is a safety measure
-                        break
-                    self._update_weights(self._state_model[state]['actions'], mut._actions, normalized_reward/depth)
-                    ancestors.add(state)
 
         if state_changed or mut._actions_taken:
             self._log_model(source, destination, *ancestors)
