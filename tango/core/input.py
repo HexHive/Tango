@@ -180,6 +180,7 @@ class DecoratedInput(BaseInput):
         super().__init__()
         self.___decorator___ = decorator
         self.___decorator_depth___ = depth
+        self.___decorated_methods___ = set()
 
     def ___iter___(self):
         raise NotImplementedError
@@ -238,13 +239,15 @@ class AbstractDecorator(ABC, metaclass=AbstractDecoratorMeta):
 class BaseDecorator(AbstractDecorator):
     def __call__(self, input, *, inplace=False, methods=None) -> AbstractInput:
         self._handle_copy(input, inplace=inplace)
-        methods = methods or self.DECORATABLE_METHODS
+        if methods is None:
+            methods = self.DECORATABLE_METHODS
 
         for name in methods:
             func = getattr(self, name)
             oldfunc = getattr(input, name, None)
             newfunc = partialmethod(partial(func), oldfunc).__get__(self._input)
             setattr(self._input, name, newfunc)
+            self._input.___decorated_methods___.add(name)
 
         return self._input
 
@@ -264,12 +267,17 @@ class BaseDecorator(AbstractDecorator):
     def undecorate(self, *, methods=None):
         assert getattr(self, '_input', None) is not None, \
                 "Decorator has not been called before!"
-        methods = methods or self.DECORATABLE_METHODS
+        if methods is None:
+            methods = self._input.___decorated_methods___.copy()
+        else:
+            methods &= self._input.___decorated_methods___
+
         for name in methods:
             newfunc = getattr(self._input, name, None)
             # extract `orig` from the partial function
             oldfunc = newfunc._partialmethod.args[0]
             setattr(self._input, name, oldfunc)
+            self._input.___decorated_methods___.discard(name)
         self._input.___decorator___ = None
         self._input = None
 
@@ -333,6 +341,7 @@ class MemoryCachingDecorator(AbstractDecorator):
                 "Decorator has not been called before!"
         self._input.___decorator_depth___ = 0
         self._input.___decorator___ = None
+        self._input.___decorated_methods___.clear()
         self._input = None
 
     def pop(self) -> AbstractInput:
@@ -351,7 +360,8 @@ class IterCachingDecorator(BaseDecorator):
     DECORATOR_MAX_DEPTH = 10
 
     def __call__(self, input, *, inplace=False, methods=None) -> AbstractInput:
-        methods = methods or self.DECORATABLE_METHODS
+        if methods is None:
+            methods = self.DECORATABLE_METHODS
         fn_name = '___iter___'
         filtered = methods - {fn_name}
         decorated = super().__call__(input, inplace=inplace, methods=filtered)
@@ -366,6 +376,7 @@ class IterCachingDecorator(BaseDecorator):
             newfunc = partialmethod(
                 partial(func), self.get_iter).__get__(self._input)
             setattr(decorated, fn_name, newfunc)
+            decorated.___decorated_methods___.add(fn_name)
 
         if decorated.___decorator_depth___ > self.DECORATOR_MAX_DEPTH:
             return MemoryCachingDecorator()(decorated, inplace=inplace)
@@ -384,6 +395,22 @@ class IterCachingDecorator(BaseDecorator):
 
         decorated_method = getattr(self._input, fn_name)
         return self._orig.__self__
+
+    def undecorate(self, *, methods=None):
+        assert getattr(self, '_input', None) is not None, \
+                "Decorator has not been called before!"
+        if methods is None:
+            methods = self._input.___decorated_methods___.copy()
+        else:
+            methods &= self._input.___decorated_methods___
+
+        fn_name = '___iter___'
+        if fn_name in methods:
+            setattr(self._input, fn_name, self._orig)
+            self._input.___decorated_methods___.discard(fn_name)
+
+        filtered = methods - {fn_name}
+        super().undecorate(methods=filtered)
 
     def ___iter___(self, input, orig):
         return orig()
