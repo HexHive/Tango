@@ -277,7 +277,7 @@ class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
         if exc:
             self._invalid_states.add(state)
             if self._target == state:
-                self._recalculate_target()
+                self.recalculate_target()
         else:
             self._invalid_states.discard(state)
             self._energy_map[state] += 1
