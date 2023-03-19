@@ -189,6 +189,9 @@ class MemoryCachingDecorator(AbstractDecorator, BaseInput, desc=identity):
         obj._cached_iter = tuple(input)
         obj._cached_len = len(obj._cached_iter)
         obj.id = input.id
+
+        if (hook := getattr(input, '__cache_hook__', None)):
+            hook(obj)
         return obj
 
     def __init__(self, *args, **kwargs):
