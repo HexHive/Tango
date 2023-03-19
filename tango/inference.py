@@ -10,6 +10,7 @@ from tango.reactive import ReactiveInputGenerator, ReactiveHavocMutator
 from tango.webui import WebRenderer, WebDataLoader
 from tango.common import get_session_task_group, ComponentOwner
 from tango.exceptions import StabilityException
+from tango.havoc import havoc_handlers, RAND, MUT_HAVOC_STACK_POW2
 
 from functools import partial, cached_property
 from aiohttp import web
@@ -88,6 +89,14 @@ class StateInferenceTracker(CoverageTracker):
     def unmapped_states(self):
         G = self.state_graph
         return G.nodes - self.nodes.keys()
+
+    def update_transition(self, source: AbstractState,
+            destination: AbstractState, input: AbstractInput, *,
+            state_changed: bool, exc: Exception=None, **kwargs):
+        if not exc and state_changed and not destination in self.state_graph:
+            self.__dict__.pop('unmapped_states', None)
+        return super().update_transition(source, destination, input,
+            state_changed=state_changed, exc=exc, **kwargs)
 
     def set_nodes(self, nodes: Sequence[AbstractState],
             eqv_map: Mapping[int, int]):
@@ -780,7 +789,7 @@ class InferenceInputGenerator(ReactiveInputGenerator,
         except KeyError:
             return super().generate(state)
 
-        out_edges = list(s.out_edges for s in eqv)
+        out_edges = [e for s in eqv for e in s.out_edges]
         if out_edges:
             _, dst, data = self._entropy.choice(out_edges)
             candidate = data['minimized']
@@ -833,7 +842,7 @@ class InferenceInputGenerator(ReactiveInputGenerator,
             for node in eqv:
                 node_model = self._state_model[node]
                 self._update_weights(node_model['actions'], actions,
-                    normalized_reward)
+                    reward)
 
         if state_changed:
             # update feature counts
