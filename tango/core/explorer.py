@@ -209,14 +209,14 @@ class BaseExplorer(AbstractExplorer,
         self._current_state = current_state
 
         debug(f"Reached {current_state = }")
+        last_input = input_gen()
 
         if self._current_state == self._last_state:
-            return False, False, None
+            return False, False, last_input
 
         unseen = self._current_state not in self._tracker.state_graph.successors(self._last_state)
         debug(f"Possible transition from {self._last_state} to {self._current_state}")
 
-        last_input = input_gen()
         if unseen:
             if minimize:
                 # During minimization, the input is sliced/joined/cached, which
