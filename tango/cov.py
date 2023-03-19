@@ -471,7 +471,7 @@ class CoverageTracker(BaseTracker,
 
     @cached_property
     def current_state(self) -> FeatureSnapshot:
-        return self.peek(self._current_state)
+        return self.peek(self._current_state, do_not_cache=True)
 
     def extract_snapshot(self, feature_map: FeatureMap,
             parent_state: FeatureSnapshot, *, commit: bool=True,
