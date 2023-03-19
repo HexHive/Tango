@@ -170,7 +170,7 @@ class BaseExplorer(AbstractExplorer,
         return current_state
 
     def get_context_input(self, input: BaseInput, **kwargs) -> BaseExplorerContext:
-        return BaseExplorerContext(self, **kwargs)(input)
+        return BaseExplorerContext(input, self, **kwargs)
 
     async def follow(self, input: BaseInput, **kwargs):
         """
@@ -384,15 +384,16 @@ class BaseExplorerContext(BaseDecorator):
     and the second part continues to build up state for any following
     transition.
     """
-    def __init__(self, explorer: BaseExplorer, **kwargs):
+    def __init__(self, input: AbstractInput, /, explorer: BaseExplorer, **kw):
+        super().__init__(input)
         self._exp = explorer
         self._start = self._stop = None
-        self._update_kwargs = kwargs
+        self._update_kwargs = kw
 
     def input_gen(self):
         # we delay the call to the slicing decorator until needed
         head = self._exp._last_state.last_input
-        tail = self._input[self._start:self._stop]
+        tail = self[self._start:self._stop]
         if head is None:
             if self._start >= self._stop:
                 return None
@@ -411,13 +412,13 @@ class BaseExplorerContext(BaseDecorator):
     def orig_input(self):
         # we pop the BaseExplorerContext decorator itself to obtain a reference
         # to the original input, typically the output of the input generator
-        return self._input.pop_decorator()[0]
+        return self.pop()
 
-    async def ___aiter___(self, input, orig):
+    async def __aiter__(self, *, orig):
         exp = self._exp
         self._start = self._stop = 0
         idx = -1
-        for idx, instruction in enumerate(input):
+        for idx, instruction in enumerate(self._orig):
             ValueProfiler('status')('fuzz')
             self._stop = idx + 1
             yield instruction
@@ -443,14 +444,18 @@ class BaseExplorerContext(BaseDecorator):
                 last_state.last_input = None
                 await self.update_state(exp._current_state,
                     breadcrumbs=exp._last_path,
-                    input=self.input_gen(), orig_input=self.orig_input, exc=ex)
+                    input=self.input_gen(), orig_input=self.orig_input,
+                    exc=ex)
                 raise
             else:
-                # FIXME doesn't work as intended, but could save from recalculating cov map diffs if it works
-                # self._tracker.update(self._last_state, last_input, peek_result=self._current_state)
-                if exp._current_state != exp._tracker.update_state(last_state,
-                        input=last_input):
-                    raise StabilityException("Failed to obtain consistent behavior",
+                # FIXME doesn't work as intended, but could save from
+                # recalculating cov map diffs if it works
+                # self._tracker.update(self._last_state, last_input,
+                # peek_result=self._current_state)
+                if exp._current_state != exp._tracker.update_state(
+                        last_state, input=last_input):
+                    raise StabilityException(
+                        "Failed to obtain consistent behavior",
                         exp._tracker.current_state)
 
                 if updated:
@@ -467,21 +472,9 @@ class BaseExplorerContext(BaseDecorator):
                     orig_input=self.orig_input, breadcrumbs=exp._last_path,
                     state_changed=updated, new_transition=new)
 
-            # FIXME The explorer interrupts the target to verify individual
-            # transitions. To verify a transition, the last state is loaded, and
-            # the last input which observed a new state is replayed. However,
-            # due to imprecision of states, the chosen path to the last state
-            # may result in a different substate, and the replayed input thus no
-            # longer reaches the new state. When such an imprecision is met, the
-            # target is kept running, but the path has been "corrupted".
-            #
-            # It may be better to let the input update the explorer freely
-            # all throughout the sequence, and perform the validation step at
-            # the end to make sure no interesting states are lost.
-
         if idx >= 0:
             # commit the rest of the input
             exp._last_state.last_input = self.input_gen()
 
-    def ___iter___(self, input, orig):
+    def __iter__(self, *, orig):
         return orig()

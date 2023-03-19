@@ -459,7 +459,7 @@ class HavocMutator(BaseMutator):
         RECEIVE = 1
         DELAY = 2
 
-    def ___iter___(self, input, orig):
+    def __iter__(self, *, orig):
         with self.entropy_ctx as entropy:
             i = -1
             reorder_buffer = []
@@ -471,8 +471,8 @@ class HavocMutator(BaseMutator):
                 if i == -1:
                     yield from self._mutate(None, reorder_buffer, entropy)
 
-    def ___repr___(self, input, orig):
-        return f'HavocMutatedInput:0x{input.id:08X} (0x{self._input_id:08X})'
+    def __repr__(self, *, orig):
+        return f'HavocMutatedInput:0x{self.id:08X} (0x{self._orig.id:08X})'
 
     def _mutate(self, instruction: AbstractInstruction, reorder_buffer: Sequence, entropy: Random) -> Sequence[AbstractInstruction]:
         if instruction is not None:
@@ -554,4 +554,4 @@ class RandomInputGenerator(BaseInputGenerator):
             else:
                 candidate = EmptyInput()
 
-        return HavocMutator(entropy=self._entropy)(candidate)
+        return HavocMutator(candidate, entropy=self._entropy)

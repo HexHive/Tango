@@ -35,8 +35,8 @@ class ReactiveHavocMutator(BaseMutator):
         RECEIVE = 1
         DELAY = 2
 
-    def __init__(self, havoc_actions: Iterable, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, input: AbstractInput, /, havoc_actions: Iterable, **kwargs):
+        super().__init__(input, **kwargs)
         self._actions = havoc_actions
         self._actions_taken = False
 
@@ -55,14 +55,14 @@ class ReactiveHavocMutator(BaseMutator):
             yield from entropy.sample(reorder_buffer, k=len(reorder_buffer))
             reorder_buffer.clear()
 
-    def ___iter___(self, input, orig):
+    def __iter__(self, *, orig):
         self._actions_taken = False
         for instruction in self._iter_helper(orig):
             yield instruction
             self._actions_taken = False
 
-    def ___repr___(self, input, orig):
-        return f'HavocMutatedInput:0x{input.id:08X} (0x{self._input_id:08X})'
+    def __repr__(self, *, orig):
+        return f'HavocMutatedInput:0x{self.id:08X} (0x{self._orig.id:08X})'
 
     def _apply_actions(self, data, entropy):
         for func in self._actions:
@@ -112,7 +112,6 @@ class ReactiveInputGenerator(BaseInputGenerator):
         super().__init__(**kwargs)
         self._seen_transitions = set()
         self._state_model = dict()
-        # self._model_history = dict()
 
         self._log_counter = 0
         self._log_path = os.path.join(self._work_dir, "model_history.bin")
@@ -151,7 +150,9 @@ class ReactiveInputGenerator(BaseInputGenerator):
             k=RAND(MUT_HAVOC_STACK_POW2, self._entropy) + 1
         )
 
-        return ReactiveHavocMutator(havoc_actions, entropy=self._entropy)(candidate)
+        mut = ReactiveHavocMutator(candidate, havoc_actions,
+            entropy=self._entropy)
+        return mut
 
     def update_state(self, state: AbstractState, /, *, input: AbstractInput,
             orig_input: AbstractInput, exc: Exception=None, **kwargs):
@@ -175,7 +176,9 @@ class ReactiveInputGenerator(BaseInputGenerator):
             CountProfiler('undecorated_inputs')(1)
             return
 
-        mut = orig_input.search_decorator_stack(lambda d: isinstance(d, ReactiveHavocMutator), max_depth=1)
+        mut = orig_input.search_decorator_stack(
+            lambda d: isinstance(d, ReactiveHavocMutator),
+            max_depth=1)
 
         ancestors = set()
         src_model = self._state_model[source]
@@ -358,7 +361,9 @@ class StatelessReactiveInputGenerator(ReactiveInputGenerator):
             CountProfiler('undecorated_inputs')(1)
             return
 
-        mut = orig_input.search_decorator_stack(lambda d: isinstance(d, ReactiveHavocMutator), max_depth=1)
+        mut = orig_input.search_decorator_stack(
+            lambda d: isinstance(d, ReactiveHavocMutator),
+            max_depth=1)
 
         src_model = self._state_model[source]
         normalized_reward = self._calculate_reward(source, destination)

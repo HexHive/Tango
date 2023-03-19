@@ -1,4 +1,4 @@
-from tango.core.input import AbstractDecorator, BaseDecorator
+from tango.core.input import AbstractDecorator, BaseDecorator, AbstractInput
 
 from random import Random
 from contextlib import contextmanager
@@ -6,8 +6,8 @@ from contextlib import contextmanager
 __all__ = ['AbstractMutator', 'BaseMutator']
 
 class AbstractMutator(AbstractDecorator):
-    def __init__(self, *, entropy: Random, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, input: AbstractInput, /, *, entropy: Random):
+        super().__init__(input)
         self._entropy = entropy
         self._state0 = self._entropy.getstate()
 
