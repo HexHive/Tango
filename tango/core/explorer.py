@@ -228,7 +228,7 @@ class BaseExplorer(AbstractExplorer,
                     "Minimizing requires inputs to be BaseInput!"
                 # call the transition pruning routine to shorten the last input
                 debug("Attempting to minimize transition")
-                last_input = last_input.flatten(inplace=True)
+                last_input = last_input.flatten()
                 # we clone the current path because minimization may corrupt it
                 self._last_path = self._current_path.copy()
                 try:
@@ -242,7 +242,7 @@ class BaseExplorer(AbstractExplorer,
                     # indeterministic target
                     warning(f"Minimization failed {ex=}")
                     raise
-                last_input = last_input.flatten(inplace=True)
+                last_input = last_input.flatten()
             elif validate:
                 try:
                     debug("Attempting to reproduce transition")
@@ -342,7 +342,7 @@ class BaseExplorer(AbstractExplorer,
 
                 if success:
                     reduced = True
-                    lin_input = tmp_lin_input.flatten(inplace=True)
+                    lin_input = tmp_lin_input.flatten()
                     end -= step
                     reduced_len -= step
                 else:

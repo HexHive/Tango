@@ -95,7 +95,7 @@ class BaseInput(AbstractInput):
     def __add__(self, other: AbstractInput) -> BaseInput:
         return JoiningDecorator(self, suffix=(other,))
 
-    def flatten(self, inplace=False) -> BaseInput:
+    def flatten(self) -> BaseInput:
         return MemoryCachingDecorator(self)
 
     def shield(self) -> BaseInpit:
@@ -180,6 +180,7 @@ class AbstractDecorator(AbstractInput, metaclass=AbstractDecoratorMeta):
 
 identity = lambda x: x
 class MemoryCachingDecorator(AbstractDecorator, BaseInput, desc=identity):
+    _depth: int = 0
     def __new__(cls, input: AbstractInput, /):
         if isinstance(input, cls):
             return input
@@ -187,9 +188,11 @@ class MemoryCachingDecorator(AbstractDecorator, BaseInput, desc=identity):
         obj._cached_repr = repr(input)
         obj._cached_iter = tuple(input)
         obj._cached_len = len(obj._cached_iter)
+        obj.id = input.id
         return obj
 
     def __init__(self, *args, **kwargs):
+        del self._orig
         # we skip initialization of parents
         self.initialized = True
 
@@ -205,6 +208,9 @@ class MemoryCachingDecorator(AbstractDecorator, BaseInput, desc=identity):
 
     def __len__(self):
         return self._cached_len
+
+    def __getattr__(self, name):
+        raise AttributeError
 
 class BaseDecorator(AbstractDecorator, BaseInput):
     DECORATOR_MAX_DEPTH = 10
