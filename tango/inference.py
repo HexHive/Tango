@@ -773,9 +773,12 @@ class InferenceInputGenerator(ReactiveInputGenerator,
         if not self._broadcast_mutation_feedback:
             return super().generate(state)
 
-        sidx = self._tracker.equivalence_map[state]
-        eqv = self._tracker.equivalence_states[sidx]
-        eqv = list(map(self._tracker.node_arr.__getitem__, eqv))
+        try:
+            sidx = self._tracker.equivalence_map[state]
+            eqv = self._tracker.equivalence_states[sidx]
+            eqv = list(map(self._tracker.node_arr.__getitem__, eqv))
+        except KeyError:
+            return super().generate(state)
 
         out_edges = list(s.out_edges for s in eqv)
         if out_edges:
