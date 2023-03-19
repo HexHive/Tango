@@ -213,11 +213,8 @@ class MemoryCachingDecorator(AbstractDecorator, BaseInput, desc=identity):
         raise AttributeError
 
 class BaseDecorator(AbstractDecorator, BaseInput):
-    DECORATOR_MAX_DEPTH = 10
     def __new__(cls, input: AbstractInput, /, *args, **kwargs):
         depth = getattr(input, '_depth', 0)
-        if depth >= cls.DECORATOR_MAX_DEPTH:
-            input = input.flatten()
         obj = super().__new__(cls, input, *args, **kwargs)
         obj._depth = depth + 1
         ValueMeanProfiler("decorator_depth", samples=100)(obj._depth)
