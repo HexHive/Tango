@@ -34,6 +34,7 @@ import ctypes
 import signal
 import traceback
 import struct
+import select
 
 __all__ = [
     'ProcessDriver', 'ProcessForkDriver',
