@@ -245,13 +245,7 @@ class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._invalid_states = set()
-        self._energy_map = defaultdict(lambda: 0)
-
-        self._exp_weights = (0.64, 0.23, 0.09, 0.03, 0.01)
-        self._calc_weights = lambda n: (
-            self._exp_weights[0] + sum(self._exp_weights[n:]),
-            *self._exp_weights[1:n],
-            *((0.0,) * (n - len(self._exp_weights))))[:n]
+        self._energy_map = defaultdict(lambda: 1)
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -259,15 +253,14 @@ class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
             config['strategy'].get('type') == 'uniform'
 
     def recalculate_target(self) -> AbstractState:
-        filtered = [x for x in self._explorer.tracker.state_graph.nodes
+        filtered = [x for x in self._explorer._tracker.state_graph.nodes
             if x not in self._invalid_states]
         if not filtered:
             return None
         else:
-            filtered.sort(key=self._energy_map.get)
+            weights = [1 / self._energy_map[s] for s in filtered]
             return self._entropy.choices(filtered,
-                        weights=self._calc_weights(len(filtered)),
-                        k=1)[0]
+                        weights=weights, k=1)[0]
 
     def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
             **kwargs):
