@@ -17,11 +17,11 @@ from tango.ptrace.syscall import PtraceSyscall, SOCKET_SYSCALL_NAMES
 from tango.ptrace.tools import signal_to_exitcode
 from tango.common import sync_to_async, GLOBAL_ASYNC_EXECUTOR, ComponentType
 from tango.exceptions import (ChannelTimeoutException, StabilityException,
-    ProcessCrashedException, ProcessTerminatedException)
+    ProcessCrashedException, ProcessTerminatedException, ChannelBrokenException)
 
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import IO, AsyncGenerator, Callable
+from typing import IO, AsyncGenerator, Callable, Iterable, Optional
 from pyroute2 import netns, IPRoute
 from subprocess import Popen, TimeoutExpired, DEVNULL, PIPE
 from concurrent.futures import ThreadPoolExecutor
@@ -33,10 +33,12 @@ import sys
 import ctypes
 import signal
 import traceback
+import struct
 
 __all__ = [
-    'ProcessDriver', 'ProcessForkDriver', 'PtraceChannel', 'PtraceForkChannel',
-    'PtraceChannelFactory'
+    'ProcessDriver', 'ProcessForkDriver',
+    'PtraceChannel', 'PtraceForkChannel', 'PtraceChannelFactory',
+    'FileDescriptorChannel', 'FileDescriptorChannelFactory'
 ]
 
 SOCKET_SYSCALL_NAMES = SOCKET_SYSCALL_NAMES.union(('read', 'write'))
@@ -106,8 +108,10 @@ class PtraceChannel(AbstractChannel):
                 debug(f"syscall requested: [{process.pid}] {syscall.format()}")
             else:
                 debug(f"syscall requested: [{process.pid}] {syscall.name}")
-            syscall_callback(process, syscall, **kwargs)
-        return is_entry
+            processed = syscall_callback(process, syscall, **kwargs)
+        else:
+            processed = False
+        return processed
 
     def process_exit(self, event):
         debug(f"Process with {event.process.pid=} exited, deleting from debugger")
@@ -165,7 +169,8 @@ class PtraceChannel(AbstractChannel):
         except ProcessExecution as event:
             self.process_exec(event)
 
-    def process_event(self, event, ignore_callback, syscall_callback, break_on_entry, **kwargs):
+    def process_event(self, event, ignore_callback, syscall_callback, *,
+        break_on_entry: bool, break_on_exit: bool, **kwargs):
         if event is None:
             return
 
@@ -184,23 +189,31 @@ class PtraceChannel(AbstractChannel):
 
             syscall = state.event(self._syscall_options)
             is_entry = state.next_event == 'exit'
-            match_condition = (break_on_entry and is_entry) or \
-                (not break_on_entry and not is_entry)
-            if syscall is not None and \
-                    not (self._process_all and ignore_callback(syscall)) and \
-                    match_condition:
-                processed = self.process_syscall(event.process, syscall, syscall_callback, is_entry, **kwargs)
-            else:
-                processed = False
+            is_exit = not is_entry
 
-            if is_entry and not processed:
-                event.process.syscall()
-            elif not is_entry:
-                # resume the suspended process until it encounters the next syscall
-                self.resume_process(event.process)
-            else:
-                # the caller is responsible for resuming the target process
-                pass
+            match_condition = (break_on_entry and is_entry) or \
+                (break_on_exit and is_exit)
+            ignore_condition = syscall is not None and \
+                not (self._process_all and ignore_callback(syscall))
+            should_process = ignore_condition and match_condition
+
+            processed = False
+            try:
+                if should_process:
+                    processed = self.process_syscall(event.process, syscall,
+                        syscall_callback, is_entry, **kwargs)
+            finally:
+                if not processed:
+                    if is_entry:
+                        # we need to catch the next syscall exit, so we must
+                        # call process.syscall();
+                        # with seccomp enabled, process.cont() is called
+                        # instead, and we would not catch the exit
+                        event.process.syscall()
+                    else:
+                        # resume the suspended process until it encounters the
+                        # next syscall
+                        self.resume_process(event.process)
 
             return syscall
 
@@ -227,13 +240,13 @@ class PtraceChannel(AbstractChannel):
         return self._debugger.waitSyscall(process=process)
 
     def _monitor_syscalls_internal_loop(self,
-                       stop_event: Event,
-                       ignore_callback: Callable[[PtraceSyscall], bool],
-                       break_callback: Callable[..., bool],
-                       syscall_callback: Callable[[PtraceProcess, PtraceSyscall], None],
-                       break_on_entry: bool = False,
-                       process: PtraceProcess = None,
-                       **kwargs):
+            stop_event: Event,
+            ignore_callback: Callable[[PtraceSyscall], bool],
+            break_callback: Callable[..., bool],
+            syscall_callback: Callable[[PtraceProcess, PtraceSyscall], None],
+            break_on_entry: bool = False, break_on_exit: bool = True,
+            process: PtraceProcess = None,
+            **kwargs):
         last_process = None
         while True:
             if not self._debugger:
@@ -247,12 +260,14 @@ class PtraceChannel(AbstractChannel):
                 if event is None:
                     continue
                 sc = self.process_event(event, ignore_callback, syscall_callback,
-                    break_on_entry, **kwargs)
+                    break_on_entry=break_on_entry, break_on_exit=break_on_exit,
+                    **kwargs)
                 if sc is not None:
                     last_process = event.process
             except ProcessEvent as e:
                 self.process_event(e, ignore_callback, syscall_callback,
-                    break_on_entry, **kwargs)
+                    break_on_entry=break_on_entry, break_on_exit=break_on_exit,
+                    **kwargs)
 
             if break_callback():
                 debug("Syscall monitoring finished, breaking out of debug loop")
@@ -262,13 +277,13 @@ class PtraceChannel(AbstractChannel):
         return last_process
 
     def monitor_syscalls(self,
-                       monitor_target: Callable,
-                       ignore_callback: Callable[[PtraceSyscall], bool],
-                       break_callback: Callable[..., bool],
-                       syscall_callback: Callable[[PtraceProcess, PtraceSyscall], None],
-                       timeout: float = None,
-                       process: PtraceProcess = None,
-                       **kwargs):
+            monitor_target: Callable,
+            ignore_callback: Callable[[PtraceSyscall], bool],
+            break_callback: Callable[..., bool],
+            syscall_callback: Callable[[PtraceProcess, PtraceSyscall], None], /,
+            timeout: float = None,
+            process: PtraceProcess = None,
+            **kwargs):
         procs = (process,) if process else self._debugger
         for proc in procs:
             # update the ignore_callback of processes in the debugger
@@ -502,10 +517,12 @@ class PtraceForkChannel(PtraceChannel):
                 # backup the old ignore_callbacks
                 for process in self._debugger:
                     process.syscall_state._ignore_callback = process.syscall_state.ignore_callback
+
                 self.monitor_syscalls(None,
                     self._wakeup_forkserver_ignore_callback,
                     self._wakeup_forkserver_break_callback,
-                    self._wakeup_forkserver_syscall_callback, break_on_entry=True)
+                    self._wakeup_forkserver_syscall_callback,
+                    break_on_entry=True, break_on_exit=True)
                 # restore the old ignore_callbacks
                 for process in self._debugger:
                     process.syscall_state.ignore_callback = process.syscall_state._ignore_callback
@@ -537,8 +554,11 @@ class PtraceForkChannel(PtraceChannel):
         return self._wakeup_forkserver_syscall_found
 
     def _wakeup_forkserver_syscall_callback(self, process, syscall):
+        is_entry = syscall.result is None
         self._wakeup_forkserver_syscall_found = True
-        process.syscall()
+        if is_entry:
+            process.syscall()
+        return is_entry
 
 @dataclass(frozen=True)
 class PtraceChannelFactory(AbstractChannelFactory,
@@ -743,3 +763,172 @@ class ProcessForkDriver(ProcessDriver):
 
 class ForkserverCrashedException(RuntimeError):
     pass
+
+class FileDescriptorChannel(PtraceChannel):
+    def __init__(self, *, data_timeout: float, **kwargs):
+        super().__init__(**kwargs)
+        self._refcounter = dict()
+        self._data_timeout = data_timeout * self._timescale if data_timeout \
+            else None
+        self.synced = False
+
+    def process_new(self, *args, **kwargs):
+        super().process_new(*args, **kwargs)
+        for fd in self._refcounter:
+            self._refcounter[fd] += 1
+
+    def monitor_syscalls(self,
+            monitor_target: Callable,
+            ignore_callback: Callable[[PtraceSyscall], bool],
+            break_callback: Callable[..., bool],
+            syscall_callback: Callable[[PtraceProcess, PtraceSyscall], None], /,
+            timeout: float = None,
+            process: PtraceProcess = None,
+            **kwargs):
+        new_ignore_callback = lambda s: all((ignore_callback(s),
+            self._dup_ignore_callback(s),
+            self._close_ignore_callback(s),
+            self._select_ignore_callback(s)
+        ))
+        orig_kwargs = kwargs | {'orig_syscall_callback': syscall_callback,
+            'orig_ignore_callback': ignore_callback}
+        kwargs['break_on_entry'] = True
+        kwargs['break_on_exit'] = True
+        new_syscall_callback = self._tracer_syscall_callback
+        return super().monitor_syscalls(monitor_target, new_ignore_callback,
+            break_callback, new_syscall_callback, timeout=timeout,
+            process=process, kw=orig_kwargs, **kwargs)
+
+    def sync(self):
+        self.synced = False
+        ignore_cb = lambda s: True
+        break_cb = lambda: self.synced
+        syscall_cb = lambda p, s: False # will never be called
+        self.monitor_syscalls(None, ignore_cb, break_cb, syscall_cb,
+            break_on_entry=False, break_on_exit=False,
+            timeout=self._data_timeout)
+
+    def dup_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
+        self._refcounter[syscall.result] = 1
+        debug(f"File descriptor duplicated in dup_fd={syscall.result}")
+
+    def close_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
+        self._refcounter[syscall.arguments[0].value] -= 1
+        if sum(self._refcounter.values()) == 0:
+            raise ChannelBrokenException(
+                "Channel closed while waiting for server to read")
+
+    def sync_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
+        self.synced = True
+
+    ## Callbacks
+    def _dup_ignore_callback(self, syscall: PtraceSyscall) -> bool:
+        return syscall.name not in ('dup', 'dup2', 'dup3')
+
+    def _close_ignore_callback(self, syscall: PtraceSyscall) -> bool:
+        return syscall.name != 'close'
+
+    def _select_ignore_callback(self, syscall: PtraceSyscall) -> bool:
+        return syscall.name not in ('read', 'poll', 'ppoll', 'select',
+            'pselect6')
+
+    def _tracer_syscall_callback(self,
+            process: PtraceProcess, syscall: PtraceSyscall, *, kw, **kwargs):
+        is_entry = syscall.result is None
+        processed = False
+        try:
+            orig_ignore_callback = kw['orig_ignore_callback']
+            orig_break_on_entry = kw.get('break_on_entry', False)
+            orig_break_on_exit = kw.get('break_on_exit', True)
+            orig_match_condition = (is_entry and orig_break_on_entry) or \
+                (not is_entry and orig_break_on_exit)
+            if not orig_ignore_callback(syscall) and orig_match_condition:
+                orig_syscall_callback = kw['orig_syscall_callback']
+                processed = orig_syscall_callback(process, syscall, **kwargs)
+
+            if not self._dup_ignore_callback(syscall) and not is_entry:
+                self._dup_syscall_exit_callback_internal(process, syscall)
+            elif not self._close_ignore_callback(syscall) and not is_entry:
+                self._close_syscall_exit_callback_internal(process, syscall)
+            elif not self._select_ignore_callback(syscall) and is_entry:
+                self._select_syscall_entry_callback_internal(process, syscall)
+        finally:
+            if is_entry and not processed:
+                process.syscall()
+                processed = True
+            return processed
+
+    def _dup_syscall_exit_callback_internal(self,
+            process: PtraceProcess, syscall: PtraceSyscall):
+        if syscall.arguments[0].value not in self._refcounter:
+            return
+        assert syscall.result >= 0
+        self.dup_callback(process, syscall)
+
+    def _close_syscall_exit_callback_internal(self,
+            process: PtraceProcess, syscall: PtraceSyscall):
+        self.close_callback(process, syscall)
+
+    def _select_syscall_entry_callback_internal(self,
+            process: PtraceProcess, syscall: PtraceSyscall):
+        matched_fd = self._select_match_fds(process, syscall, self._refcounter)
+        if matched_fd is not None:
+            self.sync_callback(process, syscall)
+
+    @classmethod
+    def _select_match_fds(cls, process: PtraceProcess, syscall: PtraceSyscall,
+            fds: Iterable[int]) -> Optional[int]:
+        matched_fd = None
+        match syscall.name:
+            case 'read':
+                if syscall.arguments[0].value not in fds:
+                    return None
+                matched_fd = syscall.arguments[0].value
+            case 'poll' | 'ppoll':
+                nfds = syscall.arguments[1].value
+                pollfds = syscall.arguments[0].value
+                fmt = '@ihh'
+                size = struct.calcsize(fmt)
+                for i in range(nfds):
+                    fd, events, revents = struct.unpack(fmt, process.readBytes(
+                        pollfds + i * size, size))
+                    if fd in fds and (events & select.POLLIN) != 0:
+                        matched_fd = fd
+                        args = list(syscall.readArgumentValues(
+                            process.getregs()))
+                        # convert call to blocking
+                        args[2] = -1
+                        syscall.writeArgumentValues(*args)
+                        break
+                else:
+                    return None
+            case 'select' | 'pselect6':
+                nfds = syscall.arguments[0].value
+                if nfds <= max(fds):
+                    return None
+                readfds = syscall.arguments[1].value
+                fmt = '@l'
+                size = struct.calcsize(fmt)
+                for fd in fds:
+                    l_idx = fd // (size * 8)
+                    b_idx = fd % (size * 8)
+                    fd_set, = struct.unpack(fmt, process.readBytes(
+                        readfds + l_idx * size, size))
+                    if fd_set & (1 << b_idx) != 0:
+                        matched_fd = fd
+                        args = list(syscall.readArgumentValues(
+                            process.getregs()))
+                        # convert call to blocking
+                        args[4] = 0
+                        syscall.writeArgumentValues(*args)
+                        break
+                else:
+                    return None
+            case _:
+                return None
+        return matched_fd
+
+@dataclass(kw_only=True, frozen=True)
+class FileDescriptorChannelFactory(PtraceChannelFactory,
+        capture_paths=('channel.data_timeout',)):
+    data_timeout: float = None # seconds
