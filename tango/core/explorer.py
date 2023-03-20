@@ -201,10 +201,12 @@ class BaseExplorer(AbstractExplorer,
             return False, False, None, None
 
         debug(f"Reached {current_state = }")
-        last_input = input_gen()
+        current_input = input_gen()
 
+        # FIXME this logic should be moved to the tracker; it is more suitable
+        # for judging whether a state or a transition is new
         if current_state == self._last_state:
-            return False, False, current_state, last_input
+            return False, False, current_state, current_input
 
         unseen = current_state not in self._tracker.state_graph.successors(self._last_state)
         debug(f"Possible transition from {self._last_state} to {current_state}")
@@ -216,16 +218,16 @@ class BaseExplorer(AbstractExplorer,
                 # An input type that does not support these capabilities must
                 # inherit from AbstractInput and disable minimization (or use a
                 # different Explorer).
-                assert isinstance(last_input, BaseInput), \
+                assert isinstance(current_input, BaseInput), \
                     "Minimizing requires inputs to be BaseInput!"
                 # call the transition pruning routine to shorten the last input
                 debug("Attempting to minimize transition")
-                last_input = last_input.flatten()
+                current_input = current_input.flatten()
                 # we clone the current path because minimization may corrupt it
                 last_path = self._current_path.copy()
                 try:
-                    last_input = await self._minimize_transition(
-                        last_path, current_state, last_input)
+                    current_input = await self._minimize_transition(
+                        last_path, current_state, current_input)
                     # we update the reference to the current state, in case
                     # minimization invalidated it
                     current_state = self._tracker.current_state
@@ -234,7 +236,7 @@ class BaseExplorer(AbstractExplorer,
                     # indeterministic target
                     warning(f"Minimization failed {ex=}")
                     raise
-                last_input = last_input.flatten()
+                current_input = current_input.flatten()
             elif validate:
                 try:
                     debug("Attempting to reproduce transition")
@@ -245,7 +247,7 @@ class BaseExplorer(AbstractExplorer,
                     src = await self.reload_state(last_path, dryrun=True)
                     assert self._last_state == src
                     await self._loader.apply_transition(
-                        (src, current_state, last_input), src,
+                        (src, current_state, current_input), src,
                         update_cache=False)
                 except StateNotReproducibleException:
                     # * StateNotReproducibleException:
@@ -274,7 +276,7 @@ class BaseExplorer(AbstractExplorer,
                 debug(f"{current_state} is reproducible!")
 
         self._last_state = current_state
-        return True, unseen, current_state, last_input
+        return True, unseen, current_state, current_input
 
     async def _minimize_transition(self, state_or_path: LoadableTarget,
             dst: AbstractState, input: BaseInput):
@@ -418,7 +420,7 @@ class BaseExplorerContext(BaseDecorator):
 
             try:
                 last_state = exp._last_state
-                updated, new, tmp_state, last_input = await exp.update(
+                updated, unseen, tmp_state, current_input = await exp.update(
                     self.input_gen, **self._update_kwargs)
                 if updated:
                     self._start = idx + 1
@@ -437,10 +439,10 @@ class BaseExplorerContext(BaseDecorator):
             else:
                 # FIXME doesn't work as intended, but could save from
                 # recalculating cov map diffs if it works
-                # exp._tracker.update(last_state, last_input,
+                # exp._tracker.update(last_state, current_input,
                 # peek_result=current_state)
                 current_state = exp._tracker.update_state(last_state,
-                    input=last_input)
+                    input=current_input)
                 if tmp_state != current_state:
                     raise StabilityException(
                         "Failed to obtain consistent behavior",
@@ -450,17 +452,17 @@ class BaseExplorerContext(BaseDecorator):
                 if updated:
                     info(f'Transitioned to {current_state}')
                     exp._tracker.update_transition(
-                        last_state, current_state, last_input,
+                        last_state, current_state, current_input,
                         state_changed=True)
                     exp._current_path.append(
-                        (last_state, current_state, last_input))
+                        (last_state, current_state, current_input))
 
-                await self.update_state(current_state, input=last_input,
+                await self.update_state(current_state, input=current_input,
                     orig_input=self.orig_input, breadcrumbs=breadcrumbs)
                 await self.update_transition(
-                    last_state, current_state, last_input,
+                    last_state, current_state, current_input,
                     orig_input=self.orig_input, breadcrumbs=breadcrumbs,
-                    state_changed=updated, new_transition=new)
+                    state_changed=updated, new_transition=unseen)
 
         if idx >= 0:
             # commit the rest of the input
