@@ -83,7 +83,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
                     # TODO augment loader to dump stdout and stderr too
                     self._generator.save_input(ex.payload,
                         self._explorer._current_path, 'crash',
-                        repr(self._explorer._current_state))
+                        repr(self._explorer._last_state))
                 except ProcessTerminatedException as pt:
                     debug(f"Process terminated unexpectedtly? ({pt = })")
                 except ChannelTimeoutException:

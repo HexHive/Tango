@@ -71,9 +71,10 @@ class BaseExplorer(AbstractExplorer,
         # these are generally persistent until a reload_state
         self._current_path = []
         self._accumulated_input = EmptyInput()
+        self._last_state = None
 
     async def finalize(self, owner: ComponentOwner):
-        self._last_state = self._current_state = self._tracker.entry_state
+        self._last_state = self._tracker.entry_state
         await super().finalize(owner)
 
     @property
@@ -176,7 +177,7 @@ class BaseExplorer(AbstractExplorer,
 
     async def update(self, input_gen: Callable[..., BaseInput],
             minimize: bool=True, validate: bool=True) \
-            -> tuple(bool, bool, BaseInput):
+            -> tuple(bool, bool, AbstractState, BaseInput):
         """
         Updates the state machine in case of a state change.
 
@@ -197,18 +198,16 @@ class BaseExplorer(AbstractExplorer,
         # the tracker may return None as current_state, in case it has not yet
         # finished the training phase (preprocessing seeds)
         if current_state is None:
-            return False, False, None
-
-        self._current_state = current_state
+            return False, False, None, None
 
         debug(f"Reached {current_state = }")
         last_input = input_gen()
 
-        if self._current_state == self._last_state:
-            return False, False, last_input
+        if current_state == self._last_state:
+            return False, False, current_state, last_input
 
-        unseen = self._current_state not in self._tracker.state_graph.successors(self._last_state)
-        debug(f"Possible transition from {self._last_state} to {self._current_state}")
+        unseen = current_state not in self._tracker.state_graph.successors(self._last_state)
+        debug(f"Possible transition from {self._last_state} to {current_state}")
 
         if unseen:
             if minimize:
@@ -226,10 +225,10 @@ class BaseExplorer(AbstractExplorer,
                 last_path = self._current_path.copy()
                 try:
                     last_input = await self._minimize_transition(
-                        last_path, self._current_state, last_input)
+                        last_path, current_state, last_input)
                     # we update the reference to the current state, in case
                     # minimization invalidated it
-                    self._current_state = self._tracker.current_state
+                    current_state = self._tracker.current_state
                 except Exception as ex:
                     # Minimization failed, again probably due to an
                     # indeterministic target
@@ -246,14 +245,14 @@ class BaseExplorer(AbstractExplorer,
                     src = await self.reload_state(last_path, dryrun=True)
                     assert self._last_state == src
                     await self._loader.apply_transition(
-                        (src, self._current_state, last_input), src,
+                        (src, current_state, last_input), src,
                         update_cache=False)
                 except StateNotReproducibleException:
                     # * StateNotReproducibleException:
                     #   This occurs when the reload_state() encountered an error
                     #   trying to reproduce a state, most likely due to an
                     #   indeterministic target
-                    warning(f"Encountered indetermenistic state ({self._current_state})")
+                    warning(f"Encountered indetermenistic state ({current_state})")
                     raise
                 except (StabilityException, StatePrecisionException) as ex:
                     # * StatePrecisionException:
@@ -265,19 +264,17 @@ class BaseExplorer(AbstractExplorer,
                     #   to arrive at the current successor state.
                     warning(f"Validation failed {ex=}")
                     raise StatePrecisionException(
-                            f"The path to {self._current_state} is imprecise") \
+                            f"The path to {current_state} is imprecise") \
                         from ex
                 except Exception as ex:
                     warning(f'{ex}')
                     raise
 
             if minimize or validate:
-                debug(f"{self._current_state} is reproducible!")
+                debug(f"{current_state} is reproducible!")
 
-        self._last_state = self._current_state
-        info(f'Transitioned to {self._current_state}')
-
-        return True, unseen, last_input
+        self._last_state = current_state
+        return True, unseen, current_state, last_input
 
     async def _minimize_transition(self, state_or_path: LoadableTarget,
             dst: AbstractState, input: BaseInput):
@@ -421,8 +418,8 @@ class BaseExplorerContext(BaseDecorator):
 
             try:
                 last_state = exp._last_state
-                updated, new, last_input = await exp.update(self.input_gen,
-                    **self._update_kwargs)
+                updated, new, tmp_state, last_input = await exp.update(
+                    self.input_gen, **self._update_kwargs)
                 if updated:
                     self._start = idx + 1
 
@@ -440,26 +437,28 @@ class BaseExplorerContext(BaseDecorator):
             else:
                 # FIXME doesn't work as intended, but could save from
                 # recalculating cov map diffs if it works
-                # self._tracker.update(self._last_state, last_input,
-                # peek_result=self._current_state)
-                if exp._current_state != exp._tracker.update_state(
-                        last_state, input=last_input):
+                # exp._tracker.update(last_state, last_input,
+                # peek_result=current_state)
+                current_state = exp._tracker.update_state(last_state,
+                    input=last_input)
+                if tmp_state != current_state:
                     raise StabilityException(
                         "Failed to obtain consistent behavior",
-                        exp._tracker.current_state)
+                        current_state)
 
                 breadcrumbs = exp._current_path.copy()
                 if updated:
+                    info(f'Transitioned to {current_state}')
                     exp._tracker.update_transition(
-                        last_state, exp._current_state, last_input,
+                        last_state, current_state, last_input,
                         state_changed=True)
                     exp._current_path.append(
-                        (last_state, exp._current_state, last_input))
+                        (last_state, current_state, last_input))
 
-                await self.update_state(exp._current_state, input=last_input,
+                await self.update_state(current_state, input=last_input,
                     orig_input=self.orig_input, breadcrumbs=breadcrumbs)
                 await self.update_transition(
-                    last_state, exp._current_state, last_input,
+                    last_state, current_state, last_input,
                     orig_input=self.orig_input, breadcrumbs=breadcrumbs,
                     state_changed=updated, new_transition=new)
 
