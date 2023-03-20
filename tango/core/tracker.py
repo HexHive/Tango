@@ -49,17 +49,18 @@ class AbstractStateMeta(ABCMeta):
         cls = super().__new__(metacls, name, bases, namespace)
         return cls
 
-    def __call__(cls, *args, state_hash: int, do_not_cache: bool=False, **kwargs):
-        if not do_not_cache and (cached := cls._cache.get(state_hash)):
+    def __call__(cls, *args, state_hash: int, update_cache: bool=True,
+            fetch_cache: bool=True, **kwargs):
+        if fetch_cache and (cached := cls._cache.get(state_hash)):
             return cached
         new = cls.__new__(cls)
         new._hash = state_hash
-        if do_not_cache:
-            new._id = '(local)'
-        else:
+        if update_cache:
             cls._cache[state_hash] = new
             new._id = cls._id_counter
             cls._id_counter += 1
+        else:
+            new._id = 'local'
         new.__init__(*args, **kwargs)
         return new
 

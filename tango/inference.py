@@ -531,7 +531,7 @@ class StateInferenceStrategy(UniformStrategy,
             assert eqv_src == await self._explorer.reload_state(eqv_src,
                 dryrun=True)
             await self._loader.apply_transition(
-                (eqv_src, eqv_dst, input), eqv_src, do_not_cache=True)
+                (eqv_src, eqv_dst, input), eqv_src, update_cache=False)
             return True
         except StabilityException as ex:
             # TODO add new states to graph and match against them too?

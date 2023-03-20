@@ -45,11 +45,12 @@ class ReplayLoader(BaseLoader,
             )
         return current_state
 
-    async def load_path(self, path: Path):
+    async def load_path(self, path: Path, **kwargs):
         src, _, _ = path[0]
-        last_state = self._tracker.peek(expected_destination=src)
+        last_state = self._tracker.peek(expected_destination=src, **kwargs)
         for transition in path:
-            last_state = await self.apply_transition(transition, last_state)
+            last_state = await self.apply_transition(transition, last_state,
+                **kwargs)
 
     async def load_state(self, state_or_path: LoadableTarget) \
             -> AsyncGenerator[Transition, Any]:
@@ -67,6 +68,6 @@ class ReplayLoader(BaseLoader,
             return
 
         full_path = list(path)
-        await self.load_path(full_path)
+        await self.load_path(full_path, update_cache=False)
         for transition in full_path:
             yield transition

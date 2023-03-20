@@ -471,7 +471,7 @@ class CoverageTracker(BaseTracker,
 
     @cached_property
     def current_state(self) -> FeatureSnapshot:
-        return self.peek(self._current_state, do_not_cache=True)
+        return self.peek(self._current_state, update_cache=False)
 
     def extract_snapshot(self, feature_map: FeatureMap,
             parent_state: FeatureSnapshot, *, commit: bool=True,
@@ -551,7 +551,7 @@ class CoverageTracker(BaseTracker,
     def _update_local(self):
         # this is a pseudo-state that stores the last observed diffs in the local map
         next_state = self.extract_snapshot(self._local, self._local_state,
-            allow_empty=True, do_not_cache=True)
+            allow_empty=True, update_cache=False)
         self._local_state = next_state
 
 class CoverageReplayLoader(ReplayLoader,

@@ -254,7 +254,7 @@ class BaseExplorer(AbstractExplorer,
                     assert self._last_state == src
                     await self._loader.apply_transition(
                         (src, self._current_state, last_input), src,
-                        do_not_cache=True)
+                        update_cache=False)
                 except StateNotReproducibleException:
                     # * StateNotReproducibleException:
                     #   This occurs when the reload_state() encountered an error
@@ -303,7 +303,7 @@ class BaseExplorer(AbstractExplorer,
             exp_input = input[begin:]
             try:
                 await self._loader.apply_transition((src, dst, exp_input), src,
-                    do_not_cache=True)
+                    update_cache=False)
             except Exception as ex:
                 debug(f'{ex=}')
                 success = False
@@ -335,7 +335,7 @@ class BaseExplorer(AbstractExplorer,
                 try:
                     await self._loader.apply_transition(
                         (src, dst, tmp_lin_input), src,
-                        do_not_cache=True)
+                        update_cache=False)
                 except Exception as ex:
                     debug(f'{ex=}')
                     success = False
@@ -355,7 +355,7 @@ class BaseExplorer(AbstractExplorer,
         success = True
         try:
             await self._loader.apply_transition((src, dst, lin_input), src,
-                do_not_cache=True)
+                update_cache=False)
         except Exception as ex:
             debug(f'{ex=}')
             success = False
@@ -363,7 +363,7 @@ class BaseExplorer(AbstractExplorer,
                 # finally, we fall back to validating the original input
                 src = await self.reload_state(state_or_path, dryrun=True)
                 await self._loader.apply_transition((src, dst, input), src,
-                    do_not_cache=True)
+                    update_cache=False)
                 reduced = False
                 success = True
 
