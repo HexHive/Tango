@@ -70,7 +70,6 @@ class BaseExplorer(AbstractExplorer,
 
         # these are generally persistent until a reload_state
         self._current_path = []
-        self._last_path = []
         self._accumulated_input = EmptyInput()
 
     async def finalize(self, owner: ComponentOwner):
@@ -224,10 +223,10 @@ class BaseExplorer(AbstractExplorer,
                 debug("Attempting to minimize transition")
                 last_input = last_input.flatten()
                 # we clone the current path because minimization may corrupt it
-                self._last_path = self._current_path.copy()
+                last_path = self._current_path.copy()
                 try:
                     last_input = await self._minimize_transition(
-                        self._last_path, self._current_state, last_input)
+                        last_path, self._current_state, last_input)
                     # we update the reference to the current state, in case
                     # minimization invalidated it
                     self._current_state = self._tracker.current_state
@@ -243,8 +242,8 @@ class BaseExplorer(AbstractExplorer,
                     # we make a copy of _current_path because the loader may
                     # modify it, but at this stage, we may want to restore state
                     # using that path
-                    self._last_path = self._current_path.copy()
-                    src = await self.reload_state(self._last_path, dryrun=True)
+                    last_path = self._current_path.copy()
+                    src = await self.reload_state(last_path, dryrun=True)
                     assert self._last_state == src
                     await self._loader.apply_transition(
                         (src, self._current_state, last_input), src,
@@ -449,6 +448,7 @@ class BaseExplorerContext(BaseDecorator):
                         "Failed to obtain consistent behavior",
                         exp._tracker.current_state)
 
+                breadcrumbs = exp._current_path.copy()
                 if updated:
                     exp._tracker.update_transition(
                         last_state, exp._current_state, last_input,
@@ -457,10 +457,10 @@ class BaseExplorerContext(BaseDecorator):
                         (last_state, exp._current_state, last_input))
 
                 await self.update_state(exp._current_state, input=last_input,
-                    orig_input=self.orig_input, breadcrumbs=exp._last_path)
+                    orig_input=self.orig_input, breadcrumbs=breadcrumbs)
                 await self.update_transition(
                     last_state, exp._current_state, last_input,
-                    orig_input=self.orig_input, breadcrumbs=exp._last_path,
+                    orig_input=self.orig_input, breadcrumbs=breadcrumbs,
                     state_changed=updated, new_transition=new)
 
         if idx >= 0:
