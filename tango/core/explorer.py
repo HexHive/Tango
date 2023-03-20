@@ -5,7 +5,7 @@ from tango.exceptions import (StabilityException, StateNotReproducibleException,
     StatePrecisionException)
 from tango.core.tracker import AbstractState, AbstractTracker
 from tango.core.input import (AbstractInput, BaseInput, PreparedInput,
-    BaseDecorator)
+    BaseDecorator, EmptyInput)
 from tango.core.driver import AbstractDriver
 from tango.core.loader import AbstractLoader
 from tango.core.profiler import (ValueProfiler, FrequencyProfiler,
@@ -67,8 +67,11 @@ class BaseExplorer(AbstractExplorer,
         self._tracker = tracker
         self._driver = driver
         self._reload_attempts = int(reload_attempts)
+
+        # these are generally persistent until a reload_state
         self._current_path = []
         self._last_path = []
+        self._accumulated_input = EmptyInput()
 
     async def finalize(self, owner: ComponentOwner):
         self._last_state = self._current_state = self._tracker.entry_state
@@ -145,16 +148,7 @@ class BaseExplorer(AbstractExplorer,
         if not dryrun:
             ValueProfiler('status')('reset_state')
             self._reset_current_path()
-            # must clear last state's input whenever a new state is
-            # loaded
-            #
-            # WARN if using SnapshotLoader, the snapshot must be
-            # taken when the state is first reached, not when a
-            # transition is about to happen. Otherwise, last_input may
-            # be None, but the snapshot may have residual effect from
-            # previous inputs before the state change.
-            if self._last_state is not None:
-                self._last_state.last_input = None
+            self._accumulated_input = EmptyInput()
 
         loadable = state_or_path or self._tracker.entry_state
         try:
@@ -392,7 +386,7 @@ class BaseExplorerContext(BaseDecorator):
 
     def input_gen(self):
         # we delay the call to the slicing decorator until needed
-        head = self._exp._last_state.last_input
+        head = self._exp._accumulated_input
         tail = self[self._start:self._stop]
         if head is None:
             if self._start >= self._stop:
@@ -436,14 +430,11 @@ class BaseExplorerContext(BaseDecorator):
                     # if an update has happened, we've transitioned out of the
                     # last_state and as such, it's no longer necessary to keep
                     # track of the last input
-                    last_state.last_input = None
+                    exp._accumulated_input = EmptyInput()
             except Exception as ex:
                 self._stop = idx + 1
-                # we also clear the last input on an exception, because the next
-                # course of action will involve a reload_state
-                last_state.last_input = None
-                await self.update_state(exp._current_state,
-                    breadcrumbs=exp._last_path,
+                await self.update_state(exp._tracker.current_state,
+                    breadcrumbs=exp._current_path,
                     input=self.input_gen(), orig_input=self.orig_input,
                     exc=ex)
                 raise
@@ -474,7 +465,7 @@ class BaseExplorerContext(BaseDecorator):
 
         if idx >= 0:
             # commit the rest of the input
-            exp._last_state.last_input = self.input_gen()
+            exp._accumulated_input = self.input_gen()
 
     def __iter__(self, *, orig):
         return orig()

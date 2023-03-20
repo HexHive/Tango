@@ -83,11 +83,6 @@ class AbstractState(ABC, metaclass=AbstractStateMeta):
 
     @property
     @abstractmethod
-    def last_input(self) -> AbstractInput:
-        pass
-
-    @property
-    @abstractmethod
     def out_edges(self) -> Iterable[Transition]:
         pass
 
@@ -106,20 +101,11 @@ class AbstractState(ABC, metaclass=AbstractStateMeta):
         pass
 
 class BaseState(AbstractState):
-    __slots__ = '_last_input', '_pred'
+    __slots__ = '_pred',
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._last_input = None
         self._pred = None
-
-    @property
-    def last_input(self) -> AbstractInput:
-        return self._last_input
-
-    @last_input.setter
-    def last_input(self, value: AbstractInput):
-        self._last_input = value
 
     @property
     def out_edges(self) -> Iterator[Transition]:
