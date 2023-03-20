@@ -1,4 +1,4 @@
-from tango.core import (AbstractInput, EmptyInput, BaseMutator,
+from tango.core import (AbstractInput, BaseMutator,
     AbstractInstruction, TransmitInstruction, ReceiveInstruction,
     DelayInstruction, BaseInputGenerator, AbstractState)
 
@@ -540,18 +540,5 @@ class RandomInputGenerator(BaseInputGenerator):
             config['generator'].get('type') == 'random'
 
     def generate(self, state: AbstractState) -> AbstractInput:
-        out_edges = list(state.out_edges)
-        if out_edges:
-            _, dst, data = self._entropy.choice(out_edges)
-            candidate = data['minimized']
-        else:
-            in_edges = list(state.in_edges)
-            if in_edges:
-                _, dst, data = self._entropy.choice(in_edges)
-                candidate = data['minimized']
-            elif self.seeds:
-                candidate = self._entropy.choice(self.seeds)
-            else:
-                candidate = EmptyInput()
-
+        candidate = self.select_candidate(state)
         return HavocMutator(candidate, entropy=self._entropy)

@@ -1,7 +1,7 @@
 from . import debug, critical
 
 from tango.core import (AbstractInstruction, TransmitInstruction,
-    ReceiveInstruction, DelayInstruction, AbstractInput, EmptyInput,
+    ReceiveInstruction, DelayInstruction, AbstractInput,
     BaseDecorator, AbstractState, BaseMutator, BaseInputGenerator,
     CountProfiler, ValueProfiler)
 from tango.havoc import havoc_handlers, RAND, MUT_HAVOC_STACK_POW2
@@ -135,28 +135,16 @@ class ReactiveInputGenerator(BaseInputGenerator):
             config['generator'].get('type') == 'reactive'
 
     def generate(self, state: AbstractState) -> AbstractInput:
-        out_edges = list(state.out_edges)
-        if out_edges:
-            _, dst, data = self._entropy.choice(out_edges)
-            candidate = data['minimized']
-        else:
-            in_edges = list(state.in_edges)
-            if in_edges:
-                _, dst, data = self._entropy.choice(in_edges)
-                candidate = data['minimized']
-            elif self.seeds:
-                candidate = self._entropy.choice(self.seeds)
-            else:
-                candidate = EmptyInput()
-
         if (model := self._state_model.get(state)) is None:
             model = self._init_state_model(state)
 
         havoc_actions = self._entropy.choices(havoc_handlers,
-            weights=map(lambda t: model['actions'][t][1], havoc_handlers), # we use probabilities as weights
+            # we use probabilities as weights
+            weights=map(lambda t: model['actions'][t][1], havoc_handlers),
             k=RAND(MUT_HAVOC_STACK_POW2, self._entropy) + 1
         )
 
+        candidate = self.select_candidate(state)
         mut = ReactiveHavocMutator(candidate, havoc_actions,
             entropy=self._entropy)
         return mut

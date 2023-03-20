@@ -4,7 +4,8 @@ from . import debug, info, warning, critical
 
 from tango.core import (UniformStrategy, AbstractState, AbstractInput,
     BaseStateGraph, AbstractTracker, ValueProfiler, TimeElapsedProfiler,
-    ValueMeanProfiler, LambdaProfiler, AbstractLoader, CountProfiler)
+    ValueMeanProfiler, LambdaProfiler, AbstractLoader, CountProfiler,
+    EmptyInput)
 from tango.cov import CoverageTracker
 from tango.reactive import ReactiveInputGenerator, ReactiveHavocMutator
 from tango.webui import WebRenderer, WebDataLoader
@@ -778,39 +779,31 @@ class InferenceInputGenerator(ReactiveInputGenerator,
         self._tracker = tracker
         self._broadcast_mutation_feedback = broadcast_mutation_feedback
 
-    def generate(self, state: AbstractState) -> AbstractInput:
-        if not self._broadcast_mutation_feedback:
-            return super().generate(state)
-
+    def select_candidate(self, state: AbstractState):
         try:
             sidx = self._tracker.equivalence_map[state]
             eqv = self._tracker.equivalence_states[sidx]
             eqv = list(map(self._tracker.node_arr.__getitem__, eqv))
+            out_edges = (inp for s in eqv for _,_,inp in s.out_edges)
+            in_edges = (inp for s in eqv for _,_,inp in s.in_edges)
+            candidates = (*out_edges, *in_edges, *self.seeds, EmptyInput())
+            return self._entropy.choice(candidates)
         except KeyError:
-            return super().generate(state)
+            return super().select_candidate(state)
 
-        out_edges = [e for s in eqv for e in s.out_edges]
-        if out_edges:
-            _, dst, data = self._entropy.choice(out_edges)
-            candidate = data['minimized']
-        else:
-            in_edges = list(s.in_edges for s in eqv)
-            if in_edges:
-                _, dst, data = self._entropy.choice(in_edges)
-                candidate = data['minimized']
-            elif self.seeds:
-                candidate = self._entropy.choice(self.seeds)
-            else:
-                candidate = EmptyInput()
+    def generate(self, state: AbstractState) -> AbstractInput:
+        if not self._broadcast_mutation_feedback:
+            return super().generate(state)
 
         if (model := self._state_model.get(state)) is None:
             model = self._init_state_model(state)
 
         havoc_actions = self._entropy.choices(havoc_handlers,
-            weights=map(lambda t: model['actions'][t][1], havoc_handlers), # we use probabilities as weights
+            # we use probabilities as weights
+            weights=map(lambda t: model['actions'][t][1], havoc_handlers),
             k=RAND(MUT_HAVOC_STACK_POW2, self._entropy) + 1
         )
-
+        candidate = self.select_candidate(state)
         return ReactiveHavocMutator(candidate, havoc_actions, entropy=self._entropy)
 
     def update_transition(self, source: AbstractState,

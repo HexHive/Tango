@@ -9,7 +9,7 @@ from tango.common import AsyncComponent, ComponentType, ComponentOwner
 from tango.exceptions import StateNotReproducibleException
 
 from abc          import ABC, ABCMeta, abstractmethod
-from typing import TypeVar, Iterable, Optional
+from typing import TypeVar, Iterable, Optional, Any
 from nptyping import NDArray, Shape
 from itertools import product as xproduct, tee
 from functools import partial
@@ -123,12 +123,20 @@ class BaseState(AbstractState):
     @property
     def out_edges(self) -> Iterator[Transition]:
         if self in self._tracker.state_graph:
-            yield from self._tracker.state_graph.out_edges(self, data=True)
+            return ((*edge[:2], inp) \
+                for edge in self._tracker.state_graph.out_edges(self, data=True)
+                    for inp in self._tracker.state_graph.get_inputs(edge))
+        else:
+            return ()
 
     @property
     def in_edges(self) -> Iterator[Transition]:
         if self in self._tracker.state_graph:
-            yield from self._tracker.state_graph.in_edges(self, data=True)
+            return ((*edge[:2], inp) \
+                for edge in self._tracker.state_graph.in_edges(self, data=True)
+                    for inp in self._tracker.state_graph.get_inputs(edge))
+        else:
+            return ()
 
     @property
     def predecessor_transition(self) -> Transition:
@@ -187,6 +195,10 @@ class AbstractStateGraph(ABC, metaclass=AbstractStateGraphMeta):
     @abstractmethod
     def get_paths(self, destination: AbstractState, source: AbstractState=None) \
             -> PathGenerator:
+        pass
+
+    @abstractmethod
+    def get_inputs(self, edge: Edge) -> Iterable[AbstractInput]:
         pass
 
     @property
@@ -426,6 +438,10 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
                         tuples.append((_source, _destination, _input))
                     yield tuples
 
+    def get_inputs(self, edge: Edge) -> Iterable[AbstractInput]:
+        _,_, data = edge
+        return data['transition']
+
     def _get_edge_with_inputs(self, src, dst, minimized_only):
         data = self.get_edge_data(src, dst)
         yield src, dst, data['minimized']
@@ -534,6 +550,7 @@ class BaseTracker(AbstractTracker):
 
 S = TypeVar('State', bound=AbstractState)
 I = TypeVar('Input', bound=AbstractInput)
+Edge = tuple[S, S, Any]
 Transition = tuple[S, S, I]
 Path = list[Transition]
 PathGenerator = Iterable[Path]

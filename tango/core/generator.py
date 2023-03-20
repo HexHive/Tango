@@ -77,6 +77,12 @@ class BaseInputGenerator(AbstractInputGenerator,
             input = self._input_kls(file=seed, load=True)
             self._seeds.append(input)
 
+    def select_candidate(self, state: AbstractState):
+        out_edges = (inp for _,_,inp in state.out_edges)
+        in_edges = (inp for _,_,inp in state.in_edges)
+        candidates = (*out_edges, *in_edges, *self.seeds, EmptyInput())
+        return self._entropy.choice(candidates)
+
     def save_input(self, input: AbstractInput,
             prefix_path: Sequence[tuple[AbstractState, AbstractState, AbstractInput]],
             category: str, label: str, filepath: str=None):
