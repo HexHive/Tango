@@ -1037,6 +1037,10 @@ class AsyncComponent(Component):
                     f" instance of {requested_type} instead!")
             kwargs[component_type.name] = component
 
+        strargs = (str(a) for a in args)
+        strkwargs = ('='.join(str(x) for x in item) for item in kwargs.items())
+        _args = ', '.join((*strargs, *strkwargs))
+        info(f'Creating {typ.name} as {cls.__name__}({_args})')
         new_component = cls(*args, **kwargs)
         owner[typ] = new_component
         if not deps:
