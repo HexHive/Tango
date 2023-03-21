@@ -72,7 +72,7 @@ index 6344561d6..cd1fdeaa3 100644
  # files, by settings such as these
  
 -# LOG_FILE_PATH=syslog
-+LOG_FILE_PATH=syslog
++LOG_FILE_PATH=/tmp/exim_fuzz_%s
  # LOG_FILE_PATH=syslog:/var/log/exim_%slog
  
  # The first of these uses only syslog; the second uses syslog and also writes

@@ -2,8 +2,8 @@
 	"driver": {
 		"type": "unix",
 		"exec": {
-			"path": "./exim",
-			"args": ["./exim", "-C", "exim.config", "-bdf", "-oX", "2025"],
+			"path": "./dnsmasq",
+			"args": ["./dnsmasq", "-C", "dnsmasq.conf"],
 			"cwd": "./",
 			"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
 		},
@@ -14,10 +14,10 @@
 		"type": "replay"
 	},
 	"channel": {
-		"type": "tcp",
+		"type": "udp",
 		"endpoint": "127.0.0.1",
-		"port": 2025,
-		"fork_before_accept": true
+		"port": 5353,
+		"fork_before_bind": false
 	},
 	"generator": {
 		"type": "reactive"
@@ -30,10 +30,8 @@
 	},
 	"fuzzer": {
 		"lib": "./lib/",
-		"cwd": "./targets/exim/",
+		"cwd": "./targets/dnsmasq/",
 		"work_dir": "./workdir/",
-		"seeds": "./seeds/",
-		"resume": true,
-		"timescale": 0
+		"resume": true
 	}
 }
