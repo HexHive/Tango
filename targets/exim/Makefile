@@ -1,5 +1,7 @@
 .PHONY: exim
 
+USER ?= $(shell whoami)
+
 exim:
 	rm -rf exim_repo
 	git clone https://github.com/Exim/exim.git exim_repo

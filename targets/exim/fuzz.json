@@ -1,33 +1,37 @@
 {
-	"exec": {
-		"path": "./exim",
-		"args": ["./exim", "-C", "exim.config", "-bdf", "-oX", "2025"],
-		"cwd": "./",
-		"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
-	},
-	"channel": {
-		"type": "tcp",
-		"tcp": {
-			"endpoint": "127.0.0.1",
-			"port": 2025
-		}
-	},
-	"loader": {
-		"type": "replay",
+	"driver": {
+		"type": "unix",
+		"exec": {
+			"path": "./exim",
+			"args": ["./exim", "-C", "exim.config", "-bdf", "-oX", "2025"],
+			"cwd": "./",
+			"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
+		},
 		"forkserver": true,
 		"disable_aslr": true
 	},
-	"input": {
+	"loader": {
+		"type": "replay"
+	},
+	"channel": {
+		"type": "tcp",
+		"endpoint": "127.0.0.1",
+		"port": 2025,
+		"fork_before_accept": true
+	},
+	"generator": {
 		"type": "reactive"
 	},
-	"statemanager": {
-		"type": "coverage",
-		"strategy": "uniform"
+	"tracker": {
+		"type": "coverage"
+	},
+	"strategy": {
+		"type": "uniform"
 	},
 	"fuzzer": {
 		"lib": "./lib/",
 		"cwd": "./targets/exim/",
-		"workdir": "./workdir/",
+		"work_dir": "./workdir/",
 		"seeds": "./seeds/",
 		"resume": true,
 		"timescale": 0

@@ -1,33 +1,37 @@
 {
-	"exec": {
-		"path": "./dnsmasq",
-		"args": ["./dnsmasq", "-C", "dnsmasq.conf"],
-		"cwd": "./",
-		"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
-	},
-	"channel": {
-		"type": "udp",
-		"udp": {
-			"endpoint": "127.0.0.1",
-			"port": 5353
-		}
-	},
-	"loader": {
-		"type": "replay",
+	"driver": {
+		"type": "unix",
+		"exec": {
+			"path": "./dnsmasq",
+			"args": ["./dnsmasq", "-C", "dnsmasq.conf"],
+			"cwd": "./",
+			"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
+		},
 		"forkserver": true,
 		"disable_aslr": true
 	},
-	"input": {
+	"loader": {
+		"type": "replay"
+	},
+	"channel": {
+		"type": "udp",
+		"endpoint": "127.0.0.1",
+		"port": 5353,
+		"fork_before_bind": false
+	},
+	"generator": {
 		"type": "reactive"
 	},
-	"statemanager": {
-		"type": "coverage",
-		"strategy": "uniform"
+	"tracker": {
+		"type": "coverage"
+	},
+	"strategy": {
+		"type": "uniform"
 	},
 	"fuzzer": {
 		"lib": "./lib/",
 		"cwd": "./targets/dns/",
-		"workdir": "./workdir/",
+		"work_dir": "./workdir/",
 		"resume": true
 	}
 }
