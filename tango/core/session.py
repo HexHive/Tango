@@ -10,7 +10,7 @@ from tango.core.explorer import BaseExplorer
 from tango.core.generator import BaseInputGenerator
 from tango.core.strategy import BaseStrategy
 from tango.common import (AsyncComponent, ComponentType, Suspendable,
-    get_session_context)
+    ComponentOwner, get_session_context)
 from tango.exceptions import (StabilityException,
                           StatePrecisionException,
                           LoadedException,
@@ -56,11 +56,11 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
         self._generator = generator
         self._strategy = strategy
 
-    async def initialize(self):
-        await super().initialize()
+    async def finalize(self, owner: ComponentOwner):
         self._explorer.register_state_reload_callback(self._state_reload_cb)
         self._explorer.register_state_update_callback(self._state_update_cb)
         self._explorer.register_transition_update_callback(self._transition_update_cb)
+        await super().finalize(owner)
 
     async def _loop(self):
         while True:
