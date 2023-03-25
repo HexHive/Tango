@@ -813,10 +813,9 @@ class InferenceInputGenerator(ReactiveInputGenerator,
         result = super().update_transition(source, destination, input,
                 state_changed=state_changed, orig_input=orig_input, exc=exc,
                 **kwargs)
-        if not self._broadcast_mutation_feedback or \
-                not orig_input.decorated or not result:
+        if not self._broadcast_mutation_feedback or not result:
             return
-        reward, actions_taken, actions = result
+        reward, actions = result
 
         try:
             sidx = self._tracker.equivalence_map[source]
