@@ -52,6 +52,8 @@ class StateInferenceTracker(CoverageTracker,
         return config['strategy'].get('type') == 'inference'
 
     def __init__(self, *, disperse_heat: bool=False, **kwargs):
+        if disperse_heat:
+            kwargs['track_heat'] = True
         super().__init__(**kwargs)
         # properties
         self.mode = InferenceMode.Discovery
@@ -62,12 +64,6 @@ class StateInferenceTracker(CoverageTracker,
         self.equivalence_arr = np.empty((0,), dtype=int)
         self.equivalence_states = {}
         self.recovered_graph = RecoveredStateGraph()
-        self._track_heat = disperse_heat
-
-    async def finalize(self, owner: ComponentOwner):
-        await super().finalize(owner)
-        if self._track_heat:
-            self._feature_heat = np.zeros(self._reader.length, dtype=int)
 
     def reconstruct_graph(self, adj):
         dt = [('transition', object)]
@@ -108,10 +104,6 @@ class StateInferenceTracker(CoverageTracker,
             self.__dict__.pop('unmapped_states', None)
         rv = super().update_transition(source, destination, input,
             state_changed=state_changed, exc=exc, **kwargs)
-        if self._track_heat:
-            feature_mask = np.asarray(self._diff_state._feature_mask)
-            hot_features, = feature_mask.nonzero()
-            self._feature_heat[hot_features] += 1
         return rv
 
     def set_nodes(self, nodes: Sequence[AbstractState],

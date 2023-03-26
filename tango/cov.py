@@ -401,12 +401,14 @@ class CoverageForkDriver(CoverageDriver, ProcessForkDriver):
 
 class CoverageTracker(BaseTracker,
         capture_components={ComponentType.driver},
-        capture_paths=['tracker.native_lib', 'tracker.verify_raw_coverage']):
+        capture_paths=['tracker.native_lib', 'tracker.verify_raw_coverage',
+            'tracker.track_heat']):
     def __init__(self, *, driver: CoverageDriver, native_lib=None,
-            verify_raw_coverage: bool=False, **kwargs):
+            verify_raw_coverage: bool=False, track_heat: bool=False, **kwargs):
         super().__init__(**kwargs)
         self._driver = driver
         self._verify = verify_raw_coverage
+        self._track_heat = track_heat
 
         if native_lib:
             self._bind_lib = CDLL(native_lib)
@@ -445,9 +447,12 @@ class CoverageTracker(BaseTracker,
         self._global = FeatureMap(self._reader, bind_lib=self._bind_lib)
         self._scratch = FeatureMap(self._reader, bind_lib=self._bind_lib)
         self._local = FeatureMap(self._reader, bind_lib=self._bind_lib)
-        self._differential = FeatureMap(self._reader, bind_lib=self._bind_lib)
+        if self._track_heat:
+            self._differential = FeatureMap(self._reader,
+                                            bind_lib=self._bind_lib)
+            self._diff_state = None
+            self._feature_heat = np.zeros(self._reader.length, dtype=int)
 
-        self._diff_state = None
         self._local_state = None
         self._current_state = None
         # the update creates a new initial _current_state
@@ -546,9 +551,14 @@ class CoverageTracker(BaseTracker,
 
         # reset local maps
         self._local.clear()
+        self.extract_snapshot(  # initialize the state of the local feature map
+            self._local, None, update_cache=False)
         self._local_state = None
-        self._differential.clear()
-        self._diff_state = None
+        if self._track_heat:
+            self._differential.clear()
+            self.extract_snapshot(
+                self._differential, None, update_cache=False)
+            self._diff_state = None
         # update the local maps with the latest coverage readings
         self._update_local()
 
@@ -556,10 +566,14 @@ class CoverageTracker(BaseTracker,
         self._local_state = self.extract_snapshot(
             self._local, self._local_state,
             allow_empty=True, update_cache=False)
-        self._diff_state = self.extract_snapshot(
-            self._differential, self._diff_state,
-            allow_empty=True, update_cache=False)
-        self._differential.clear()
+        if self._track_heat:
+            self._diff_state = self.extract_snapshot(
+                self._differential, self._diff_state,
+                allow_empty=True, update_cache=False, commit=False)
+            feature_mask = np.asarray(self._diff_state._feature_mask)
+            hot_features, = feature_mask.nonzero()
+            # FIXME check how often this is empty...
+            self._feature_heat[hot_features] += 1
 
 class CoverageReplayLoader(ReplayLoader,
         capture_components={'driver', 'tracker'},
