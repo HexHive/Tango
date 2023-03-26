@@ -23,7 +23,7 @@ import pydot
 pydot.Common.create_attribute_methods = lambda *args, **kwargs: None
 now = datetime.datetime.now
 
-__all__ = ['WebRenderer']
+__all__ = ['WebRenderer', 'WebDataLoader', 'create_svg']
 
 WWW_PATH = os.path.join(os.path.dirname(__file__), 'www')
 

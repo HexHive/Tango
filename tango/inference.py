@@ -8,7 +8,7 @@ from tango.core import (UniformStrategy, AbstractState, AbstractInput,
     EmptyInput)
 from tango.cov import CoverageTracker
 from tango.reactive import ReactiveInputGenerator, ReactiveHavocMutator
-from tango.webui import WebRenderer, WebDataLoader
+from tango.webui import WebRenderer, WebDataLoader, create_svg
 from tango.common import get_session_task_group, ComponentOwner
 from tango.exceptions import StabilityException
 from tango.havoc import havoc_handlers, RAND, MUT_HAVOC_STACK_POW2
@@ -23,6 +23,9 @@ import numpy as np
 import networkx as nx
 import datetime
 import asyncio
+import json
+
+utcnow = datetime.datetime.utcnow
 
 __all__ = [
     'StateInferenceStrategy', 'StateInferenceTracker', 'InferenceWebRenderer'
@@ -42,12 +45,13 @@ class RecoveredStateGraph(BaseStateGraph):
         G = super(BaseStateGraph, self).copy(**kwargs)
         return G
 
-class StateInferenceTracker(CoverageTracker):
+class StateInferenceTracker(CoverageTracker,
+        capture_paths=('strategy.disperse_heat',)):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return config['strategy'].get('type') == 'inference'
 
-    def __init__(self, **kwargs):
+    def __init__(self, *, disperse_heat: bool=False, **kwargs):
         super().__init__(**kwargs)
         # properties
         self.mode = InferenceMode.Discovery
@@ -58,6 +62,12 @@ class StateInferenceTracker(CoverageTracker):
         self.equivalence_arr = np.empty((0,), dtype=int)
         self.equivalence_states = {}
         self.recovered_graph = RecoveredStateGraph()
+        self._track_heat = disperse_heat
+
+    async def finalize(self, owner: ComponentOwner):
+        await super().finalize(owner)
+        if self._track_heat:
+            self._feature_heat = np.zeros(self._reader.length, dtype=int)
 
     def reconstruct_graph(self, adj):
         dt = [('transition', object)]
@@ -96,8 +106,13 @@ class StateInferenceTracker(CoverageTracker):
             state_changed: bool, exc: Exception=None, **kwargs):
         if not exc and state_changed and not destination in self.state_graph:
             self.__dict__.pop('unmapped_states', None)
-        return super().update_transition(source, destination, input,
+        rv = super().update_transition(source, destination, input,
             state_changed=state_changed, exc=exc, **kwargs)
+        if self._track_heat:
+            feature_mask = np.asarray(self._diff_state._feature_mask)
+            hot_features, = feature_mask.nonzero()
+            self._feature_heat[hot_features] += 1
+        return rv
 
     def set_nodes(self, nodes: Sequence[AbstractState],
             eqv_map: Mapping[int, int]):
@@ -140,8 +155,10 @@ class StateInferenceTracker(CoverageTracker):
                 node_idx = self.nodes[state]
                 adj_idx, = self.capability_matrix[node_idx,:].nonzero()
                 nbrs = self.node_arr[adj_idx]
-                inputs = self.capability_matrix[node_idx, adj_idx]
-                return ((state, dst, inp) for dst, inp in zip(nbrs, inputs))
+                edges = self.capability_matrix[node_idx, adj_idx]
+                return ((state, dst, inp)
+                    for dst, edge in zip(nbrs, edges)
+                        for inp in edge)
             except KeyError:
                 return super().out_edges(state)
         else:
@@ -153,8 +170,10 @@ class StateInferenceTracker(CoverageTracker):
                 node_idx = self.nodes[state]
                 adj_idx, = self.capability_matrix[:,node_idx].nonzero()
                 nbrs = self.node_arr[adj_idx]
-                inputs = self.capability_matrix[adj_idx, node_idx]
-                return ((src, state, inp) for src, inp in zip(nbrs, inputs))
+                edges = self.capability_matrix[adj_idx, node_idx]
+                return ((src, state, inp)
+                    for src, edge in zip(nbrs, edges)
+                        for inp in edge)
             except KeyError:
                 return super().in_edges(state)
         else:
@@ -162,23 +181,25 @@ class StateInferenceTracker(CoverageTracker):
 
 class StateInferenceStrategy(UniformStrategy,
         capture_components={'tracker', 'loader'},
-        capture_paths=['strategy.inference_batch',
+        capture_paths=['strategy.inference_batch', 'strategy.disperse_heat',
             'strategy.extend_on_groups', 'strategy.recursive_collapse',
             'strategy.dt_predict', 'strategy.dt_extrapolate',
             'strategy.dt_validate', 'strategy.broadcast_state_schedule']):
     def __init__(self, *, tracker: StateInferenceTracker,
             loader: AbstractLoader,
             inference_batch: Optional[str | int]=None,
-            extend_on_groups: Optional[bool]=False,
-            recursive_collapse: Optional[bool]=False,
-            dt_predict: Optional[bool]=False,
-            dt_extrapolate: Optional[bool]=False,
-            dt_validate: Optional[bool]=False,
-            broadcast_state_schedule: Optional[bool]=False, **kwargs):
+            disperse_heat: bool=False,
+            extend_on_groups: bool=False,
+            recursive_collapse: bool=False,
+            dt_predict: bool=False,
+            dt_extrapolate: bool=False,
+            dt_validate: bool=False,
+            broadcast_state_schedule: bool=False, **kwargs):
         super().__init__(**kwargs)
         self._tracker = tracker
         self._loader = loader
         self._inference_batch = int(inference_batch or 50)
+        self._disperse_heat = disperse_heat
         self._extend_on_groups = extend_on_groups
         self._recursive_collapse = recursive_collapse
         self._dt_predict = dt_predict
@@ -758,6 +779,26 @@ class StateInferenceStrategy(UniformStrategy,
         except KeyError:
             pass
 
+    async def reload_target(self) -> AbstractState:
+        try:
+            state = self.target_state
+            j = self._tracker.nodes[state]
+            sidx = self._tracker.equivalence_map[state]
+            eqv = self._tracker.equivalence_states[sidx]
+            if not self._disperse_heat:
+                self._target = self._entropy.choice(self._tracker.node_arr[eqv])
+            else:
+                sblgs, temperatures = zip(*(
+                    (src, np.sum(self._tracker._feature_heat[
+                            np.asarray(dst._feature_mask).nonzero()]))
+                        for s in eqv for src,dst,_ in
+                            self._tracker.node_arr[s].out_edges))
+                weights = np.reciprocal(temperatures, dtype=float)
+                self._target = self._entropy.choices(sblgs, weights=weights)[0]
+        except KeyError:
+            pass
+        return await super().reload_target()
+
 class InferenceWebRenderer(WebRenderer):
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -780,7 +821,7 @@ class InferenceWebDataLoader(WebDataLoader):
         state = self._session._explorer.tracker.equivalence_map.get(state)
         if state is None:
             return
-        now = datetime.datetime.now()
+        now = utcnow()
         if new:
             self._node_added[state] = now
         self._node_visited[state] = now
@@ -792,36 +833,145 @@ class InferenceWebDataLoader(WebDataLoader):
         dst = self._session._explorer.tracker.equivalence_map.get(dst)
         if None in (src, dst):
             return
-        now = datetime.datetime.now()
+        now = utcnow()
         if new:
             self._edge_added[(src, dst)] = now
         self._edge_visited[(src, dst)] = now
         await self.update_graph()
 
+    async def update_graph(self, *args, **kwargs):
+        if not self._session._explorer.tracker.nodes:
+            return
+        # first we get a copy so that we can re-assign node and edge attributes
+        G, H = self.fresh_graph
+
+        node_sizes = {
+            sidx: len(eqvs)
+                for sidx, eqvs in
+                    self._session._explorer.tracker.equivalence_states.items()
+        }
+        max_node_size = max(node_sizes.values())
+        node_sizes = {
+            sidx: size / max_node_size for sidx, size in node_sizes.items()
+        }
+
+        to_delete = []
+        for node, data in G.nodes(data=True):
+            if len(G.nodes) > 1 and len(G.in_edges(node)) == 0 \
+                    and len(G.out_edges(node)) == 0:
+                to_delete.append(node)
+                continue
+            age = (utcnow() - self._node_visited.get(node, self.NA_DATE)).total_seconds()
+            coeff = self.fade_coeff(self._draw_update_fadeout, age)
+            lerp = self.lerp_color(
+                self.DEFAULT_NODE_COLOR,
+                self.LAST_UPDATE_NODE_COLOR,
+                coeff)
+            fillcolor = self.format_color(*lerp)
+
+            age = (utcnow() - self._node_added.get(node, self.NA_DATE)).total_seconds()
+            coeff = self.fade_coeff(self._draw_update_fadeout, age)
+            penwidth = self.lerp(
+                self.DEFAULT_NODE_PEN_WIDTH,
+                self.NEW_NODE_PEN_WIDTH,
+                coeff)
+
+            data.clear()
+            data['fillcolor'] = fillcolor
+            data['penwidth'] = penwidth
+            if node == self._session._strategy.target_state:
+                data['color'] = self.format_color(*self.TARGET_LINE_COLOR)
+                data['penwidth'] = self.NEW_NODE_PEN_WIDTH
+            else:
+                data['color'] = self.format_color(*self.NODE_LINE_COLOR)
+            data['width'] = 0.75 * node_sizes[node]
+            data['height'] = 0.5 * node_sizes[node]
+            data['fontsize'] = 14 * node_sizes[node]
+            data['penwidth'] *= node_sizes[node]
+
+        for node in to_delete:
+            G.remove_node(node)
+
+        for src, dst, data in G.edges(data=True):
+            age = (utcnow() - self._edge_visited.get((src, dst), self.NA_DATE)).total_seconds()
+            coeff = self.fade_coeff(self._draw_update_fadeout, age)
+            lerp = self.lerp_color(
+                self.DEFAULT_EDGE_COLOR,
+                self.LAST_UPDATE_EDGE_COLOR,
+                coeff)
+            color = self.format_color(*lerp)
+
+            age = (utcnow() - self._edge_added.get((src, dst), self.NA_DATE)).total_seconds()
+            coeff = self.fade_coeff(self._draw_update_fadeout, age)
+            penwidth = self.lerp(
+                self.DEFAULT_EDGE_PEN_WIDTH,
+                self.NEW_EDGE_PEN_WIDTH,
+                coeff)
+
+            state = dst
+            data.clear()
+            data['color'] = color
+            data['penwidth'] = penwidth * node_sizes[state]
+            if 'minimized' in H.edges[src, dst]:
+                label = f"min={len(H.edges[src, dst]['minimized'].flatten())}"
+                data['label'] = label
+
+        G.graph["graph"] = {'rankdir': 'LR'}
+        G.graph["node"] = {'style': 'filled'}
+        P = nx.nx_pydot.to_pydot(G)
+        svg = await create_svg(P)
+
+        msg = json.dumps({
+            'cmd': 'update_graph',
+            'items': {
+                # 'dot': dot,
+                'svg': svg
+            }
+        })
+
+        await self._ws.send_str(msg)
+
 # FIXME this component could benefit from composability
 class InferenceInputGenerator(ReactiveInputGenerator,
         capture_components={'tracker'},
-        capture_paths=('generator.broadcast_mutation_feedback',)):
+        capture_paths=('generator.broadcast_mutation_feedback',
+            'strategy.disperse_heat')):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
             config['strategy'].get('type') == 'inference'
 
     def __init__(self, *, tracker: StateInferenceTracker,
-            broadcast_mutation_feedback: bool=False, **kwargs):
+            broadcast_mutation_feedback: bool=False,
+            disperse_heat: bool=False, **kwargs):
         super().__init__(**kwargs)
         self._tracker = tracker
         self._broadcast_mutation_feedback = broadcast_mutation_feedback
+        self._disperse_heat = disperse_heat
 
     def select_candidate(self, state: AbstractState):
         try:
             sidx = self._tracker.equivalence_map[state]
             eqv = self._tracker.equivalence_states[sidx]
             eqv = list(map(self._tracker.node_arr.__getitem__, eqv))
-            out_edges = (inp for s in eqv for _,_,inp in s.out_edges)
             in_edges = (inp for s in eqv for _,_,inp in s.in_edges)
-            candidates = (*out_edges, *in_edges, *self.seeds, EmptyInput())
-            return self._entropy.choice(candidates)
+            if not self._disperse_heat:
+                out_edges = (inp for s in eqv for _,_,inp in s.out_edges)
+                candidates = (*out_edges, *in_edges, *self.seeds, EmptyInput())
+                return self._entropy.choice(candidates)
+            else:
+                out_edges, temperatures = zip(*(
+                    (inp, np.sum(self._tracker._feature_heat[
+                            np.asarray(dst._feature_mask).nonzero()]))
+                        for s in eqv for _,dst,inp in s.out_edges))
+                candidates = (*out_edges, *in_edges, *self.seeds, EmptyInput())
+                weights = np.reciprocal(temperatures, dtype=float)
+                out_weight = np.sum(weights)
+                max_weight = out_weight / 0.7
+                other_weights = np.linspace(out_weight, max_weight,
+                    num=len(candidates) - len(out_edges) + 1)[1:]
+                weights = np.hstack((np.cumsum(weights), other_weights))
+                return self._entropy.choices(candidates, cum_weights=weights)[0]
         except KeyError:
             return super().select_candidate(state)
 

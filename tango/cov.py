@@ -445,7 +445,9 @@ class CoverageTracker(BaseTracker,
         self._global = FeatureMap(self._reader, bind_lib=self._bind_lib)
         self._scratch = FeatureMap(self._reader, bind_lib=self._bind_lib)
         self._local = FeatureMap(self._reader, bind_lib=self._bind_lib)
+        self._differential = FeatureMap(self._reader, bind_lib=self._bind_lib)
 
+        self._diff_state = None
         self._local_state = None
         self._current_state = None
         # the update creates a new initial _current_state
@@ -542,17 +544,22 @@ class CoverageTracker(BaseTracker,
             if not np.array_equal(real_cov, state_cov):
                 raise RuntimeError("State coverage did not match actual map.")
 
-        # reset local map
+        # reset local maps
         self._local.clear()
         self._local_state = None
-        # update the local map with the latest coverage readings
+        self._differential.clear()
+        self._diff_state = None
+        # update the local maps with the latest coverage readings
         self._update_local()
 
     def _update_local(self):
-        # this is a pseudo-state that stores the last observed diffs in the local map
-        next_state = self.extract_snapshot(self._local, self._local_state,
+        self._local_state = self.extract_snapshot(
+            self._local, self._local_state,
             allow_empty=True, update_cache=False)
-        self._local_state = next_state
+        self._diff_state = self.extract_snapshot(
+            self._differential, self._diff_state,
+            allow_empty=True, update_cache=False)
+        self._differential.clear()
 
 class CoverageReplayLoader(ReplayLoader,
         capture_components={'driver', 'tracker'},
