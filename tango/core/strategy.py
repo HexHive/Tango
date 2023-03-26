@@ -80,14 +80,11 @@ class BaseStrategy(AbstractStrategy,
         if not input:
             input = self._generator.generate(current_state)
 
-        try:
-            await self._explorer.follow(input,
-                minimize=self._minimize_transitions,
-                validate=self._validate_transitions)
-            self._step_interrupted = False
-        except Exception:
-            self._step_interrupted = True
-            raise
+        self._step_interrupted = True
+        await self._explorer.follow(input,
+            minimize=self._minimize_transitions,
+            validate=self._validate_transitions)
+        self._step_interrupted = False
 
     @EventProfiler('reload_target')
     async def _reload_target_once(self) -> AbstractState:
@@ -192,6 +189,7 @@ class RolloverCounterStrategy(AbstractStrategy,
 
         if should_reset:
             await self.reload_target()
+            self._step_interrupted = False
         await super().step(input)
 
     @abstractmethod
@@ -242,15 +240,21 @@ class RandomStrategy(RolloverCounterStrategy, SeedableStrategy):
         return self._target
 
 class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return super().match_config(config) and \
+            config['strategy'].get('type') == 'uniform'
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._invalid_states = set()
         self._energy_map = defaultdict(lambda: 1)
 
-    @classmethod
-    def match_config(cls, config: dict) -> bool:
-        return super().match_config(config) and \
-            config['strategy'].get('type') == 'uniform'
+    async def step(self, input: Optional[AbstractInput]=None):
+        try:
+            await super().step(input)
+        finally:
+            self._energy_map[self._target] += 1
 
     def recalculate_target(self) -> AbstractState:
         filtered = [x for x in self._explorer._tracker.state_graph.nodes

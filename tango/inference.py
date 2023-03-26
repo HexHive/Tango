@@ -181,7 +181,12 @@ class StateInferenceStrategy(UniformStrategy,
                     self._tracker.mode = InferenceMode.CrossPollination
                     self._step_interrupted = True
                 else:
-                    await super().step(input)
+                    try:
+                        await super().step(input)
+                    finally:
+                        if self._broadcast_state_schedule:
+                            self._broadcast_state_energy(self._target)
+
             case InferenceMode.CrossPollination:
                 self._crosstest_timer()
                 cap, eqv_map, mask, nodes = await self.perform_cross_pollination()
@@ -712,17 +717,20 @@ class StateInferenceStrategy(UniformStrategy,
         if not self._broadcast_state_schedule or not state:
             return
         if not exc:
-            try:
-                j = self._tracker.nodes[state]
-                sidx = self._tracker.equivalence_map[state]
-                eqv = self._tracker.equivalence_states[sidx]
-                for i in eqv:
-                    if i == j:
-                        continue
-                    sblg = self._tracker.node_arr[i]
-                    self._energy_map[sblg] += 1
-            except KeyError:
-                pass
+            self._broadcast_state_energy(state)
+
+    def _broadcast_state_energy(self, state: AbstractState):
+        try:
+            j = self._tracker.nodes[state]
+            sidx = self._tracker.equivalence_map[state]
+            eqv = self._tracker.equivalence_states[sidx]
+            for i in eqv:
+                if i == j:
+                    continue
+                sblg = self._tracker.node_arr[i]
+                self._energy_map[sblg] += 1
+        except KeyError:
+            pass
 
 class InferenceWebRenderer(WebRenderer):
     @classmethod
