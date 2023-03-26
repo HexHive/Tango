@@ -9,9 +9,15 @@ from tango.core import (UniformStrategy, AbstractState, AbstractInput,
 from tango.cov import CoverageTracker
 from tango.reactive import ReactiveInputGenerator, HavocMutator
 from tango.webui import WebRenderer, WebDataLoader, create_svg
-from tango.common import get_session_task_group, ComponentOwner
+from tango.common import get_session_task_group
 from tango.exceptions import StabilityException
 from tango.havoc import havoc_handlers, RAND, MUT_HAVOC_STACK_POW2
+
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_svg import FigureCanvasSVG
+from matplotlib.colors import LogNorm
+import seaborn as sns
+import io
 
 from functools import partial, cached_property
 from aiohttp import web
@@ -800,6 +806,10 @@ class InferenceWebRenderer(WebRenderer):
         return partial(InferenceWebDataLoader, **self._webui_kwargs)
 
 class InferenceWebDataLoader(WebDataLoader):
+    def __init__(self, *args, draw_heatmap: bool=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._draw_heatmap = draw_heatmap
+
     @property
     def fresh_graph(self):
         H = self._session._explorer.tracker.recovered_graph
@@ -834,84 +844,89 @@ class InferenceWebDataLoader(WebDataLoader):
     async def update_graph(self, *args, **kwargs):
         if not self._session._explorer.tracker.nodes:
             return
-        # first we get a copy so that we can re-assign node and edge attributes
-        G, H = self.fresh_graph
 
-        node_sizes = {
-            sidx: len(eqvs)
-                for sidx, eqvs in
-                    self._session._explorer.tracker.equivalence_states.items()
-        }
-        max_node_size = max(node_sizes.values())
-        node_sizes = {
-            sidx: size / max_node_size for sidx, size in node_sizes.items()
-        }
+        if self._draw_heatmap:
+            array = self._session._strategy._tracker._feature_heat
+            svg = self.draw_heatmap(array)
+        else:
+            # first we get a copy so that we can re-assign node and edge attributes
+            G, H = self.fresh_graph
 
-        to_delete = []
-        for node, data in G.nodes(data=True):
-            if len(G.nodes) > 1 and len(G.in_edges(node)) == 0 \
-                    and len(G.out_edges(node)) == 0:
-                to_delete.append(node)
-                continue
-            age = (utcnow() - self._node_visited.get(node, self.NA_DATE)).total_seconds()
-            coeff = self.fade_coeff(self._draw_update_fadeout, age)
-            lerp = self.lerp_color(
-                self.DEFAULT_NODE_COLOR,
-                self.LAST_UPDATE_NODE_COLOR,
-                coeff)
-            fillcolor = self.format_color(*lerp)
+            node_sizes = {
+                sidx: len(eqvs)
+                    for sidx, eqvs in
+                        self._session._explorer.tracker.equivalence_states.items()
+            }
+            max_node_size = max(node_sizes.values())
+            node_sizes = {
+                sidx: size / max_node_size for sidx, size in node_sizes.items()
+            }
 
-            age = (utcnow() - self._node_added.get(node, self.NA_DATE)).total_seconds()
-            coeff = self.fade_coeff(self._draw_update_fadeout, age)
-            penwidth = self.lerp(
-                self.DEFAULT_NODE_PEN_WIDTH,
-                self.NEW_NODE_PEN_WIDTH,
-                coeff)
+            to_delete = []
+            for node, data in G.nodes(data=True):
+                if len(G.nodes) > 1 and len(G.in_edges(node)) == 0 \
+                        and len(G.out_edges(node)) == 0:
+                    to_delete.append(node)
+                    continue
+                age = (utcnow() - self._node_visited.get(node, self.NA_DATE)).total_seconds()
+                coeff = self.fade_coeff(self._draw_update_fadeout, age)
+                lerp = self.lerp_color(
+                    self.DEFAULT_NODE_COLOR,
+                    self.LAST_UPDATE_NODE_COLOR,
+                    coeff)
+                fillcolor = self.format_color(*lerp)
 
-            data.clear()
-            data['fillcolor'] = fillcolor
-            data['penwidth'] = penwidth
-            if node == self._session._strategy.target_state:
-                data['color'] = self.format_color(*self.TARGET_LINE_COLOR)
-                data['penwidth'] = self.NEW_NODE_PEN_WIDTH
-            else:
-                data['color'] = self.format_color(*self.NODE_LINE_COLOR)
-            data['width'] = 0.75 * node_sizes[node]
-            data['height'] = 0.5 * node_sizes[node]
-            data['fontsize'] = 14 * node_sizes[node]
-            data['penwidth'] *= node_sizes[node]
+                age = (utcnow() - self._node_added.get(node, self.NA_DATE)).total_seconds()
+                coeff = self.fade_coeff(self._draw_update_fadeout, age)
+                penwidth = self.lerp(
+                    self.DEFAULT_NODE_PEN_WIDTH,
+                    self.NEW_NODE_PEN_WIDTH,
+                    coeff)
 
-        for node in to_delete:
-            G.remove_node(node)
+                data.clear()
+                data['fillcolor'] = fillcolor
+                data['penwidth'] = penwidth
+                if node == self._session._strategy.target_state:
+                    data['color'] = self.format_color(*self.TARGET_LINE_COLOR)
+                    data['penwidth'] = self.NEW_NODE_PEN_WIDTH
+                else:
+                    data['color'] = self.format_color(*self.NODE_LINE_COLOR)
+                data['width'] = 0.75 * node_sizes[node]
+                data['height'] = 0.5 * node_sizes[node]
+                data['fontsize'] = 14 * node_sizes[node]
+                data['penwidth'] *= node_sizes[node]
 
-        for src, dst, data in G.edges(data=True):
-            age = (utcnow() - self._edge_visited.get((src, dst), self.NA_DATE)).total_seconds()
-            coeff = self.fade_coeff(self._draw_update_fadeout, age)
-            lerp = self.lerp_color(
-                self.DEFAULT_EDGE_COLOR,
-                self.LAST_UPDATE_EDGE_COLOR,
-                coeff)
-            color = self.format_color(*lerp)
+            for node in to_delete:
+                G.remove_node(node)
 
-            age = (utcnow() - self._edge_added.get((src, dst), self.NA_DATE)).total_seconds()
-            coeff = self.fade_coeff(self._draw_update_fadeout, age)
-            penwidth = self.lerp(
-                self.DEFAULT_EDGE_PEN_WIDTH,
-                self.NEW_EDGE_PEN_WIDTH,
-                coeff)
+            for src, dst, data in G.edges(data=True):
+                age = (utcnow() - self._edge_visited.get((src, dst), self.NA_DATE)).total_seconds()
+                coeff = self.fade_coeff(self._draw_update_fadeout, age)
+                lerp = self.lerp_color(
+                    self.DEFAULT_EDGE_COLOR,
+                    self.LAST_UPDATE_EDGE_COLOR,
+                    coeff)
+                color = self.format_color(*lerp)
 
-            state = dst
-            data.clear()
-            data['color'] = color
-            data['penwidth'] = penwidth * node_sizes[state]
-            if 'minimized' in H.edges[src, dst]:
-                label = f"min={len(H.edges[src, dst]['minimized'].flatten())}"
-                data['label'] = label
+                age = (utcnow() - self._edge_added.get((src, dst), self.NA_DATE)).total_seconds()
+                coeff = self.fade_coeff(self._draw_update_fadeout, age)
+                penwidth = self.lerp(
+                    self.DEFAULT_EDGE_PEN_WIDTH,
+                    self.NEW_EDGE_PEN_WIDTH,
+                    coeff)
 
-        G.graph["graph"] = {'rankdir': 'LR'}
-        G.graph["node"] = {'style': 'filled'}
-        P = nx.nx_pydot.to_pydot(G)
-        svg = await create_svg(P)
+                state = dst
+                data.clear()
+                data['color'] = color
+                data['penwidth'] = penwidth * node_sizes[state]
+                if 'minimized' in H.edges[src, dst]:
+                    label = f"min={len(H.edges[src, dst]['minimized'].flatten())}"
+                    data['label'] = label
+
+            G.graph["graph"] = {'rankdir': 'LR'}
+            G.graph["node"] = {'style': 'filled'}
+            P = nx.nx_pydot.to_pydot(G)
+            svg = await create_svg(P)
 
         msg = json.dumps({
             'cmd': 'update_graph',
@@ -920,8 +935,54 @@ class InferenceWebDataLoader(WebDataLoader):
                 'svg': svg
             }
         })
-
         await self._ws.send_str(msg)
+
+    def draw_heatmap(self, array):
+        # Filter out low-frequency regions
+        threshold = 0.01 * np.max(array)
+        filtered_array = array[array > threshold]
+
+        # Desired fixed-size 2-D grid shape
+        grid_shape = (10, 10)
+
+        # Calculate the number of elements to group for averaging
+        group_size = int(np.ceil(len(filtered_array) / (grid_shape[0] * grid_shape[1])))
+
+        # Reshape the 1-D array into groups
+        padded_array = np.pad(filtered_array, (0, group_size * grid_shape[0] * grid_shape[1] - len(filtered_array)), mode='constant')
+        grouped_array = np.reshape(padded_array, (-1, group_size))
+
+        # Calculate the average of grouped elements
+        averaged_array = np.mean(grouped_array, axis=1)
+
+        # Reshape the averaged array into the fixed-size 2-D grid
+        rescaled_array = np.reshape(averaged_array, grid_shape)
+
+        # Set minimum value to a small positive number to avoid issues with log scale
+        min_value = np.min(rescaled_array[rescaled_array > 0])
+        rescaled_array[rescaled_array == 0] = min_value
+
+        # Plot the heatmap
+        fig = Figure(figsize=(8, 6))
+        ax = fig.add_subplot(111)
+        im = ax.imshow(rescaled_array, cmap='viridis', interpolation='bicubic', aspect='auto', norm=LogNorm())
+        ax.set_title('Code Region Execution Frequency Heatmap')
+        fig.colorbar(im, ax=ax, label='Execution Frequency')
+
+        # Create a buffer to store the SVG data
+        svg_buffer = io.StringIO()
+
+        # Create a canvas object and save the figure to the buffer
+        canvas = FigureCanvasSVG(fig)
+        canvas.print_figure(svg_buffer)
+
+        # Get the SVG string from the buffer
+        svg_string = svg_buffer.getvalue()
+
+        # Close the buffer
+        svg_buffer.close()
+        return svg_string
+
 
 # FIXME this component could benefit from composability
 class InferenceInputGenerator(ReactiveInputGenerator,
