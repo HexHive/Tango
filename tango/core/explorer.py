@@ -275,7 +275,6 @@ class BaseExplorer(AbstractExplorer,
             if minimize or validate:
                 debug(f"{current_state} is reproducible!")
 
-        self._last_state = current_state
         return True, unseen, current_state, current_input
 
     async def _minimize_transition(self, state_or_path: LoadableTarget,
@@ -447,6 +446,7 @@ class BaseExplorerContext(BaseDecorator):
                     raise StabilityException(
                         "Failed to obtain consistent behavior",
                         current_state)
+                exp._last_state = current_state
 
                 breadcrumbs = exp._current_path.copy()
                 if updated:
