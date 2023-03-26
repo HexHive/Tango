@@ -385,7 +385,7 @@ class BaseExplorerContext(BaseDecorator):
     def input_gen(self):
         # we delay the call to the slicing decorator until needed
         head = self._exp._accumulated_input
-        tail = self[self._start:self._stop]
+        tail = self._orig[self._start:self._stop]
         if head is None:
             if self._start >= self._stop:
                 return None
@@ -464,9 +464,11 @@ class BaseExplorerContext(BaseDecorator):
                     orig_input=self.orig_input, breadcrumbs=breadcrumbs,
                     state_changed=updated, new_transition=unseen)
 
-        if idx >= 0:
-            # commit the rest of the input
+        if self._stop and self._stop > self._start:
+            # commit the tail of the input which did not result in an update
             exp._accumulated_input = self.input_gen()
+        else:
+            exp._accumulated_input = EmptyInput()
 
     def __iter__(self, *, orig):
         return orig()
