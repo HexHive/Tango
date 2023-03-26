@@ -24,7 +24,10 @@ __all__ = [
 class AbstractInput(ABC):
     _COUNTER = 0
 
-    def __init__(self):
+    def __new__(cls, **kwargs):
+        return super().__new__(cls)
+
+    def __init__(self, **kwargs):
         self.id = self.uniq_id
 
     @classmethod
@@ -158,21 +161,21 @@ class AbstractDecoratorMeta(ABCMeta):
         typ = super().__new__(metacls, name, bases, namespace)
         return typ
 
-    def __call__(cls, input: AbstractInput, /, *args, **kwargs):
-        obj = cls.__new__(cls, input, *args, **kwargs)
+    def __call__(cls, input: AbstractInput, /, **kwargs):
+        obj = cls.__new__(cls, input, **kwargs)
         if not getattr(obj, 'initialized', False): # input was not initialized
-            obj.__init__(input, *args, **kwargs)
+            obj.__init__(input, **kwargs)
         return obj
 
 class AbstractDecorator(AbstractInput, metaclass=AbstractDecoratorMeta):
     initialized: bool = False
-    def __new__(cls, input: AbstractInput, /, *args, **kwargs):
-        obj = super().__new__(cls)
+    def __new__(cls, input: AbstractInput, /, **kwargs):
+        obj = super().__new__(cls, **kwargs)
         obj._orig = input
         return obj
 
-    def __init__(self, input: AbstractInput, /):
-        super().__init__()
+    def __init__(self, input: AbstractInput, /, **kwargs):
+        super().__init__(**kwargs)
         self.initialized = True
 
     def __getattr__(self, name):
@@ -181,10 +184,10 @@ class AbstractDecorator(AbstractInput, metaclass=AbstractDecoratorMeta):
 identity = lambda x: x
 class MemoryCachingDecorator(AbstractDecorator, BaseInput, desc=identity):
     _depth: int = 0
-    def __new__(cls, input: AbstractInput, /):
+    def __new__(cls, input: AbstractInput, /, **kwargs):
         if isinstance(input, cls):
             return input
-        obj = super().__new__(cls, input)
+        obj = super().__new__(cls, input, **kwargs)
         obj._cached_repr = repr(input)
         obj._cached_iter = tuple(input)
         obj._cached_len = len(obj._cached_iter)
@@ -194,7 +197,7 @@ class MemoryCachingDecorator(AbstractDecorator, BaseInput, desc=identity):
             hook(obj)
         return obj
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, input: AbstractInput, /, **kwargs):
         del self._orig
         # we skip initialization of parents
         self.initialized = True
@@ -216,9 +219,9 @@ class MemoryCachingDecorator(AbstractDecorator, BaseInput, desc=identity):
         raise AttributeError
 
 class BaseDecorator(AbstractDecorator, BaseInput):
-    def __new__(cls, input: AbstractInput, /, *args, **kwargs):
+    def __new__(cls, input: AbstractInput, /, **kwargs):
         depth = getattr(input, '_depth', 0)
-        obj = super().__new__(cls, input, *args, **kwargs)
+        obj = super().__new__(cls, input, **kwargs)
         obj._depth = depth + 1
         ValueMeanProfiler("decorator_depth", samples=100)(obj._depth)
         return obj
@@ -282,7 +285,7 @@ class IterCachingDecorator(BaseDecorator, desc=TeeCachedFunctionType):
         yield
 
 class SlicingDecorator(BaseDecorator):
-    def __new__(cls, input: AbstractInput, /, *, idx: slice | int):
+    def __new__(cls, input: AbstractInput, /, *, idx: slice | int, **kwargs):
         if isinstance(idx, slice):
             start = idx.start or 0
             stop = idx.stop
@@ -295,7 +298,7 @@ class SlicingDecorator(BaseDecorator):
         if start == 0 and stop == None and step == 1:
             return input.shield()
 
-        obj = super().__new__(cls, input)
+        obj = super().__new__(cls, input, **kwargs)
         if input.decorated and \
                 isinstance(input, cls) and \
                 input._step == step:
@@ -315,8 +318,8 @@ class SlicingDecorator(BaseDecorator):
         obj._step = step
         return obj
 
-    def __init__(self, input: AbstractInput, /, *args, **kwargs):
-        super().__init__(input)
+    def __init__(self, input: AbstractInput, /, *, idx: slice | int, **kwargs):
+        super().__init__(input, **kwargs)
 
     def __iter__(self, *, orig):
         return islice(orig(), self._start, self._stop, self._step)
@@ -336,7 +339,7 @@ class SlicingDecorator(BaseDecorator):
 class JoiningDecorator(BaseDecorator):
     def __new__(cls, input: AbstractInput, /, *, flatten_joined: bool=True,
             prefix: Sequence[AbstractInput]=(),
-            suffix: Sequence[AbstractInput]=()):
+            suffix: Sequence[AbstractInput]=(), **kwargs):
         prefix = filter(lambda x: not isinstance(x, EmptyInput), prefix)
         suffix = filter(lambda x: not isinstance(x, EmptyInput), suffix)
 
@@ -354,7 +357,7 @@ class JoiningDecorator(BaseDecorator):
         if not prefix and not suffix:
             return input.shield()
 
-        obj = super().__new__(cls, input)
+        obj = super().__new__(cls, input, **kwargs)
         if input.decorated and isinstance(input, cls):
             prefix = prefix + input._prefix
             suffix = input._suffix + suffix
@@ -365,8 +368,10 @@ class JoiningDecorator(BaseDecorator):
         return obj
 
 
-    def __init__(self, input: AbstractInput, /, *args, **kwargs):
-        super().__init__(input)
+    def __init__(self, input: AbstractInput, /, *, flatten_joined: bool=True,
+            prefix: Sequence[AbstractInput]=(),
+            suffix: Sequence[AbstractInput]=(), **kwargs):
+        super().__init__(input, **kwargs)
 
     @classmethod
     def _flatten_joined(cls, inp: AbstractInput) -> Sequence[AbstractInput]:

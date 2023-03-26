@@ -804,7 +804,8 @@ class InferenceInputGenerator(ReactiveInputGenerator,
             k=RAND(MUT_HAVOC_STACK_POW2, self._entropy) + 1
         )
         candidate = self.select_candidate(state)
-        return ReactiveHavocMutator(candidate, havoc_actions, entropy=self._entropy)
+        return ReactiveHavocMutator(candidate, havoc_actions=havoc_actions,
+            entropy=self._entropy)
 
     def update_transition(self, source: AbstractState,
             destination: AbstractState, input: AbstractInput, /, *,

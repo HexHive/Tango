@@ -6,8 +6,8 @@ from contextlib import contextmanager
 __all__ = ['AbstractMutator', 'BaseMutator']
 
 class AbstractMutator(AbstractDecorator):
-    def __init__(self, input: AbstractInput, /, *, entropy: Random):
-        super().__init__(input)
+    def __init__(self, input: AbstractInput, /, *, entropy: Random, **kwargs):
+        super().__init__(input, **kwargs)
         self._entropy = entropy
         self._state0 = self._entropy.getstate()
 

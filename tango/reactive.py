@@ -47,7 +47,7 @@ class ReactiveHavocMutator(BaseMutator):
         RECEIVE = 1
         DELAY = 2
 
-    def __init__(self, input: AbstractInput, /, havoc_actions: Iterable, **kwargs):
+    def __init__(self, input: AbstractInput, /, *, havoc_actions: Iterable, **kwargs):
         super().__init__(input, **kwargs)
         self._actions = tuple(havoc_actions)
 
@@ -140,7 +140,7 @@ class ReactiveInputGenerator(BaseInputGenerator):
         )
 
         candidate = self.select_candidate(state)
-        mut = ReactiveHavocMutator(candidate, havoc_actions,
+        mut = ReactiveHavocMutator(candidate, havoc_actions=havoc_actions,
             entropy=self._entropy)
         return mut
 

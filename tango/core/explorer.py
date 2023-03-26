@@ -164,7 +164,7 @@ class BaseExplorer(AbstractExplorer,
         return current_state
 
     def get_context_input(self, input: BaseInput, **kwargs) -> BaseExplorerContext:
-        return BaseExplorerContext(input, self, **kwargs)
+        return BaseExplorerContext(input, explorer=self, **kwargs)
 
     async def follow(self, input: BaseInput, **kwargs):
         """
@@ -376,7 +376,7 @@ class BaseExplorerContext(BaseDecorator):
     and the second part continues to build up state for any following
     transition.
     """
-    def __init__(self, input: AbstractInput, /, explorer: BaseExplorer, **kw):
+    def __init__(self, input: AbstractInput, /, *, explorer: BaseExplorer, **kw):
         super().__init__(input)
         self._exp = explorer
         self._start = self._stop = None
