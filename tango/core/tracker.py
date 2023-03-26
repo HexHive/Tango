@@ -108,22 +108,12 @@ class BaseState(AbstractState):
         self._pred = None
 
     @property
-    def out_edges(self) -> Iterator[Transition]:
-        if self in self._tracker.state_graph:
-            return ((*edge[:2], inp) \
-                for edge in self._tracker.state_graph.out_edges(self, data=True)
-                    for inp in self._tracker.state_graph.get_inputs(edge))
-        else:
-            return ()
+    def out_edges(self) -> Iterable[Transition]:
+        return self._tracker.out_edges(self)
 
     @property
-    def in_edges(self) -> Iterator[Transition]:
-        if self in self._tracker.state_graph:
-            return ((*edge[:2], inp) \
-                for edge in self._tracker.state_graph.in_edges(self, data=True)
-                    for inp in self._tracker.state_graph.get_inputs(edge))
-        else:
-            return ()
+    def in_edges(self) -> Iterable[Transition]:
+        return self._tracker.in_edges(self)
 
     @property
     def predecessor_transition(self) -> Transition:
@@ -483,6 +473,15 @@ class AbstractTracker(AsyncComponent, IUpdateCallback, ABC,
         """
         pass
 
+    @abstractmethod
+    def out_edges(self, state: AbstractState) -> Iterable[Transition]:
+        pass
+
+    @abstractmethod
+    def in_edges(self, state: AbstractState) -> Iterable[Transition]:
+        pass
+
+
 class BaseTracker(AbstractTracker):
     async def finalize(self, owner: ComponentOwner):
         self._state_graph = BaseStateGraph(entry_state=self.entry_state)
@@ -534,6 +533,22 @@ class BaseTracker(AbstractTracker):
                 self._state_graph.delete_transition(source, destination)
             except KeyError:
                 warning(f"Faulty transition was not even valid ({ex=})")
+
+    def out_edges(self, state: AbstractState) -> Iterable[Transition]:
+        if state in self.state_graph:
+            for edge in self.state_graph.out_edges(state, data=True):
+                for inp in self.state_graph.get_inputs(edge):
+                    yield (*edge[:2], inp)
+        else:
+            return ()
+
+    def in_edges(self, state: AbstractState) -> Iterable[Transition]:
+        if state in self.state_graph:
+            for edge in self.state_graph.in_edges(state, data=True):
+                for inp in self.state_graph.get_inputs(edge):
+                    yield (*edge[:2], inp)
+        else:
+            return ()
 
 S = TypeVar('State', bound=AbstractState)
 I = TypeVar('Input', bound=AbstractInput)

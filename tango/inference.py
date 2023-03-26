@@ -134,6 +134,32 @@ class StateInferenceTracker(CoverageTracker):
         }
         return re_node_arr, re_node_fwd_map, re_eqv_arr, re_eqv_states
 
+    def out_edges(self, state: AbstractState) -> Iterable[Transition]:
+        if state in self.state_graph:
+            try:
+                node_idx = self.nodes[state]
+                adj_idx, = self.capability_matrix[node_idx,:].nonzero()
+                nbrs = self.node_arr[adj_idx]
+                inputs = self.capability_matrix[node_idx, adj_idx]
+                return ((state, dst, inp) for dst, inp in zip(nbrs, inputs))
+            except KeyError:
+                return super().out_edges(state)
+        else:
+            return ()
+
+    def in_edges(self, state: AbstractState) -> Iterable[Transition]:
+        if state in self.state_graph:
+            try:
+                node_idx = self.nodes[state]
+                adj_idx, = self.capability_matrix[:,node_idx].nonzero()
+                nbrs = self.node_arr[adj_idx]
+                inputs = self.capability_matrix[adj_idx, node_idx]
+                return ((src, state, inp) for src, inp in zip(nbrs, inputs))
+            except KeyError:
+                return super().in_edges(state)
+        else:
+            return ()
+
 class StateInferenceStrategy(UniformStrategy,
         capture_components={'tracker', 'loader'},
         capture_paths=['strategy.inference_batch',
