@@ -1,0 +1,33 @@
+{
+	"driver": {
+		"type": "unix",
+		"exec": {
+			"path": "./parse",
+			"args": ["./parse"],
+			"cwd": "./",
+			"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
+		},
+		"forkserver": true,
+		"disable_aslr": true
+	},
+	"channel": {
+		"type": "stdio"
+	},
+	"tracker": {
+		"type": "coverage"
+	},
+	"loader": {
+		"type": "replay"
+	},
+	"generator": {
+		"type": "reactive"
+	},
+	"strategy": {
+		"type": "uniform"
+	},
+	"fuzzer": {
+		"cwd": "./targets/llhttp/",
+		"work_dir": "./workdir/",
+		"resume": true
+	}
+}
