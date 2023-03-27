@@ -3,16 +3,22 @@ from . import debug, info, warning
 
 from tango.core import (BaseState, BaseTracker, AbstractInput, LambdaProfiler,
     ValueMeanProfiler, CountProfiler, Path, BaseExplorer, LoadableTarget,
-    BaseInput)
+    BaseInput, get_profiler)
 from tango.replay import ReplayLoader
 from tango.unix import ProcessDriver, ProcessForkDriver
+from tango.webui import WebRenderer, WebDataLoader
 from tango.common import ComponentType, ComponentOwner
 from tango.exceptions import LoadedException
+
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_svg import FigureCanvasSVG
+from matplotlib.colors import LogNorm
+import seaborn as sns
 
 from abc import ABC, abstractmethod
 from typing       import Sequence, Callable, Optional
 from collections  import OrderedDict
-from functools    import cache, cached_property
+from functools    import cache, cached_property, partial
 from string import ascii_letters, digits
 from uuid         import uuid4
 from ctypes       import pythonapi, memset, memmove, addressof, sizeof, CDLL
@@ -27,11 +33,13 @@ from ctypes       import (POINTER as P,
                           c_int,
                           byref, Array)
 import numpy as np
+import io
+import json
+import asyncio
 import sys
 import os
 import mmap
 import posix_ipc
-import numpy as np
 
 memcmp = pythonapi.memcmp
 memcmp.argtypes = (V, V, S)
@@ -39,7 +47,8 @@ memcmp.restype = c_int
 
 __all__ = [
     'FeatureSnapshot', 'CoverageReader', 'FeatureMap', 'CoverageTracker',
-    'CoverageDriver', 'CoverageForkDriver'
+    'CoverageDriver', 'CoverageForkDriver', 'CoverageWebRenderer',
+    'CoverageWebDataLoader'
 ]
 
 HAMMING_LUT = np.zeros(256, dtype=np.uint8)
@@ -620,3 +629,93 @@ class CoverageExplorer(BaseExplorer,
             # updated, we delete it from the state cache.
             FeatureSnapshot.invalidate(dst)
         return inp
+
+class CoverageWebRenderer(WebRenderer,
+        capture_components=('tracker',)):
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return config['tracker'].get('type') == 'coverage'
+
+    def __init__(self, *args, tracker: CoverageTracker, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._tracker = tracker
+
+    def get_webui_factory(self):
+        return partial(CoverageWebDataLoader, tracker=self._tracker,
+                       **self._webui_kwargs)
+
+class CoverageWebDataLoader(WebDataLoader):
+    def __init__(self, *args, tracker: CoverageTracker,
+            draw_graph: bool=True, draw_heatmap: bool=False,
+            stats_update_period: float=1, **kwargs):
+        self._tracker = tracker
+        tmp = []
+        if draw_heatmap and stats_update_period >= 0:
+            draw_graph = False
+            tmp.append(asyncio.create_task(
+                    get_profiler('perform_instruction').listener(
+                        period=stats_update_period)(self.update_heatmap)))
+
+        super().__init__(*args, draw_graph=draw_graph,
+                         stats_update_period=stats_update_period, **kwargs)
+
+        self.tasks.extend(tmp)
+
+    def draw_heatmap(self, array):
+        # Filter out low-frequency regions
+        threshold = 0.01 * np.max(array)
+        filtered_array = array[array >= threshold]
+
+        # Desired fixed-size 2-D grid shape
+        grid_shape = (10, 10)
+
+        # Calculate the number of elements to group for averaging
+        group_size = int(np.ceil(len(filtered_array) / (grid_shape[0] * grid_shape[1])))
+
+        # Reshape the 1-D array into groups
+        padded_array = np.pad(filtered_array, (0, group_size * grid_shape[0] * grid_shape[1] - len(filtered_array)), mode='constant')
+        grouped_array = np.reshape(padded_array, (-1, group_size))
+
+        # Calculate the average of grouped elements
+        averaged_array = np.mean(grouped_array, axis=1)
+
+        # Reshape the averaged array into the fixed-size 2-D grid
+        rescaled_array = np.reshape(averaged_array, grid_shape)
+
+        # Set minimum value to a small positive number to avoid issues with log scale
+        min_value = np.min(rescaled_array[rescaled_array > 0], initial=1)
+        rescaled_array[rescaled_array == 0] = min_value
+
+        # Plot the heatmap
+        fig = Figure(figsize=(8, 6))
+        ax = fig.add_subplot(111)
+        im = ax.imshow(rescaled_array, cmap='viridis', interpolation='bicubic', aspect='auto', norm=LogNorm())
+        ax.set_title('Code Region Execution Frequency Heatmap')
+        fig.colorbar(im, ax=ax, label='Execution Frequency')
+
+        # Create a buffer to store the SVG data
+        svg_buffer = io.StringIO()
+
+        # Create a canvas object and save the figure to the buffer
+        canvas = FigureCanvasSVG(fig)
+        canvas.print_figure(svg_buffer)
+
+        # Get the SVG string from the buffer
+        svg_string = svg_buffer.getvalue()
+
+        # Close the buffer
+        svg_buffer.close()
+        return svg_string
+
+    async def update_heatmap(self, *args, ret=None, **kwargs):
+        array = self._tracker._feature_heat
+        if not array.size:
+            return
+        svg = self.draw_heatmap(array)
+        msg = json.dumps({
+            'cmd': 'update_painting',
+            'items': {
+                'svg': svg
+            }
+        })
+        await self._ws.send_str(msg)
