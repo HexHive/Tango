@@ -6,9 +6,6 @@ from tango.common import AsyncComponent, get_session_task_group
 from collections import defaultdict
 from aiohttp import web, web_urldispatcher
 from functools import partial
-import os
-import asyncio
-import logging
 import networkx as nx
 import json
 import asyncio
@@ -38,6 +35,7 @@ class WebRenderer(AsyncComponent, component_type='webui',
             **kwargs):
         super().__init__(**kwargs)
         self._session = session
+
         self._http_host = http_host
         self._http_port = http_port
         self._www_path = www_path
@@ -150,7 +148,7 @@ class WebDataLoader:
     LAST_UPDATE_EDGE_COLOR = (202, 225, 255)
 
     def __init__(self, websocket, session, hitcounter, *,
-            draw_graph: bool,
+            draw_graph: bool=True, draw_heatmap: bool=False,
             draw_update_period: float=0.1, draw_reload_period: float=1,
             draw_update_fadeout: float=1, stats_update_period: float=1):
         self._ws = websocket
@@ -302,9 +300,8 @@ class WebDataLoader:
         svg = await create_svg(P)
 
         msg = json.dumps({
-            'cmd': 'update_graph',
+            'cmd': 'update_painting',
             'items': {
-                # 'dot': dot,
                 'svg': svg
             }
         })

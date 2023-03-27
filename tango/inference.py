@@ -6,10 +6,10 @@ from tango.core import (UniformStrategy, AbstractState, AbstractInput,
     BaseStateGraph, AbstractTracker, ValueProfiler, TimeElapsedProfiler,
     ValueMeanProfiler, LambdaProfiler, AbstractLoader, CountProfiler,
     EmptyInput)
-from tango.cov import CoverageTracker
+from tango.cov import CoverageTracker, CoverageWebRenderer, CoverageWebDataLoader
 from tango.reactive import ReactiveInputGenerator, HavocMutator
-from tango.webui import WebRenderer, WebDataLoader, create_svg
-from tango.common import get_session_task_group, ComponentOwner
+from tango.webui import create_svg
+from tango.common import get_session_task_group
 from tango.exceptions import StabilityException
 from tango.havoc import havoc_handlers, RAND, MUT_HAVOC_STACK_POW2
 
@@ -791,15 +791,16 @@ class StateInferenceStrategy(UniformStrategy,
             pass
         return await super().reload_target()
 
-class InferenceWebRenderer(WebRenderer):
+class InferenceWebRenderer(CoverageWebRenderer):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return config['strategy'].get('type') == 'inference'
 
     def get_webui_factory(self):
-        return partial(InferenceWebDataLoader, **self._webui_kwargs)
+        return partial(InferenceWebDataLoader, tracker=self._tracker,
+                       **self._webui_kwargs)
 
-class InferenceWebDataLoader(WebDataLoader):
+class InferenceWebDataLoader(CoverageWebDataLoader):
     @property
     def fresh_graph(self):
         H = self._session._explorer.tracker.recovered_graph
@@ -834,6 +835,7 @@ class InferenceWebDataLoader(WebDataLoader):
     async def update_graph(self, *args, **kwargs):
         if not self._session._explorer.tracker.nodes:
             return
+
         # first we get a copy so that we can re-assign node and edge attributes
         G, H = self.fresh_graph
 
@@ -914,13 +916,11 @@ class InferenceWebDataLoader(WebDataLoader):
         svg = await create_svg(P)
 
         msg = json.dumps({
-            'cmd': 'update_graph',
+            'cmd': 'update_painting',
             'items': {
-                # 'dot': dot,
                 'svg': svg
             }
         })
-
         await self._ws.send_str(msg)
 
 # FIXME this component could benefit from composability
