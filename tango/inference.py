@@ -7,7 +7,7 @@ from tango.core import (UniformStrategy, AbstractState, AbstractInput,
     ValueMeanProfiler, LambdaProfiler, AbstractLoader, CountProfiler,
     EmptyInput)
 from tango.cov import CoverageTracker
-from tango.reactive import ReactiveInputGenerator, ReactiveHavocMutator
+from tango.reactive import ReactiveInputGenerator, HavocMutator
 from tango.webui import WebRenderer, WebDataLoader, create_svg
 from tango.common import get_session_task_group, ComponentOwner
 from tango.exceptions import StabilityException
@@ -942,6 +942,8 @@ class InferenceInputGenerator(ReactiveInputGenerator,
         self._disperse_heat = disperse_heat
 
     def select_candidate(self, state: AbstractState):
+        if not self._broadcast_mutation_feedback:
+            return super().select_candidate(state)
         try:
             sidx = self._tracker.equivalence_map[state]
             eqv = self._tracker.equivalence_states[sidx]
@@ -966,22 +968,6 @@ class InferenceInputGenerator(ReactiveInputGenerator,
                 return self._entropy.choices(candidates, cum_weights=weights)[0]
         except KeyError:
             return super().select_candidate(state)
-
-    def generate(self, state: AbstractState) -> AbstractInput:
-        if not self._broadcast_mutation_feedback:
-            return super().generate(state)
-
-        if (model := self._state_model.get(state)) is None:
-            model = self._init_state_model(state)
-
-        havoc_actions = self._entropy.choices(havoc_handlers,
-            # we use probabilities as weights
-            weights=map(lambda t: model['actions'][t][1], havoc_handlers),
-            k=RAND(MUT_HAVOC_STACK_POW2, self._entropy) + 1
-        )
-        candidate = self.select_candidate(state)
-        return ReactiveHavocMutator(candidate, havoc_actions=havoc_actions,
-            entropy=self._entropy)
 
     def update_transition(self, source: AbstractState,
             destination: AbstractState, input: AbstractInput, /, *,

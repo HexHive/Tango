@@ -3,13 +3,16 @@ from tango.core import (AbstractInput, BaseMutator,
     DelayInstruction, BaseInputGenerator, AbstractState)
 
 from array import array
-from typing import Sequence
+from typing import Sequence, Iterable, Optional, ByteString
 from random import Random
 from enum import Enum
 from copy import deepcopy
 from random import Random
 
-__all__ = ['HavocMutator', 'RandomInputGenerator', 'havoc_handlers']
+__all__ = [
+    'HavocMutator', 'RandomInputGenerator', 'MutatedTransmitInstruction',
+    'havoc_handlers'
+]
 
 """
 These mutator functions were obtained from kAFL's fuzzer.technique.helper
@@ -444,7 +447,17 @@ havoc_handlers = [havoc_perform_bit_flip,
                   #havoc_perform_byte_seq_extra2,
                  ]
 
+class MutatedTransmitInstruction(TransmitInstruction):
+    def __init__(self, data: ByteString, transforms: Iterable):
+        super().__init__(data)
+        self.transforms = transforms
 
+    def __deepcopy__(self, memo):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        result.__init__(self._data, self.transforms)
+        return result
 
 class HavocMutator(BaseMutator):
     class RandomOperation(Enum):
@@ -453,85 +466,82 @@ class HavocMutator(BaseMutator):
         POPORDER = 2
         REPEAT = 3
         CREATE = 4
+        MUTATE = 5
 
-    class RandomInteraction(Enum):
+    class RandomInstruction(Enum):
         TRANSMIT = 0
         RECEIVE = 1
         DELAY = 2
+
+    def __init__(self, input: AbstractInput, /, *,
+            weights: Optional[Sequence[float]]=None,
+            k: Optional[int]=None,
+            havoc_actions: Optional[Sequence]=None,
+            **kwargs):
+        super().__init__(input, **kwargs)
+        k = k or RAND(MUT_HAVOC_STACK_POW2, self._entropy) + 1
+        self._actions = havoc_actions or self._entropy.choices(
+                havoc_handlers, weights=weights, k=k)
 
     def __iter__(self, *, orig):
         with self.entropy_ctx as entropy:
             i = -1
             reorder_buffer = []
             for i, instruction in enumerate(orig()):
-                new_instruction = deepcopy(instruction)
-                seq = self._mutate(new_instruction, reorder_buffer, entropy)
+                seq = self._mutate(instruction, reorder_buffer, entropy)
                 yield from seq
-            else:
-                if i == -1:
-                    yield from self._mutate(None, reorder_buffer, entropy)
+            if i == -1:
+                yield from self._mutate(None, reorder_buffer, entropy)
+
+            # finally, we flush the reorder buffer
+            yield from entropy.sample(reorder_buffer, k=len(reorder_buffer))
+            reorder_buffer.clear()
 
     def __repr__(self, *, orig):
         return f'HavocMutatedInput:0x{self.id:08X} (0x{self._orig.id:08X})'
 
     def _mutate(self, instruction: AbstractInstruction, reorder_buffer: Sequence, entropy: Random) -> Sequence[AbstractInstruction]:
         if instruction is not None:
-            raise NotImplementedError("AbstractInstruction.mutate was removed!")
-            instruction.mutate(self, entropy)
-            # TODO perform random operation
             low = 0
-            for _ in range(entropy.randint(1, 4)):
-                if low > 4:
+            for _ in range(entropy.randint(3, 7)):
+                if low > 5:
                     return
-                oper = self.RandomOperation(entropy.randint(low, 4))
+                oper = self.RandomOperation(entropy.randint(low, 5))
                 low = oper.value + 1
                 if oper == self.RandomOperation.DELETE:
                     return
                 elif oper == self.RandomOperation.PUSHORDER:
-                    reorder_buffer.append(instruction)
+                    reorder_buffer.append(deepcopy(instruction))
                     return
                 elif oper == self.RandomOperation.POPORDER:
+                    yield deepcopy(instruction)
                     if reorder_buffer:
-                        yield reorder_buffer.pop()
+                        yield from self._mutate(reorder_buffer.pop(), reorder_buffer, entropy)
                 elif oper == self.RandomOperation.REPEAT:
-                    yield from (instruction for _ in range(2))
+                    yield from (deepcopy(instruction) for _ in range(2))
                 elif oper == self.RandomOperation.CREATE:
-                    # FIXME use range(3) to enable delays, but they affect throughput
-                    inter = self.RandomInteraction(entropy.choices(
-                            range(2),
-                            cum_weights=range(998, 1000)
-                        )[0])
-                    if inter == self.RandomInteraction.TRANSMIT:
-                        buffer = entropy.randbytes(entropy.randint(1, 256))
-                        new = TransmitInstruction(buffer)
-                    elif inter == self.RandomInteraction.RECEIVE:
-                        new = ReceiveInstruction()
-                    elif inter == self.RandomInteraction.DELAY:
-                        delay = entropy.random() * 5
-                        new = DelayInstruction(delay)
-                    yield new
-        else:
-            oper = self.RandomOperation(entropy.randint(4, 4))
-            if oper == self.RandomOperation.CREATE:
-                # FIXME use range(3) to enable delays, but they affect throughput
-                inter = self.RandomInteraction(entropy.choices(
-                        range(2),
-                        cum_weights=range(998, 1000)
-                    )[0])
-                if inter == self.RandomInteraction.TRANSMIT:
                     buffer = entropy.randbytes(entropy.randint(1, 256))
-                    new = TransmitInstruction(buffer)
-                elif inter == self.RandomInteraction.RECEIVE:
-                    new = ReceiveInstruction()
-                elif inter == self.RandomInteraction.DELAY:
-                    delay = entropy.random() * 5
-                    new = DelayInstruction(delay)
-                yield new
+                    yield TransmitInstruction(buffer)
+                elif oper == self.RandomOperation.MUTATE:
+                    if isinstance(instruction, TransmitInstruction):
+                        mut_data = self._apply_actions(instruction._data, entropy)
+                        mut_instruction = MutatedTransmitInstruction(mut_data,
+                            self._actions)
+                        yield mut_instruction
+                    else:
+                        # no mutations on other instruction types for now,
+                        # and we drop them
+                        pass
+        else:
+            buffer = entropy.randbytes(entropy.randint(1, 256))
+            yield TransmitInstruction(buffer)
 
-            # when instruction is None, we should flush the reorder buffer
-            yield from entropy.sample(reorder_buffer, k=len(reorder_buffer))
-            reorder_buffer.clear()
-
+    def _apply_actions(self, data, entropy):
+        for func in self._actions:
+            # this copies the data buffer into a new array
+            data = bytearray(data)
+            data = func(data, entropy)
+        return data
 
 class RandomInputGenerator(BaseInputGenerator):
     @classmethod

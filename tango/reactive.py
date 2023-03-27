@@ -2,11 +2,11 @@ from . import debug, critical
 
 from tango.core import (AbstractInstruction, TransmitInstruction,
     ReceiveInstruction, DelayInstruction, AbstractInput,
-    BaseDecorator, AbstractState, BaseMutator, BaseInputGenerator,
+    BaseDecorator, AbstractState, BaseInputGenerator,
     CountProfiler, ValueProfiler)
-from tango.havoc import havoc_handlers, RAND, MUT_HAVOC_STACK_POW2
+from tango.havoc import havoc_handlers, HavocMutator, MutatedTransmitInstruction
 
-from typing import Sequence, Iterable, ByteString
+from typing import Sequence, Iterable
 from random import Random
 from enum import Enum
 from copy import deepcopy
@@ -17,95 +17,8 @@ import json
 import os
 
 __all__ = [
-    'ReactiveHavocMutator', 'ReactiveInputGenerator',
-    'ReactiveTransmitInstruction', 'StatelessReactiveInputGenerator'
+    'ReactiveInputGenerator', 'StatelessReactiveInputGenerator'
 ]
-
-class ReactiveTransmitInstruction(TransmitInstruction):
-    def __init__(self, data: ByteString, transforms: Iterable):
-        super().__init__(data)
-        self.transforms = transforms
-
-    def __deepcopy__(self, memo):
-        cls = self.__class__
-        result = cls.__new__(cls)
-        memo[id(self)] = result
-        result.__init__(self._data, self.transforms)
-        return result
-
-class ReactiveHavocMutator(BaseMutator):
-    class RandomOperation(Enum):
-        DELETE = 0
-        PUSHORDER = 1
-        POPORDER = 2
-        REPEAT = 3
-        CREATE = 4
-        MUTATE = 5
-
-    class RandomInstruction(Enum):
-        TRANSMIT = 0
-        RECEIVE = 1
-        DELAY = 2
-
-    def __init__(self, input: AbstractInput, /, *, havoc_actions: Iterable, **kwargs):
-        super().__init__(input, **kwargs)
-        self._actions = tuple(havoc_actions)
-
-    def __iter__(self, *, orig):
-        with self.entropy_ctx as entropy:
-            i = -1
-            reorder_buffer = []
-            for i, instruction in enumerate(orig()):
-                seq = self._mutate(instruction, reorder_buffer, entropy)
-                yield from seq
-            if i == -1:
-                yield from self._mutate(None, reorder_buffer, entropy)
-
-            # finally, we flush the reorder buffer
-            yield from entropy.sample(reorder_buffer, k=len(reorder_buffer))
-            reorder_buffer.clear()
-
-    def _mutate(self, instruction: AbstractInstruction, reorder_buffer: Sequence, entropy: Random) -> Sequence[AbstractInstruction]:
-        if instruction is not None:
-            low = 0
-            for _ in range(entropy.randint(3, 7)):
-                if low > 5:
-                    return
-                oper = self.RandomOperation(entropy.randint(low, 5))
-                low = oper.value + 1
-                if oper == self.RandomOperation.DELETE:
-                    return
-                elif oper == self.RandomOperation.PUSHORDER:
-                    reorder_buffer.append(deepcopy(instruction))
-                    return
-                elif oper == self.RandomOperation.POPORDER:
-                    yield deepcopy(instruction)
-                    if reorder_buffer:
-                        yield from self._mutate(reorder_buffer.pop(), reorder_buffer, entropy)
-                elif oper == self.RandomOperation.REPEAT:
-                    yield from (deepcopy(instruction) for _ in range(2))
-                elif oper == self.RandomOperation.CREATE:
-                    buffer = entropy.randbytes(entropy.randint(1, 256))
-                    yield TransmitInstruction(buffer)
-                elif oper == self.RandomOperation.MUTATE:
-                    if isinstance(instruction, TransmitInstruction):
-                        mut_data = self._apply_actions(instruction._data, entropy)
-                        mut_instruction = ReactiveTransmitInstruction(mut_data,
-                            self._actions)
-                    else:
-                        # no mutations on other instruction types for now
-                        pass
-                    yield mut_instruction
-        else:
-            buffer = entropy.randbytes(entropy.randint(1, 256))
-            yield TransmitInstruction(buffer)
-
-    def _apply_actions(self, data, entropy):
-        for func in self._actions:
-            # this copies the data buffer into a new array
-            data = bytearray(data)
-            data = func(data, entropy)
-        return data
 
 HAVOC_MIN_WEIGHT = 1e-3
 
@@ -133,15 +46,9 @@ class ReactiveInputGenerator(BaseInputGenerator):
         if (model := self._state_model.get(state)) is None:
             model = self._init_state_model(state)
 
-        havoc_actions = self._entropy.choices(havoc_handlers,
-            # we use probabilities as weights
-            weights=map(lambda t: model['actions'][t][1], havoc_handlers),
-            k=RAND(MUT_HAVOC_STACK_POW2, self._entropy) + 1
-        )
-
         candidate = self.select_candidate(state)
-        mut = ReactiveHavocMutator(candidate, havoc_actions=havoc_actions,
-            entropy=self._entropy)
+        weights = map(lambda t: model['actions'][t][1], havoc_handlers)
+        mut = HavocMutator(candidate, weights=weights, entropy=self._entropy)
         return mut
 
     def update_state(self, state: AbstractState, /, *, input: AbstractInput,
@@ -163,7 +70,7 @@ class ReactiveInputGenerator(BaseInputGenerator):
 
         actions = set()
         for instruction in input:
-            if isinstance(instruction, ReactiveTransmitInstruction):
+            if isinstance(instruction, MutatedTransmitInstruction):
                 actions.update(instruction.transforms)
 
         if not actions:
