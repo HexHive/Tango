@@ -979,6 +979,8 @@ class InferenceInputGenerator(ReactiveInputGenerator,
         if not self._broadcast_mutation_feedback or not result:
             return
         reward, actions = result
+        if not actions:
+            return
 
         try:
             sidx = self._tracker.equivalence_map[source]
@@ -993,11 +995,9 @@ class InferenceInputGenerator(ReactiveInputGenerator,
         except KeyError:
             return result
 
-        if actions_taken:
-            for node in eqv:
-                node_model = self._state_model[node]
-                self._update_weights(node_model['actions'], actions,
-                    reward)
+        for node in eqv:
+            node_model = self._state_model[node]
+            self._update_weights(node_model['actions'], actions, reward)
 
         if state_changed:
             # update feature counts
@@ -1007,7 +1007,6 @@ class InferenceInputGenerator(ReactiveInputGenerator,
                 node_model['features'] += fcount
                 node_model['cum_features'] += fcount
 
-        if state_changed or actions_taken:
-            self._log_model(*eqv)
+        self._log_model(*eqv)
 
         return result
