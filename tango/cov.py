@@ -650,7 +650,7 @@ class CoverageWebDataLoader(WebDataLoader):
             stats_update_period: float=1, **kwargs):
         self._tracker = tracker
         tmp = []
-        if draw_heatmap and stats_update_period >= 0:
+        if draw_heatmap and tracker._track_heat and stats_update_period >= 0:
             draw_graph = False
             tmp.append(asyncio.create_task(
                     get_profiler('perform_instruction').listener(
