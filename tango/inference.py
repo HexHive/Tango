@@ -156,20 +156,9 @@ class StateInferenceTracker(CoverageTracker,
         else:
             return ()
 
-    def in_edges(self, state: AbstractState) -> Iterable[Transition]:
-        if state in self.state_graph:
-            try:
-                node_idx = self.nodes[state]
-                adj_idx, = self.capability_matrix[:,node_idx].nonzero()
-                nbrs = self.node_arr[adj_idx]
-                edges = self.capability_matrix[adj_idx, node_idx]
-                return ((src, state, inp)
-                    for src, edge in zip(nbrs, edges)
-                        for inp in edge)
-            except KeyError:
-                return super().in_edges(state)
-        else:
-            return ()
+    # we do not override in_edges, because by construction, there is always one
+    # edge that reaches a snapshot (it is the edge we use to cross-test the
+    # capabilitity of reaching this snapshot)
 
 class StateInferenceStrategy(UniformStrategy,
         capture_components={'tracker', 'loader'},
@@ -942,32 +931,26 @@ class InferenceInputGenerator(ReactiveInputGenerator,
         self._disperse_heat = disperse_heat
 
     def select_candidate(self, state: AbstractState):
-        if not self._broadcast_mutation_feedback:
+        if not self._disperse_heat:
             return super().select_candidate(state)
-        try:
-            sidx = self._tracker.equivalence_map[state]
-            eqv = self._tracker.equivalence_states[sidx]
-            eqv = list(map(self._tracker.node_arr.__getitem__, eqv))
-            in_edges = (inp for s in eqv for _,_,inp in s.in_edges)
-            if not self._disperse_heat:
-                out_edges = (inp for s in eqv for _,_,inp in s.out_edges)
-                candidates = (*out_edges, *in_edges, *self.seeds, EmptyInput())
-                return self._entropy.choice(candidates)
+        else:
+            in_edges = (inp for _,_,inp in state.in_edges)
+            rv = tuple(zip(*(
+                (inp, np.sum(self._tracker._feature_heat[
+                        np.asarray(dst._feature_mask).nonzero()]))
+                    for _,dst,inp in state.out_edges)))
+            if rv:
+                out_edges, temperatures = rv
             else:
-                out_edges, temperatures = zip(*(
-                    (inp, np.sum(self._tracker._feature_heat[
-                            np.asarray(dst._feature_mask).nonzero()]))
-                        for s in eqv for _,dst,inp in s.out_edges))
-                candidates = (*out_edges, *in_edges, *self.seeds, EmptyInput())
-                weights = np.reciprocal(temperatures, dtype=float)
-                out_weight = np.sum(weights)
-                max_weight = out_weight / 0.7
-                other_weights = np.linspace(out_weight, max_weight,
-                    num=len(candidates) - len(out_edges) + 1)[1:]
-                weights = np.hstack((np.cumsum(weights), other_weights))
-                return self._entropy.choices(candidates, cum_weights=weights)[0]
-        except KeyError:
-            return super().select_candidate(state)
+                out_edges = temperatures = ()
+            candidates = (*out_edges, *in_edges, *self.seeds, EmptyInput())
+            weights = np.reciprocal(temperatures, dtype=float)
+            out_weight = np.sum(weights)
+            max_weight = out_weight / 0.7 or 1.0
+            other_weights = np.linspace(out_weight, max_weight,
+                num=len(candidates) - len(out_edges) + 1)[1:]
+            weights = np.hstack((np.cumsum(weights), other_weights))
+            return self._entropy.choices(candidates, cum_weights=weights)[0]
 
     def update_transition(self, source: AbstractState,
             destination: AbstractState, input: AbstractInput, /, *,
