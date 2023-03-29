@@ -58,6 +58,7 @@ class StateInferenceTracker(CoverageTracker,
         # properties
         self.mode = InferenceMode.Discovery
         self.capability_matrix = np.empty((0,0), dtype=object)
+        self.collapsed_matrix = np.empty((0,0), dtype=object)
         self.nodes = {}
         self.node_arr = np.empty((0,), dtype=object)
         self.equivalence_map = {}
@@ -218,13 +219,14 @@ class StateInferenceStrategy(UniformStrategy,
             case InferenceMode.CrossPollination:
                 self._crosstest_timer()
                 cap, eqv_map, mask, nodes = await self.perform_cross_pollination()
-                self._tracker.capability_matrix = cap[mask,:][:,mask]
-                self._tracker.set_nodes(nodes, eqv_map)
-
                 collapsed = cap[~mask,:][:,~mask]
                 if self._recursive_collapse:
                     collapsed, eqv_map = self._collapse_until_stable(
                         collapsed, eqv_map)
+
+                self._tracker.capability_matrix = cap[mask,:][:,mask]
+                self._tracker.collapsed_matrix = collapsed
+                self._tracker.set_nodes(nodes, eqv_map)
                 self._tracker.reconstruct_graph(collapsed)
                 self._tracker.mode = InferenceMode.Discovery
                 self._crosstest_timer()
