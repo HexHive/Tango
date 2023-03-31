@@ -59,8 +59,9 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
 void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
     if (!*guard) return;
 
-    if (__builtin_add_overflow(edge_cnt[*guard], 1, &edge_cnt[*guard]))
-        edge_cnt[*guard] = UINT8_MAX;
+    uint32_t idx = *guard - 1;
+    if (__builtin_add_overflow(edge_cnt[idx], 1, &edge_cnt[idx]))
+        edge_cnt[idx] = UINT8_MAX;
 }
 
 int __wrap_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
