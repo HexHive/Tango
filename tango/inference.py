@@ -454,45 +454,56 @@ class StateInferenceStrategy(UniformStrategy,
                     children = dt.children_left if exists else dt.children_right
                     stack.append(children[cur])
 
-                vidx_all, = np.where(~edge_mask[eqv_idx,:])
-                vidx_ungrouped = np.setdiff1d(vidx_all, to_idx,
+                # At this point, we may have multiple possible groupings
+                candidates_eqv = np.vectorize(eqv_states.get,
+                    otypes=(object,))(candidates)
+                if len(candidates_eqv) > 1:
+                    # we have more than one possible equivalence set;
+                    # we train a small DT to differentiate the two, based on
+                    # their updated cap matrices
+                    critical("Multiple candidates are not yet supported!")
+                    candidates_eqv = candidates_eqv[(0,),:]
+
+                # we choose a candidate
+                candidate_eqv, = candidates_eqv
+                # snapshot indices which the candidate can reproduce
+                cap_eqv, = np.where(
+                    np.logical_or.reduce(cap[candidate_eqv] != None, axis=0))
+
+                # the set of edges which were not tested during prediction
+                vidx_untested, = np.where(~edge_mask[eqv_idx,:])
+
+                # the set of untested edges to all new snapshots
+                vidx_ungrouped = np.setdiff1d(vidx_untested, to_idx,
                     assume_unique=True)
-                projected_pending -= vidx_ungrouped.size
-                dt_skips += np.setdiff1d(vidx_all, vidx_ungrouped,
-                    assume_unique=True).size
+
+                # the set of edges from the capability set of the candidate
+                vidx_unpredicted = np.intersect1d(
+                    vidx_untested,
+                    np.intersect1d(cap_eqv, to_idx, assume_unique=True))
 
                 if self._dt_extrapolate:
-                    candidates_eqv = np.vectorize(eqv_states.get,
-                        otypes=(object,))(candidates)
-
-                    if len(candidates_eqv) > 1:
-                        # we have more than one possible equivalence set;
-                        # we train a small DT to differentiate the two, based on
-                        # their updated cap matrices
-                        # FIXME this assumes that all of to_idx is processed
-                        # before new snapshots; instead, this should be enforced
-                        # by constructing uidx with to_idx first
-                        critical("Multiple candidates are not yet supported!")
-                        candidates_eqv = candidates_eqv[(0,),:]
-
-                    assert len(candidates_eqv) == 1
-                    eqv, = candidates_eqv
-                    # snapshot indices which the group can reproduce
-                    cap_eqv, = np.where(
-                        np.logical_or.reduce(cap[eqv] != None, axis=0))
                     # get the set of new snapshots that we did not test, that
-                    # the group can reproduce
-                    vidx_extra = np.intersect1d(vidx_ungrouped, cap_eqv,
+                    # the candidate can reproduce
+                    # FIXME this assumes that all of to_idx is processed
+                    # before new snapshots; instead, this should be enforced
+                    # by constructing uidx with to_idx first
+                    vidx_ungrouped = np.intersect1d(vidx_ungrouped, cap_eqv,
                         assume_unique=True)
-                    # update the pending tests to include only extrapolated
-                    savings = vidx_ungrouped.size - vidx_extra.size
-                    vidx_ungrouped = vidx_extra
-                    projected_pending += savings
+
+                # the final set of edges to be tested after prediction
+                vidx_tobetested = np.union1d(
+                    vidx_unpredicted,
+                    vidx_ungrouped)
+
+                projected_pending -= vidx_tobetested.size
+                dt_skips += np.setdiff1d(vidx_untested, vidx_tobetested,
+                    assume_unique=True).size
 
                 if not should_validate:
                     # we ignore cross-testing against grouped nodes under the
                     # assumption that DT predicted them correctly
-                    vidx = vidx_ungrouped
+                    vidx = vidx_tobetested
             else:
                 projected_pending -= np.count_nonzero(~edge_mask[eqv_idx,:])
 
