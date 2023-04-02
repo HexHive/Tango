@@ -224,6 +224,13 @@ class StateInferenceStrategy(UniformStrategy,
                     collapsed, eqv_map = self._collapse_until_stable(
                         collapsed, eqv_map)
 
+                if self._dt_predict:
+                    X = cap[mask,:][:,mask] != None
+                    Y = np.vectorize(eqv_map.get, otypes=(int,))(
+                        np.arange(X.shape[0]))
+                    self._dt_clf.fit(X, Y)
+                    self._dt_fit = True
+
                 self._tracker.capability_matrix = cap[mask,:][:,mask]
                 self._tracker.collapsed_matrix = collapsed
                 self._tracker.set_nodes(nodes, eqv_map)
@@ -300,12 +307,6 @@ class StateInferenceStrategy(UniformStrategy,
 
         # collapse, single-axis
         cap, eqv_map, node_mask = self._collapse_graph(cap)
-
-        if self._dt_predict:
-            X = cap[node_mask,:][:,node_mask] != None
-            Y = np.vectorize(eqv_map.get, otypes=(int,))(np.arange(X.shape[0]))
-            self._dt_clf.fit(X, Y)
-            self._dt_fit = True
 
         assert len(eqv_map) == len(nodes)
 
