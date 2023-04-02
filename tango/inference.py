@@ -329,6 +329,7 @@ class StateInferenceStrategy(UniformStrategy,
         for eqv in eqvs:
             if not eqv.size:
                 continue
+            eqv = eqv.astype(int)
             idx_bc, = np.where(eqv_mask)
             grid_bc = np.meshgrid(eqv, idx_bc, indexing='ij')
             mixed = np.logical_or.reduce(edge_mask[*grid_bc])
@@ -362,6 +363,7 @@ class StateInferenceStrategy(UniformStrategy,
     @classmethod
     def _broadcast_capabilities(cls, cap, eqvs, eqv_mask, edge_mask):
         for eqv in eqvs:
+            eqv = eqv.astype(int)
             idx_bc = np.where(eqv_mask)[0]
             grid_bc = np.meshgrid(eqv, idx_bc, indexing='ij')
             mixed = cls.combine_transitions(cap[*grid_bc], axis=0)
