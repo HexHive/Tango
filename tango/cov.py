@@ -430,11 +430,15 @@ class CoverageTracker(BaseTracker,
         self._shm_uuid = uuid4()
         self._shm_name = f'/tango_cov_{self._shm_uuid}'
         self._shm_size_name = f'/tango_size_{self._shm_uuid}'
+        self._shm_pc_name = f'/tango_pc_{self._shm_uuid}'
+        self._shm_pc_size_name = f'/tango_pc_size_{self._shm_uuid}'
 
         # set environment variables and load program with loader
         self._driver._exec_env.env.update({
             'TANGO_COVERAGE': self._shm_name,
-            'TANGO_SIZE': self._shm_size_name
+            'TANGO_SIZE': self._shm_size_name,
+            'TANGO_PC': self._shm_pc_name,
+            'TANGO_PC_SIZE': self._shm_pc_size_name
         })
 
     @classmethod
@@ -451,6 +455,7 @@ class CoverageTracker(BaseTracker,
             await self._driver.execute_input(startup)
 
         self._reader = CoverageReader(self._shm_name, self._shm_size_name)
+        self._pc_reader = CoverageReader(self._shm_pc_name, self._shm_pc_size_name)
 
         # initialize feature maps
         self._global = FeatureMap(self._reader, bind_lib=self._bind_lib)
@@ -461,6 +466,7 @@ class CoverageTracker(BaseTracker,
                                             bind_lib=self._bind_lib)
             self._diff_state = None
             self._feature_heat = np.zeros(self._reader.length, dtype=int)
+            self._pc_dict = {}
 
         self._local_state = None
         self._current_state = None
@@ -583,6 +589,15 @@ class CoverageTracker(BaseTracker,
             hot_features, = feature_mask.nonzero()
             # FIXME check how often this is empty...
             self._feature_heat[hot_features] += 1
+            for idx in hot_features:
+                pointer_sz = 8
+                pc_idx = pointer_sz * idx
+                bytes_list = [self._pc_reader.array[pc_idx + x] for x in \
+                                                            range(pointer_sz)]
+                bytes_list.reverse()
+                bytes_object = bytes(bytes_list)
+                hex_string = "0x" + bytes_object.hex()
+                self._pc_dict[idx] = hex_string
 
 class CoverageReplayLoader(ReplayLoader,
         capture_components={'driver', 'tracker'},

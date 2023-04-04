@@ -22,16 +22,20 @@
 
 static uint8_t *edge_cnt;
 static size_t edge_sz;
+static uintptr_t *pc_vector;
+static size_t pc_sz;
 
 void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
     const char *name = getenv("TANGO_COVERAGE");
     const char *szname = getenv("TANGO_SIZE");
+    const char *pcname = getenv("TANGO_PC");
+    const char *pcszname = getenv("TANGO_PC_SIZE");
     if (!name) {
         for (uint32_t *x = start; x < stop; x++)
             *x = 0;  // disable all guards
         return;
     }
-
+    
     static uint64_t N;  // Counter for the guards.
     if (start == stop || *start) return;  // Initialize only once.
     for (uint32_t *x = start; x < stop; x++)
@@ -45,7 +49,7 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
     edge_cnt = mmap(NULL, edge_sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     close(fd);
     if (!edge_cnt) return;
-
+    
     fd = shm_open(szname, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd == -1) return;
     if (ftruncate(fd, sizeof(uint32_t)) == -1) return;
@@ -54,6 +58,24 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
     if (!sz) return;
     *sz = edge_sz;
     munmap(sz, sizeof(uint32_t));
+
+    // shm for pc of the guards 
+    pc_sz = N * sizeof(uintptr_t);
+    fd = shm_open(pcname, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    if (fd == -1) return;
+    if (ftruncate(fd, pc_sz) == -1) return;
+    pc_vector = mmap(NULL, pc_sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    close(fd);
+    if (!pc_vector) return;  
+
+    fd = shm_open(pcszname, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    if (fd == -1) return;
+    if (ftruncate(fd, sizeof(uintptr_t)) == -1) return;
+    uint32_t *new_sz = mmap(NULL, sizeof(uint32_t), PROT_WRITE, MAP_SHARED, fd, 0);
+    close(fd);
+    if (!new_sz) return;
+    *new_sz = pc_sz;
+    munmap(pc_sz, sizeof(uint32_t));
 }
 
 void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
@@ -62,6 +84,7 @@ void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
     uint32_t idx = *guard - 1;
     if (__builtin_add_overflow(edge_cnt[idx], 1, &edge_cnt[idx]))
         edge_cnt[idx] = UINT8_MAX;
+    pc_vector[idx] = (uintptr_t)__builtin_return_address(0) - 1;
 }
 
 int __wrap_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);

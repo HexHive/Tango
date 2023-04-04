@@ -152,6 +152,19 @@ class Fuzzer:
         self._suspendable.set_tasks(
             wakeup_task=await_repl(repl_task, wakeup_restore))
 
+        for ses in range(len(self._sessions)):
+            cov_array = self._sessions[ses]._explorer._tracker._feature_heat
+            pc_dict = self._sessions[ses]._explorer._tracker._pc_dict
+
+            with open("./cov_pc_{}.txt".format(ses), "w") as file:
+                file.write("idx\tcnt\tpc\n")
+                for i in range(len(cov_array)):
+                    if i in pc_dict:
+                        pc_val = pc_dict[i]
+                    else:
+                        pc_val = "0x" + hex(0)[2:].zfill(16)
+                    file.write("{}\t{}\t{}\n".format(i, cov_array[i], pc_val))
+
     async def _interact(self, loop):
         # disable handler
         self._bootstrap_sigint(loop, handle=False)
