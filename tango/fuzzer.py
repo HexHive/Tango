@@ -21,6 +21,8 @@ class Fuzzer:
         self._overrides = self.construct_overrides(self._argspace.override)
         self._sessions = []
         self._cleanup = False
+        self._track_heat = False
+        self._workdir = ""
 
     @staticmethod
     def parse_args(args):
@@ -129,6 +131,8 @@ class Fuzzer:
     async def create_session(self):
         name = asyncio.current_task().get_name()
         config = FuzzerConfig(self._argspace.config, self._overrides)
+        self._track_heat = config._config["tracker"]["track_heat"]
+        self._workdir = config._config["fuzzer"]["work_dir"]
         session = await config.instantiate('session')
         self._sessions.append(session)
         tg = get_session_task_group()
@@ -152,18 +156,19 @@ class Fuzzer:
         self._suspendable.set_tasks(
             wakeup_task=await_repl(repl_task, wakeup_restore))
 
-        for ses in range(len(self._sessions)):
-            cov_array = self._sessions[ses]._explorer._tracker._feature_heat
-            pc_dict = self._sessions[ses]._explorer._tracker._pc_dict
+        if self._track_heat:
+            for ses in range(len(self._sessions)):
+                cov_array = self._sessions[ses]._explorer._tracker._feature_heat
+                pc_dict = self._sessions[ses]._explorer._tracker._pc_dict
 
-            with open("./cov_pc_{}.txt".format(ses), "w") as file:
-                file.write("idx\tcnt\tpc\n")
-                for i in range(len(cov_array)):
-                    if i in pc_dict:
-                        pc_val = pc_dict[i]
-                    else:
-                        pc_val = "0x" + hex(0)[2:].zfill(16)
-                    file.write("{}\t{}\t{}\n".format(i, cov_array[i], pc_val))
+                with open("./{}/cov_pc_{}.txt".format(self._workdir, ses), "w") as file:
+                    file.write("idx\tcnt\tpc\n")
+                    for i in range(len(cov_array)):
+                        if i in pc_dict:
+                            pc_val = pc_dict[i]
+                        else:
+                            pc_val = "0x" + hex(0)[2:].zfill(16)
+                        file.write("{}\t{}\t{}\n".format(i, cov_array[i], pc_val))
 
     async def _interact(self, loop):
         # disable handler
