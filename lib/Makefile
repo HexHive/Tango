@@ -1,23 +1,12 @@
-CC=clang-13
-CFLAGS := -fsanitize-coverage=$(COVERAGE),trace-pc-guard
-ifdef USE_ASAN
-	CFLAGS += -fsanitize=address
-endif
-CFLAGS += -O3 -g -fPIC
+export CC=clang-13
+export CXX=clang++-13
 
-.PHONY: all clean
+.PHONY: all clean tango
 
-all: libtangofuzz.o coverage.so
+all: tango
 
 clean:
-	rm -f *.o *.so
+	$(MAKE) -C tango clean
 
-libtangofuzz.o: libtangofuzz.c clean
-
-COV_CFLAGS := -O3 -fPIC -fPIE
-ifdef SKIP_COUNTS
-	COV_CFLAGS += -DSKIP_COUNTS
-endif
-
-coverage.so: coverage.c clean
-	$(CC) ${COV_CFLAGS} -shared $< -o $@
+tango:
+	$(MAKE) -C tango all

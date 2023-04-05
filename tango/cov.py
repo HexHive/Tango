@@ -412,6 +412,11 @@ class CoverageTracker(BaseTracker,
         capture_components={ComponentType.driver},
         capture_paths=['tracker.native_lib', 'tracker.verify_raw_coverage',
             'tracker.track_heat']):
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return super().match_config(config) and \
+            config['tracker'].get('type') == 'coverage'
+
     def __init__(self, *, driver: CoverageDriver, native_lib=None,
             verify_raw_coverage: bool=False, track_heat: bool=False, **kwargs):
         super().__init__(**kwargs)
@@ -422,7 +427,7 @@ class CoverageTracker(BaseTracker,
         if native_lib:
             self._bind_lib = CDLL(native_lib)
         elif (lib := os.getenv("TANGO_LIBDIR")):
-            self._bind_lib = CDLL(os.path.join(lib, "coverage.so"))
+            self._bind_lib = CDLL(os.path.join(lib, 'tango', 'pyfeaturemap.so'))
         else:
             self._bind_lib = None
 
@@ -436,11 +441,6 @@ class CoverageTracker(BaseTracker,
             'TANGO_COVERAGE': self._shm_name,
             'TANGO_SIZE': self._shm_size_name
         })
-
-    @classmethod
-    def match_config(cls, config: dict) -> bool:
-        return super().match_config(config) and \
-            config['tracker'].get('type') == 'coverage'
 
     async def finalize(self, owner: ComponentOwner):
         generator = owner['generator']

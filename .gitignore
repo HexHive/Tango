@@ -3,6 +3,7 @@ __pycache__
 *.swp
 
 *.o
+*.a
 *.so
 
 workdir
