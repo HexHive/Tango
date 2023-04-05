@@ -24,13 +24,13 @@ Tracer::Tracer() {
 }
 
 __attribute__((no_sanitize("coverage")))
-void Tracer::InitializeMaps() {
+bool Tracer::InitializeMaps() {
     const char *covname = getenv("TANGO_COVERAGE");
     const char *szname = getenv("TANGO_SIZE");
 
     if (!covname) {
         disabled = true;
-        return;
+        return false;
     }
 
     try {
@@ -63,9 +63,10 @@ void Tracer::InitializeMaps() {
         munmap(sz, sizeof(uint32_t));
     } catch (...) {
         disabled = true;
-        return;
+        return false;
     }
     initialized = true;
+    return true;
 }
 
 __attribute__((no_sanitize("coverage")))
@@ -86,8 +87,8 @@ __attribute__((no_sanitize("coverage")))
 inline void Tracer::HandleTracePCGuard(uintptr_t pc, uint32_t* guard) {
     if (disabled)
         return;
-    if (!initialized)
-        InitializeMaps();
+    if (!initialized && !InitializeMaps())
+        return;
     assert(*guard && "Null guard detected after initialization");
 
     uint32_t idx = *guard - 1;

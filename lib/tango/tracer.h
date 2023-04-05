@@ -9,7 +9,7 @@ class Tracer {
 public:
     Tracer();
 
-    void InitializeMaps();
+    bool InitializeMaps();
     void ClearMaps();
     void InitializeGuards(uint32_t *start, uint32_t *stop);
     void HandleTracePCGuard(uintptr_t pc, uint32_t* guard);
