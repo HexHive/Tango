@@ -10,6 +10,7 @@ TRACECMP_FLAG := trace-cmp
 SANCOV_FLAGS := $(TRACEPCGUARD_FLAG)
 ifdef USE_CMPLOG
 	SANCOV_FLAGS += $(TRACECMP_FLAG)
+	CFLAGS += -DUSE_CMPLOG
 endif
 space:=$(subst ,, )
 comma:=,
