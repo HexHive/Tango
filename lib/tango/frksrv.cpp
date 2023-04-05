@@ -1,4 +1,5 @@
 #include "common.h"
+#include "tracer.h"
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -9,17 +10,10 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 
-extern uint8_t *edge_cnt;
-extern size_t edge_sz;
+extern "C" {
+
 extern pid_t __wrap_fork() __attribute__((weak));
 extern pid_t __real_fork() __attribute__((weak));
-
-
-__attribute__((no_sanitize("coverage")))
-static inline void __reset_cov_map() {
-    for (int i = 0; i < edge_sz; ++i)
-        edge_cnt[i] = 0;
-}
 
 __attribute__((used, no_sanitize("coverage")))
 static void _forkserver() {
@@ -31,7 +25,7 @@ static void _forkserver() {
     fputs("AT LEAST I'M HERE OKAY\n", stderr);fflush(stderr);
 
     while(1) {
-        __reset_cov_map();
+        fuzzer::CoverageTracer.ClearMaps();
         int child_pid;
         if (__wrap_fork)
             child_pid = __real_fork();
@@ -84,3 +78,5 @@ void forkserver() {
         : /* No clobbers */
     );
 }
+
+} // extern "C"

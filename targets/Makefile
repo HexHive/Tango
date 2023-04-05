@@ -29,7 +29,12 @@ endif
 LDFLAGS += -Wl,-wrap,bind -Wl,-wrap,fork -Wl,-wrap,random
 
 export LDFLAGS
-export LDLIBS=-Wl,-whole-archive -l:libtangofuzz.a -Wl,-no-whole-archive -lrt
+# export LDLIBS=-Wl,-whole-archive -l:libtangofuzz.a -Wl,-no-whole-archive -lrt -lc++
+export LDLIBS= \
+	$(TANGO_LIBDIR)/tango/tracer.o \
+	$(TANGO_LIBDIR)/tango/frksrv.o \
+	$(TANGO_LIBDIR)/tango/wrappers.o \
+	-lrt -lc++
 
 ###
 

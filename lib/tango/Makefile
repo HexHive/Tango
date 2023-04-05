@@ -28,11 +28,11 @@ all: libtangofuzz.a pyfeaturemap.so
 clean:
 	rm -f *.o *.a *.so
 
-libtangofuzz.a: trace.o frksrv.o wrappers.o
+libtangofuzz.a: tracer.o frksrv.o wrappers.o
 	$(AR) -rcs $@ $^
 
-frksrv.o: frksrv.c
-	$(CC) $(CFLAGS) -g -c $< -o $@
+frksrv.o: frksrv.cpp
+	$(CXX) $(CXXFLAGS) -g -c $< -o $@
 
 pyfeaturemap.so: pyfeaturemap.c
 	$(CC) ${PYBINDING_CFLAGS} $< -o $@
