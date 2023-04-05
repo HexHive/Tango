@@ -16,7 +16,9 @@ ifdef USE_CMPLOG
 	SANCOV_FLAGS += $(TRACECMP_FLAG)
 	CFLAGS += -DUSE_CMPLOG
 endif
-SANCOV_FLAGS := $(subst \ ,\,,$(SANCOV_FLAGS))
+space:=$(subst ,, )
+comma:=,
+SANCOV_FLAGS := $(subst $(space),$(comma),$(SANCOV_FLAGS))
 
 CFLAGS += -fsanitize-coverage=$(SANCOV_FLAGS)
 CXXFLAGS := $(CFLAGS)
