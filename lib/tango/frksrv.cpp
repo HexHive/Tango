@@ -1,3 +1,7 @@
+#if !__has_feature(coverage_sanitizer)
+#error Incompatible compiler! Please use Clang 13.0 or higher
+#endif
+
 #include "common.h"
 #include "tracer.h"
 #include <stdlib.h>
@@ -15,7 +19,8 @@ extern "C" {
 extern pid_t __wrap_fork() __attribute__((weak));
 extern pid_t __real_fork() __attribute__((weak));
 
-__attribute__((used, no_sanitize("coverage")))
+__attribute__((used))
+ATTRIBUTE_NO_SANITIZE_ALL
 static void _forkserver() {
     int fifofd = -1;
     // const char *wd = getenv("TANGO_WORKDIR");
@@ -48,7 +53,8 @@ static void _forkserver() {
     }
 }
 
-__attribute__((naked, used, no_sanitize("coverage")))
+__attribute__((naked, used))
+ATTRIBUTE_NO_SANITIZE_ALL
 void forkserver() {
     asm volatile (
         "push %%rax\n"

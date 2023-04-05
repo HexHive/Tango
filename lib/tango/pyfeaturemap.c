@@ -1,3 +1,4 @@
+#include "common.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -29,23 +30,9 @@ static const u8 count_class_lookup8[256] = {
 };
 #endif
 
-static const u8 count_hamming_bits[256] = {
-  0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3,
-  3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4,
-  3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 1, 2,
-  2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5,
-  3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5,
-  5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 1, 2, 2, 3,
-  2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4,
-  4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
-  3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 2, 3, 3, 4, 3, 4,
-  4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6,
-  5, 6, 6, 7, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 4, 5,
-  5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8
-};
-
 static inline u32 hash32(const void *key, u32 len, u32 seed);
 
+ATTRIBUTE_TARGET_POPCNT
 bool diff(u8 *set_arr, const u8 *coverage_map, u8 *set_map, \
     const size_t map_size, u32 *set_count, u32 *map_hash, const bool inplace)
 {
@@ -54,7 +41,7 @@ bool diff(u8 *set_arr, const u8 *coverage_map, u8 *set_map, \
   for (size_t i = 0; i < map_size; ++i) {
     kls = count_class_lookup8[coverage_map[i]];
     set_map[i] = (set_arr[i] | kls) ^ set_arr[i];
-    *set_count += count_hamming_bits[set_map[i]];
+    *set_count += Popcount1(set_map[i]);
     if (inplace)
       set_arr[i] |= kls;
   }

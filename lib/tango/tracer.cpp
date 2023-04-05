@@ -1,3 +1,7 @@
+#if !__has_feature(coverage_sanitizer)
+#error Incompatible compiler! Please use Clang 13.0 or higher
+#endif
+
 #include "common.h"
 #include "tracer.h"
 #include <stdlib.h>
@@ -16,14 +20,14 @@ namespace fuzzer {
 
 Tracer CoverageTracer;
 
-__attribute__((no_sanitize("coverage")))
+ATTRIBUTE_NO_SANITIZE_ALL
 Tracer::Tracer() {
     initialized = false;
     disabled = false;
     num_guards = 0;
 }
 
-__attribute__((no_sanitize("coverage")))
+ATTRIBUTE_NO_SANITIZE_ALL
 bool Tracer::InitializeMaps() {
     const char *covname = getenv("TANGO_COVERAGE");
     const char *szname = getenv("TANGO_SIZE");
@@ -69,21 +73,21 @@ bool Tracer::InitializeMaps() {
     return true;
 }
 
-__attribute__((no_sanitize("coverage")))
+ATTRIBUTE_NO_SANITIZE_ALL
 void Tracer::ClearMaps() {
     size_t map_sz = num_guards * sizeof(uint8_t);
     for (int i = 0; i < map_sz; ++i)
         feature_map[i] = 0;
 }
 
-__attribute__((no_sanitize("coverage")))
+ATTRIBUTE_NO_SANITIZE_ALL
 inline void Tracer::InitializeGuards(uint32_t *start, uint32_t *stop) {
     if (start == stop || *start) return;  // Initialize only once.
     for (uint32_t *x = start; x < stop; x++)
         *x = ++num_guards;  // Guards should start from 1.
 }
 
-__attribute__((no_sanitize("coverage")))
+ATTRIBUTE_NO_SANITIZE_ALL
 inline void Tracer::HandleTracePCGuard(uintptr_t pc, uint32_t* guard) {
     if (disabled)
         return;
@@ -101,10 +105,12 @@ inline void Tracer::HandleTracePCGuard(uintptr_t pc, uint32_t* guard) {
 
 extern "C" {
 
+ATTRIBUTE_NO_SANITIZE_ALL
 void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
     fuzzer::CoverageTracer.InitializeGuards(start, stop);
 }
 
+ATTRIBUTE_NO_SANITIZE_ALL
 void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
     uintptr_t PC = reinterpret_cast<uintptr_t>(GET_CALLER_PC());
     fuzzer::CoverageTracer.HandleTracePCGuard(PC, guard);
