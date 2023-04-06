@@ -46,7 +46,7 @@ memcmp.argtypes = (V, V, S)
 memcmp.restype = c_int
 
 __all__ = [
-    'FeatureSnapshot', 'CoverageReader', 'FeatureMap', 'CoverageTracker',
+    'FeatureSnapshot', 'SharedMemoryObject', 'FeatureMap', 'CoverageTracker',
     'CoverageDriver', 'CoverageForkDriver', 'CoverageWebRenderer',
     'CoverageWebDataLoader'
 ]
@@ -100,7 +100,7 @@ class FeatureSnapshot(BaseState):
         self._feature_mask = feature_mask
         self._feature_count = feature_count
         self._feature_context = feature_map.clone()
-        self._raw_coverage = feature_map._reader.clone_array()
+        self._raw_coverage = feature_map._features.clone_object()
 
     def __eq__(self, other):
         # return hash(self) == hash(other)
@@ -113,10 +113,10 @@ class FeatureSnapshot(BaseState):
     def __repr__(self):
         return f'({self._id}) +{self._feature_count}'
 
-class CoverageReader:
+class SharedMemoryObject:
     valid_chars = frozenset("-_. %s%s" % (ascii_letters, digits))
 
-    def __init__(self, path, create=False, force=False):
+    def __init__(self, path, typ_ctor, create=False, force=False):
         # default vals so __del__ doesn't fail if __init__ fails to complete
         self._mem = None
         self._map = None
@@ -126,17 +126,13 @@ class CoverageReader:
         # get the size of the coverage array
         sz_type = S
         _mem, _map = self.mmap_obj(path, sizeof(sz_type), False, False)
-        self._length = sz_type.from_address(self.address_of_buffer(_map)).value
+        self._size = sz_type.from_address(self.address_of_buffer(_map)).value
         _map.close()
 
-        info(f"Obtained coverage map {self._length=}")
-
-        self._type = b * self._length
-        self._size = sizeof(self._type)
-
+        self._type = typ_ctor(self._size)
         self._mem, self._map = self.mmap_obj(path, sizeof(sz_type) + self._size,
             create, force)
-        self._array = self._type.from_address(
+        self._obj = self._type.from_address(
             self.address_of_buffer(self._map) + sizeof(sz_type))
 
     @classmethod
@@ -169,22 +165,18 @@ class CoverageReader:
     def address_of_buffer(buf):
         return addressof(c.from_buffer(buf))
 
-    def clone_array(self, onto: Optional[Array]=None):
+    def clone_object(self, onto: Optional[Array]=None):
         if onto is None:
             onto = self._type()
-        memmove(onto, self._array, self._size)
+        memmove(onto, self._obj, self._size)
         return onto
 
-    def write_array(self, data: Array):
-        memmove(self._array, data, self._size)
+    def write_object(self, data: Array):
+        memmove(self._obj, data, self._size)
 
     @property
-    def array(self):
-        return self._array
-
-    @property
-    def length(self):
-        return self._length
+    def object(self):
+        return self._obj
 
     @property
     def size(self):
@@ -212,10 +204,13 @@ class FeatureMap(ABC):
         else:
             return super(FeatureMap, NPFeatureMap).__new__(NPFeatureMap)
 
-    def __init__(self, reader: CoverageReader, **kwargs):
-        self._reader = reader
-        self._length = reader.length
-        self._shared_map = reader.array
+    def __init__(self, features: SharedMemoryObject, **kwargs):
+        self._features = features
+        self._shared_map = features.object
+
+    @property
+    def length(self):
+        return self._features.ctype._length_
 
     @abstractmethod
     def extract(self, *, commit: bool) -> (Sequence, int, int):
@@ -239,7 +234,7 @@ class FeatureMap(ABC):
 
     @abstractmethod
     def copy_from(self, other: FeatureMap):
-        if self._length != other._length:
+        if self.length != other.length:
             raise RuntimeError("Mismatching coverage map sizes")
 
     @abstractmethod
@@ -253,7 +248,7 @@ class FeatureMap(ABC):
 class CFeatureMap(FeatureMap):
     def __init__(self, *args, bind_lib, **kwargs):
         super().__init__(*args, **kwargs)
-        self._feature_arr = (b * self._length)()
+        self._feature_arr = self._features.ctype()
         self.clear()
 
         self._bind_lib = bind_lib
@@ -284,43 +279,43 @@ class CFeatureMap(FeatureMap):
 
     def extract(self, *, commit: bool=False) \
             -> (Sequence, int, int):
-        feature_mask = (b * self._length)()
+        feature_mask = self._features.ctype()
         feature_count = I()
         mask_hash = I()
         coverage_map = self._shared_map
         res = self._bind_lib.diff(self._feature_arr, coverage_map, feature_mask,
-            self._length, byref(feature_count), byref(mask_hash), commit)
+            self.length, byref(feature_count), byref(mask_hash), commit)
         return feature_mask, feature_count.value, mask_hash.value
 
     def commit(self, feature_mask: Sequence, mask_hash: int):
-        self._bind_lib.apply(self._feature_arr, feature_mask, self._length)
+        self._bind_lib.apply(self._feature_arr, feature_mask, self.length)
 
     def revert(self, feature_mask: Sequence, mask_hash: int):
-        self._bind_lib.apply(self._feature_arr, feature_mask, self._length)
+        self._bind_lib.apply(self._feature_arr, feature_mask, self.length)
 
     def reset(self, feature_mask: Sequence, mask_hash: int):
-        self._bind_lib.reset(self._feature_arr, feature_mask, self._length)
+        self._bind_lib.reset(self._feature_arr, feature_mask, self.length)
 
     def clone(self) -> CFeatureMap:
-        cpy = self.__class__(self._reader, bind_lib=self._bind_lib)
+        cpy = self.__class__(self._features, bind_lib=self._bind_lib)
         cpy.copy_from(self)
         return cpy
 
     def copy_from(self, other: CFeatureMap):
         super().copy_from(other)
-        memmove(self._feature_arr, other._feature_arr, self._length)
+        memmove(self._feature_arr, other._feature_arr, self.length)
 
     def clear(self):
-        memset(self._feature_arr, 0, self._length)
+        memset(self._feature_arr, 0, self.length)
 
     def __eq__(self, other):
         return super().__eq__(other) and \
-            memcmp(self._feature_arr, other._feature_arr, self._length) == 0
+            memcmp(self._feature_arr, other._feature_arr, self.length) == 0
 
 class NPFeatureMap(FeatureMap):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._feature_arr = np.zeros(self._length, dtype=np.uint8)
+        self._feature_arr = np.zeros(self.length, dtype=np.uint8)
         self.clear()
 
     def extract(self, *, commit: bool=False) \
@@ -345,7 +340,7 @@ class NPFeatureMap(FeatureMap):
         self._feature_arr &= feature_mask
 
     def clone(self) -> NPFeatureMap:
-        cpy = self.__class__(self._reader)
+        cpy = self.__class__(self._features)
         cpy.copy_from(self)
         return cpy
 
@@ -386,8 +381,8 @@ class CoverageDriver(ProcessDriver,
             async for instruction in input:
                 idx += 1
                 if self._clear_cov:
-                    memset(self._tracker._reader.array, 0,
-                        self._tracker._reader.size)
+                    memset(self._tracker._features.object, 0,
+                        self._tracker._features.size)
                 await instruction.perform(self._channel)
                 # we invalidate the current_state cache
                 # WARN we use pop with a default value in case the cache is
@@ -438,17 +433,19 @@ class CoverageTracker(BaseTracker,
         if startup:
             await self._driver.execute_input(startup)
 
-        self._reader = CoverageReader(self._shm_name)
+        self._features = SharedMemoryObject(
+            self._shm_name, lambda s: b * (s // sizeof(b)))
+        info(f"Obtained coverage map {self._features._size=}")
 
         # initialize feature maps
-        self._global = FeatureMap(self._reader, bind_lib=self._bind_lib)
-        self._scratch = FeatureMap(self._reader, bind_lib=self._bind_lib)
-        self._local = FeatureMap(self._reader, bind_lib=self._bind_lib)
+        self._global = FeatureMap(self._features, bind_lib=self._bind_lib)
+        self._scratch = FeatureMap(self._features, bind_lib=self._bind_lib)
+        self._local = FeatureMap(self._features, bind_lib=self._bind_lib)
         if self._track_heat:
-            self._differential = FeatureMap(self._reader,
+            self._differential = FeatureMap(self._features,
                                             bind_lib=self._bind_lib)
             self._diff_state = None
-            self._feature_heat = np.zeros(self._reader.length, dtype=int)
+            self._feature_heat = np.zeros(self._differential.length, dtype=int)
 
         self._local_state = None
         self._current_state = None
@@ -541,7 +538,7 @@ class CoverageTracker(BaseTracker,
         self._current_state = state
 
         if self._verify:
-            real_cov = np.asarray(self._reader.array)
+            real_cov = np.asarray(self._features.object)
             state_cov = np.asarray(state._raw_coverage)
             if not np.array_equal(real_cov, state_cov):
                 raise RuntimeError("State coverage did not match actual map.")
@@ -590,7 +587,7 @@ class CoverageReplayLoader(ReplayLoader,
         _, dst, _ = transition
         if self._restore and dst._parent:
             # inject the coverage map context of the expected dst
-            self._tracker._reader.write_array(dst._parent._raw_coverage)
+            self._tracker._features.write_object(dst._parent._raw_coverage)
 
         state = await super().apply_transition(transition, current_state,
             **kwargs)
