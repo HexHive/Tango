@@ -28,6 +28,7 @@ from concurrent.futures import ThreadPoolExecutor
 from elftools.elf.elffile import ELFFile
 from threading import Event, Thread
 from uuid import uuid4
+from string import ascii_letters, digits
 import os
 import sys
 import ctypes
@@ -35,11 +36,14 @@ import signal
 import traceback
 import struct
 import select
+import posix_ipc
+import mmap
 
 __all__ = [
     'ProcessDriver', 'ProcessForkDriver',
     'PtraceChannel', 'PtraceForkChannel', 'PtraceChannelFactory',
-    'FileDescriptorChannel', 'FileDescriptorChannelFactory'
+    'FileDescriptorChannel', 'FileDescriptorChannelFactory',
+    'SharedMemoryObject'
 ]
 
 SOCKET_SYSCALL_NAMES = SOCKET_SYSCALL_NAMES.union(('read', 'write'))
@@ -933,3 +937,87 @@ class FileDescriptorChannel(PtraceChannel):
 class FileDescriptorChannelFactory(PtraceChannelFactory,
         capture_paths=('channel.data_timeout',)):
     data_timeout: float = None # seconds
+
+class SharedMemoryObject:
+    valid_chars = frozenset("-_. %s%s" % (ascii_letters, digits))
+
+    def __init__(self, path, typ_ctor, create=False, force=False):
+        # default vals so __del__ doesn't fail if __init__ fails to complete
+        self._mem = None
+        self._map = None
+        self._owner = create
+        path = self.ensure_tag(path)
+
+        # get the size of the coverage array
+        sz_type = ctypes.c_size_t
+        _mem, _map = self.mmap_obj(path,
+            ctypes.sizeof(sz_type), False, False)
+        self._size = sz_type.from_address(self.address_of_buffer(_map)).value
+        _map.close()
+
+        self._type = typ_ctor(self._size)
+        self._mem, self._map = self.mmap_obj(path,
+            ctypes.sizeof(sz_type) + self._size, create, force)
+        self._obj = self._type.from_address(
+            self.address_of_buffer(self._map) + ctypes.sizeof(sz_type))
+
+    @classmethod
+    def ensure_tag(cls, tag):
+        assert frozenset(tag[1:]).issubset(cls.valid_chars)
+        if tag[0] != "/":
+            tag = "/%s" % (tag,)
+        return tag
+
+    @staticmethod
+    def mmap_obj(tag, size, create, force):
+        # assert 0 <= size < sys.maxint
+        assert 0 <= size < sys.maxsize
+        flag = (0, posix_ipc.O_CREX)[create]
+        try:
+            _mem = posix_ipc.SharedMemory(tag, flags=flag, size=size)
+        except posix_ipc.ExistentialError:
+            if force:
+                posix_ipc.unlink_shared_memory(tag)
+                _mem = posix_ipc.SharedMemory(tag, flags=flag, size=size)
+            else:
+                raise
+
+        _map = mmap.mmap(_mem.fd, _mem.size)
+        _mem.close_fd()
+
+        return _mem, _map
+
+    @staticmethod
+    def address_of_buffer(buf):
+        return ctypes.addressof(ctypes.c_char.from_buffer(buf))
+
+    def clone_object(self, onto: Optional[ctypes.Array]=None):
+        if onto is None:
+            onto = self._type()
+        ctypes.memmove(onto, self._obj, self._size)
+        return onto
+
+    def write_object(self, data: ctypes.Array):
+        ctypes.memmove(self._obj, data, self._size)
+
+    @property
+    def object(self):
+        return self._obj
+
+    @property
+    def size(self):
+        return self._size
+
+    @property
+    def ctype(self):
+        return self._type
+
+    @property
+    def address(self):
+        return self._map
+
+    def __del__(self):
+        if self._map is not None:
+            self._map.close()
+        if self._mem is not None and self._owner:
+            self._mem.unlink()

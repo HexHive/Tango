@@ -5,7 +5,7 @@ from tango.core import (BaseState, BaseTracker, AbstractInput, LambdaProfiler,
     ValueMeanProfiler, CountProfiler, Path, BaseExplorer, LoadableTarget,
     BaseInput, get_profiler)
 from tango.replay import ReplayLoader
-from tango.unix import ProcessDriver, ProcessForkDriver
+from tango.unix import ProcessDriver, ProcessForkDriver, SharedMemoryObject
 from tango.webui import WebRenderer, WebDataLoader
 from tango.common import ComponentType, ComponentOwner
 from tango.exceptions import LoadedException
@@ -19,9 +19,8 @@ from abc import ABC, abstractmethod
 from typing       import Sequence, Callable, Optional
 from collections  import OrderedDict
 from functools    import cache, cached_property, partial
-from string import ascii_letters, digits
 from uuid         import uuid4
-from ctypes       import pythonapi, memset, memmove, addressof, sizeof, CDLL
+from ctypes       import pythonapi, memset, memmove, sizeof, CDLL
 from ctypes       import (POINTER as P,
                           c_bool as B,
                           c_ubyte as b,
@@ -31,22 +30,20 @@ from ctypes       import (POINTER as P,
                           c_char as c,
                           cast as C,
                           c_int,
-                          byref, Array)
+                          byref)
 import numpy as np
 import io
 import json
 import asyncio
 import sys
 import os
-import mmap
-import posix_ipc
 
 memcmp = pythonapi.memcmp
 memcmp.argtypes = (V, V, S)
 memcmp.restype = c_int
 
 __all__ = [
-    'FeatureSnapshot', 'SharedMemoryObject', 'FeatureMap', 'CoverageTracker',
+    'FeatureSnapshot', 'FeatureMap', 'CoverageTracker',
     'CoverageDriver', 'CoverageForkDriver', 'CoverageWebRenderer',
     'CoverageWebDataLoader'
 ]
@@ -112,90 +109,6 @@ class FeatureSnapshot(BaseState):
 
     def __repr__(self):
         return f'({self._id}) +{self._feature_count}'
-
-class SharedMemoryObject:
-    valid_chars = frozenset("-_. %s%s" % (ascii_letters, digits))
-
-    def __init__(self, path, typ_ctor, create=False, force=False):
-        # default vals so __del__ doesn't fail if __init__ fails to complete
-        self._mem = None
-        self._map = None
-        self._owner = create
-        path = self.ensure_tag(path)
-
-        # get the size of the coverage array
-        sz_type = S
-        _mem, _map = self.mmap_obj(path, sizeof(sz_type), False, False)
-        self._size = sz_type.from_address(self.address_of_buffer(_map)).value
-        _map.close()
-
-        self._type = typ_ctor(self._size)
-        self._mem, self._map = self.mmap_obj(path, sizeof(sz_type) + self._size,
-            create, force)
-        self._obj = self._type.from_address(
-            self.address_of_buffer(self._map) + sizeof(sz_type))
-
-    @classmethod
-    def ensure_tag(cls, tag):
-        assert frozenset(tag[1:]).issubset(cls.valid_chars)
-        if tag[0] != "/":
-            tag = "/%s" % (tag,)
-        return tag
-
-    @staticmethod
-    def mmap_obj(tag, size, create, force):
-        # assert 0 <= size < sys.maxint
-        assert 0 <= size < sys.maxsize
-        flag = (0, posix_ipc.O_CREX)[create]
-        try:
-            _mem = posix_ipc.SharedMemory(tag, flags=flag, size=size)
-        except posix_ipc.ExistentialError:
-            if force:
-                posix_ipc.unlink_shared_memory(tag)
-                _mem = posix_ipc.SharedMemory(tag, flags=flag, size=size)
-            else:
-                raise
-
-        _map = mmap.mmap(_mem.fd, _mem.size)
-        _mem.close_fd()
-
-        return _mem, _map
-
-    @staticmethod
-    def address_of_buffer(buf):
-        return addressof(c.from_buffer(buf))
-
-    def clone_object(self, onto: Optional[Array]=None):
-        if onto is None:
-            onto = self._type()
-        memmove(onto, self._obj, self._size)
-        return onto
-
-    def write_object(self, data: Array):
-        memmove(self._obj, data, self._size)
-
-    @property
-    def object(self):
-        return self._obj
-
-    @property
-    def size(self):
-        return self._size
-
-    @property
-    def ctype(self):
-        return self._type
-
-    @property
-    def address(self):
-        return self._map
-
-    def __del__(self):
-        if self._map is not None:
-            self._map.close()
-        if self._mem is not None and self._owner:
-            self._mem.unlink()
-
 
 class FeatureMap(ABC):
     def __new__(cls, *args, **kwargs):
@@ -423,7 +336,7 @@ class CoverageTracker(BaseTracker,
 
         # session-unique shm file
         self._shm_uuid = os.getpid()
-        self._shm_name = f'/tango_cov_{self._shm_uuid}'
+        self._features_path = f'/tango_cov_{self._shm_uuid}'
 
     async def finalize(self, owner: ComponentOwner):
         generator = owner['generator']
@@ -434,7 +347,7 @@ class CoverageTracker(BaseTracker,
             await self._driver.execute_input(startup)
 
         self._features = SharedMemoryObject(
-            self._shm_name, lambda s: b * (s // sizeof(b)))
+            self._features_path, lambda s: b * (s // sizeof(b)))
         info(f"Obtained coverage map {self._features._size=}")
 
         # initialize feature maps
