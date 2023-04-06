@@ -23,11 +23,9 @@ __attribute__((used))
 ATTRIBUTE_NO_SANITIZE_ALL
 static void _forkserver() {
     int fifofd = -1;
-    // const char *wd = getenv("TANGO_WORKDIR");
-    const char *wd = "./workdir";
+    const char *wd = getenv("TANGO_WORKDIR");
     char *fifopath = (char *)malloc(PATH_MAX);
     snprintf(fifopath, PATH_MAX, "%s/%s", wd, "input.pipe");
-    fputs("AT LEAST I'M HERE OKAY\n", stderr);fflush(stderr);
 
     while(1) {
         fuzzer::CoverageTracer.ClearMaps();
