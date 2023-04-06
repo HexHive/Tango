@@ -116,33 +116,28 @@ class FeatureSnapshot(BaseState):
 class CoverageReader:
     valid_chars = frozenset("-_. %s%s" % (ascii_letters, digits))
 
-    def __init__(self, tag, size_tag, create=False, force=False):
+    def __init__(self, path, create=False, force=False):
         # default vals so __del__ doesn't fail if __init__ fails to complete
         self._mem = None
         self._map = None
         self._owner = create
-
-        size_tag = self.ensure_tag(size_tag)
+        path = self.ensure_tag(path)
 
         # get the size of the coverage array
-        _type = I
-        _size = sizeof(_type)
-        # FIXME this is prone to race conditions when launching multiple fuzzers
-        _mem, _map = self.init_array(size_tag, _type, _size, False, False)
-        self._length = _type.from_address(self.address_of_buffer(_map)).value
+        sz_type = S
+        _mem, _map = self.mmap_obj(path, sizeof(sz_type), False, False)
+        self._length = sz_type.from_address(self.address_of_buffer(_map)).value
         _map.close()
-        _mem.unlink()
 
         info(f"Obtained coverage map {self._length=}")
-
-        tag = self.ensure_tag(tag)
 
         self._type = b * self._length
         self._size = sizeof(self._type)
 
-        self._mem, self._map = self.init_array(tag, self._type, self._size,
+        self._mem, self._map = self.mmap_obj(path, sizeof(sz_type) + self._size,
             create, force)
-        self._array = self._type.from_address(self.address_of_buffer(self._map))
+        self._array = self._type.from_address(
+            self.address_of_buffer(self._map) + sizeof(sz_type))
 
     @classmethod
     def ensure_tag(cls, tag):
@@ -152,7 +147,7 @@ class CoverageReader:
         return tag
 
     @staticmethod
-    def init_array(tag, typ, size, create, force):
+    def mmap_obj(tag, size, create, force):
         # assert 0 <= size < sys.maxint
         assert 0 <= size < sys.maxsize
         flag = (0, posix_ipc.O_CREX)[create]
@@ -434,13 +429,6 @@ class CoverageTracker(BaseTracker,
         # session-unique shm file
         self._shm_uuid = os.getpid()
         self._shm_name = f'/tango_cov_{self._shm_uuid}'
-        self._shm_size_name = f'/tango_size_{self._shm_uuid}'
-
-        # set environment variables and load program with loader
-        self._driver._exec_env.env.update({
-            'TANGO_COVERAGE': self._shm_name,
-            'TANGO_SIZE': self._shm_size_name
-        })
 
     async def finalize(self, owner: ComponentOwner):
         generator = owner['generator']
@@ -450,7 +438,7 @@ class CoverageTracker(BaseTracker,
         if startup:
             await self._driver.execute_input(startup)
 
-        self._reader = CoverageReader(self._shm_name, self._shm_size_name)
+        self._reader = CoverageReader(self._shm_name)
 
         # initialize feature maps
         self._global = FeatureMap(self._reader, bind_lib=self._bind_lib)

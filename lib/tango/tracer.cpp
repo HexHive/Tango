@@ -22,7 +22,7 @@ Tracer CoverageTracer;
 
 template <class T>
 struct SharedMemoryObject {
-    T *pObj;
+    T *pMap;
 
     ATTRIBUTE_NO_SANITIZE_ALL
     SharedMemoryObject(const char *name, size_t size,
@@ -34,19 +34,24 @@ struct SharedMemoryObject {
         char path[PATH_MAX];
         snprintf(path, PATH_MAX, "/tango_%s_%lu", name, uuid);
 
+        size_t obj_size = sizeof(size) + size;
         int fd = shm_open(path, oflags, omode);
         if (fd == -1)
             throw std::runtime_error("Failed to open shm region");
-        if (ftruncate(fd, size) == -1)
+        if (ftruncate(fd, obj_size) == -1)
             throw std::runtime_error("Failed to truncate shm region");
-        pObj = (T*)mmap(NULL, size, mprot, MAP_SHARED, fd, 0);
+        pObj = mmap(NULL, obj_size, mprot, MAP_SHARED, fd, 0);
         close(fd);
         if (!pObj)
             throw std::runtime_error("Failed to mmap shm_region");
+        pMap = (T*)((uintptr_t)pObj + sizeof(size));
+        // set the size field to the requested size
+        *(size_t *)pObj = size;
     }
 
 private:
     uint64_t uuid;
+    void *pObj;
 };
 
 // function definitions
@@ -63,12 +68,7 @@ bool Tracer::InitializeMaps() {
     try {
         size_t feature_size = num_guards * sizeof(uint8_t);
         feature_map = SharedMemoryObject<uint8_t>(
-            "cov", feature_size).pObj;
-
-        uint32_t *map_size = SharedMemoryObject<uint32_t>(
-            "size", sizeof(uint32_t)).pObj;
-        *map_size = feature_size;
-        munmap(map_size, sizeof(uint32_t));
+            "cov", feature_size).pMap;
     } catch (...) {
         disabled = true;
         return false;
