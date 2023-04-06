@@ -20,7 +20,7 @@ from typing import Callable
 from itertools import chain
 
 __all__ = [
-    'AbstractExplorer', 'BaseExplorer'
+    'AbstractExplorer', 'BaseExplorer', 'BaseExplorerContext'
 ]
 
 class AbstractExplorer(AsyncComponent, ABC,
@@ -405,6 +405,40 @@ class BaseExplorerContext(BaseDecorator):
         # to the original input, typically the output of the input generator
         return self.pop()
 
+    async def _handle_update(self,
+            updated, unseen,
+            last_state, new_state, current_input):
+        exp = self._exp
+        # FIXME doesn't work as intended, but could save from
+        # recalculating cov map diffs if it works
+        # current_state = exp._tracker.update(last_state,
+        #   input=current_input, peek_result=new_state)
+        current_state = exp._tracker.update_state(last_state,
+            input=current_input)
+        if new_state != current_state:
+            raise StabilityException(
+                "Failed to obtain consistent behavior",
+                current_state)
+        exp._last_state = current_state
+
+        breadcrumbs = exp._current_path.copy()
+        if updated:
+            info(f'Transitioned to {current_state}')
+            exp._tracker.update_transition(
+                last_state, current_state, current_input,
+                state_changed=True)
+            exp._current_path.append(
+                (last_state, current_state, current_input))
+
+        await self.update_state(current_state, input=current_input,
+            orig_input=self.orig_input, breadcrumbs=breadcrumbs)
+        await self.update_transition(
+            last_state, current_state, current_input,
+            orig_input=self.orig_input, breadcrumbs=breadcrumbs,
+            state_changed=updated, new_transition=unseen)
+
+        return current_state, breadcrumbs
+
     async def __aiter__(self, *, orig):
         exp = self._exp
         self._start = self._stop = 0
@@ -419,7 +453,7 @@ class BaseExplorerContext(BaseDecorator):
 
             try:
                 last_state = exp._last_state
-                updated, unseen, tmp_state, current_input = await exp.update(
+                updated, unseen, new_state, current_input = await exp.update(
                     self.input_gen, **self._update_kwargs)
                 if updated:
                     self._start = idx + 1
@@ -436,33 +470,9 @@ class BaseExplorerContext(BaseDecorator):
                     exc=ex)
                 raise
             else:
-                # FIXME doesn't work as intended, but could save from
-                # recalculating cov map diffs if it works
-                # exp._tracker.update(last_state, current_input,
-                # peek_result=current_state)
-                current_state = exp._tracker.update_state(last_state,
-                    input=current_input)
-                if tmp_state != current_state:
-                    raise StabilityException(
-                        "Failed to obtain consistent behavior",
-                        current_state)
-                exp._last_state = current_state
-
-                breadcrumbs = exp._current_path.copy()
-                if updated:
-                    info(f'Transitioned to {current_state}')
-                    exp._tracker.update_transition(
-                        last_state, current_state, current_input,
-                        state_changed=True)
-                    exp._current_path.append(
-                        (last_state, current_state, current_input))
-
-                await self.update_state(current_state, input=current_input,
-                    orig_input=self.orig_input, breadcrumbs=breadcrumbs)
-                await self.update_transition(
-                    last_state, current_state, current_input,
-                    orig_input=self.orig_input, breadcrumbs=breadcrumbs,
-                    state_changed=updated, new_transition=unseen)
+                await self._handle_update(
+                    updated, unseen,
+                    last_state, new_state, current_input)
 
         if self._stop and self._stop > self._start:
             # commit the tail of the input which did not result in an update

@@ -2,8 +2,8 @@ from __future__   import annotations
 from . import debug, info, warning
 
 from tango.core import (BaseState, BaseTracker, AbstractInput, LambdaProfiler,
-    ValueMeanProfiler, CountProfiler, Path, BaseExplorer, LoadableTarget,
-    BaseInput, get_profiler)
+    ValueMeanProfiler, CountProfiler, Path, BaseExplorer, BaseExplorerContext,
+    LoadableTarget, BaseInput, get_profiler)
 from tango.replay import ReplayLoader
 from tango.unix import ProcessDriver, ProcessForkDriver, SharedMemoryObject
 from tango.webui import WebRenderer, WebDataLoader
@@ -20,6 +20,7 @@ from typing       import Sequence, Callable, Optional
 from collections  import OrderedDict
 from functools    import cache, cached_property, partial
 from uuid         import uuid4
+import ctypes
 from ctypes       import pythonapi, memset, memmove, sizeof, CDLL
 from ctypes       import (POINTER as P,
                           c_bool as B,
@@ -30,7 +31,7 @@ from ctypes       import (POINTER as P,
                           c_char as c,
                           cast as C,
                           c_int,
-                          byref)
+                          byref, Structure)
 import numpy as np
 import io
 import json
@@ -314,18 +315,20 @@ class CoverageForkDriver(CoverageDriver, ProcessForkDriver):
 class CoverageTracker(BaseTracker,
         capture_components={ComponentType.driver},
         capture_paths=['tracker.native_lib', 'tracker.verify_raw_coverage',
-            'tracker.track_heat']):
+            'tracker.track_heat', 'tracker.use_cmplog']):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
             config['tracker'].get('type') == 'coverage'
 
     def __init__(self, *, driver: CoverageDriver, native_lib=None,
-            verify_raw_coverage: bool=False, track_heat: bool=False, **kwargs):
+            verify_raw_coverage: bool=False, track_heat: bool=False,
+            use_cmplog: bool=False, **kwargs):
         super().__init__(**kwargs)
         self._driver = driver
         self._verify = verify_raw_coverage
         self._track_heat = track_heat
+        self._use_cmplog = use_cmplog
 
         if native_lib:
             self._bind_lib = CDLL(native_lib)
@@ -336,7 +339,6 @@ class CoverageTracker(BaseTracker,
 
         # session-unique shm file
         self._shm_uuid = os.getpid()
-        self._features_path = f'/tango_cov_{self._shm_uuid}'
 
     async def finalize(self, owner: ComponentOwner):
         generator = owner['generator']
@@ -347,8 +349,11 @@ class CoverageTracker(BaseTracker,
             await self._driver.execute_input(startup)
 
         self._features = SharedMemoryObject(
-            self._features_path, lambda s: b * (s // sizeof(b)))
+            f'/tango_cov_{self._shm_uuid}', lambda s: b * (s // sizeof(b)))
         info(f"Obtained coverage map {self._features._size=}")
+
+        if self._use_cmplog:
+            self._cmptbl = CmpLogTables(self._shm_uuid)
 
         # initialize feature maps
         self._global = FeatureMap(self._features, bind_lib=self._bind_lib)
@@ -421,13 +426,18 @@ class CoverageTracker(BaseTracker,
 
             # update local coverage
             self._update_local()
+            # TODO at the end, clear TORCs so that they remain attributable to
+            #   the last input
             return next_state
         else:
             if source:
                 self._global.revert(source._feature_mask, source._hash)
             return source
 
-    def peek(self, default_source: FeatureSnapshot=None, expected_destination: FeatureSnapshot=None, **kwargs) -> FeatureSnapshot:
+    def peek(self,
+            default_source: FeatureSnapshot=None,
+            expected_destination: FeatureSnapshot=None,
+            **kwargs) -> FeatureSnapshot:
         fmap = self._scratch
         if expected_destination:
             # when the destination is not None, we use its `context_map` as a
@@ -516,6 +526,9 @@ class CoverageExplorer(BaseExplorer,
     def __init__(self, *, tracker: CoverageTracker, **kwargs):
         super().__init__(tracker=tracker, **kwargs)
 
+    def get_context_input(self, input: BaseInput, **kwargs) -> BaseExplorerContext:
+        return CoverageExplorerContext(input, explorer=self, **kwargs)
+
     async def _minimize_transition(self, state_or_path: LoadableTarget,
             dst: FeatureSnapshot, input: BaseInput) -> BaseInput:
         try:
@@ -527,6 +540,14 @@ class CoverageExplorer(BaseExplorer,
             # updated, we delete it from the state cache.
             FeatureSnapshot.invalidate(dst)
         return inp
+
+class CoverageExplorerContext(BaseExplorerContext):
+    async def _handle_update(self,
+            updated, unseen,
+            last_state, new_state, current_input):
+        current_state, breadcrumbs = await super()._handle_update(
+            updated, unseen,
+            last_state, new_state, current_input)
 
 class CoverageWebRenderer(WebRenderer,
         capture_components=('tracker',)):
@@ -617,3 +638,33 @@ class CoverageWebDataLoader(WebDataLoader):
             }
         })
         await self._ws.send_str(msg)
+
+class CmpLogTables:
+    def __init__(self, uuid):
+        self.TORC1 = SharedMemoryObject(
+            f'/tango_torc1_{uuid}',
+            lambda s: self.get_table_type(ctypes.c_uint8))
+        self.TORC2 = SharedMemoryObject(
+            f'/tango_torc2_{uuid}',
+            lambda s: self.get_table_type(ctypes.c_uint16))
+        self.TORC4 = SharedMemoryObject(
+            f'/tango_torc4_{uuid}',
+            lambda s: self.get_table_type(ctypes.c_uint32))
+        self.TORC8 = SharedMemoryObject(
+            f'/tango_torc8_{uuid}',
+            lambda s: self.get_table_type(ctypes.c_uint64))
+
+    @staticmethod
+    def get_table_type(dtype, capacity=1024):
+        class Pair(Structure):
+            _fields_ = (
+                ('Arg1', dtype),
+                ('Arg2', dtype),
+            )
+        class TableOfRecentCompares(Structure):
+            _fields_ = (
+                ('Length', S),
+                ('Idx', S),
+                ('Table', Pair * capacity),
+            )
+        return TableOfRecentCompares

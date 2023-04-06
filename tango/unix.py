@@ -956,6 +956,7 @@ class SharedMemoryObject:
         _map.close()
 
         self._type = typ_ctor(self._size)
+        assert self._size == ctypes.sizeof(self._type)
         self._mem, self._map = self.mmap_obj(path,
             ctypes.sizeof(sz_type) + self._size, create, force)
         self._obj = self._type.from_address(
