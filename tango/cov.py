@@ -432,7 +432,7 @@ class CoverageTracker(BaseTracker,
             self._bind_lib = None
 
         # session-unique shm file
-        self._shm_uuid = uuid4()
+        self._shm_uuid = os.getpid()
         self._shm_name = f'/tango_cov_{self._shm_uuid}'
         self._shm_size_name = f'/tango_size_{self._shm_uuid}'
 

@@ -20,6 +20,37 @@ namespace fuzzer {
 
 Tracer CoverageTracer;
 
+template <class T>
+struct SharedMemoryObject {
+    T *pObj;
+
+    ATTRIBUTE_NO_SANITIZE_ALL
+    SharedMemoryObject(const char *name, size_t size,
+            int oflags = O_RDWR | O_CREAT | O_TRUNC,
+            mode_t omode = S_IRUSR | S_IWUSR,
+            int mprot = PROT_READ | PROT_WRITE)
+            : uuid(getppid())
+    {
+        char path[PATH_MAX];
+        snprintf(path, PATH_MAX, "/tango_%s_%lu", name, uuid);
+
+        int fd = shm_open(path, oflags, omode);
+        if (fd == -1)
+            throw std::runtime_error("Failed to open shm region");
+        if (ftruncate(fd, size) == -1)
+            throw std::runtime_error("Failed to truncate shm region");
+        pObj = (T*)mmap(NULL, size, mprot, MAP_SHARED, fd, 0);
+        close(fd);
+        if (!pObj)
+            throw std::runtime_error("Failed to mmap shm_region");
+    }
+
+private:
+    uint64_t uuid;
+};
+
+// function definitions
+
 ATTRIBUTE_NO_SANITIZE_ALL
 Tracer::Tracer() {
     initialized = false;
@@ -29,42 +60,15 @@ Tracer::Tracer() {
 
 ATTRIBUTE_NO_SANITIZE_ALL
 bool Tracer::InitializeMaps() {
-    const char *covname = getenv("TANGO_COVERAGE");
-    const char *szname = getenv("TANGO_SIZE");
-
-    if (!covname) {
-        disabled = true;
-        return false;
-    }
-
     try {
-        // initialize edge counters
-        size_t map_sz = num_guards * sizeof(uint8_t);
-        int fd = shm_open(covname,
-            O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-        if (fd == -1)
-            throw std::runtime_error("Failed to open shm region");
-        if (ftruncate(fd, map_sz) == -1)
-            throw std::runtime_error("Failed to truncate shm region");
-        feature_map = (uint8_t *)mmap(
-            NULL, map_sz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-        close(fd);
-        if (!feature_map)
-            throw std::runtime_error("Failed to mmap shm_region");
+        size_t feature_size = num_guards * sizeof(uint8_t);
+        feature_map = SharedMemoryObject<uint8_t>(
+            "cov", feature_size).pObj;
 
-        fd = shm_open(szname,
-            O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-        if (fd == -1)
-            throw std::runtime_error("Failed to open shm region");
-        if (ftruncate(fd, sizeof(uint32_t)) == -1)
-            throw std::runtime_error("Failed to truncate shm region");
-        uint32_t *sz = (uint32_t *)mmap(
-            NULL, sizeof(uint32_t), PROT_WRITE, MAP_SHARED, fd, 0);
-        close(fd);
-        if (!sz)
-            throw std::runtime_error("Failed to mmap shm_region");
-        *sz = map_sz;
-        munmap(sz, sizeof(uint32_t));
+        uint32_t *map_size = SharedMemoryObject<uint32_t>(
+            "size", sizeof(uint32_t)).pObj;
+        *map_size = feature_size;
+        munmap(map_size, sizeof(uint32_t));
     } catch (...) {
         disabled = true;
         return false;
