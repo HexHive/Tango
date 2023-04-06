@@ -8,13 +8,15 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <string.h>
+#include <assert.h>
+#include <stdexcept>
+#include <type_traits>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <linux/limits.h>
-#include <stdexcept>
-#include <assert.h>
 
 namespace fuzzer {
 
@@ -69,6 +71,22 @@ bool Tracer::InitializeMaps() {
         size_t feature_size = num_guards * sizeof(uint8_t);
         feature_map = SharedMemoryObject<uint8_t>(
             "cov", feature_size).pMap;
+
+#ifdef USE_CMPLOG
+        TORC1 = SharedMemoryObject<std::remove_pointer<decltype(TORC1)>::type>(
+            "torc1", sizeof(*TORC1)).pMap;
+        TORC2 = SharedMemoryObject<std::remove_pointer<decltype(TORC2)>::type>(
+            "torc2", sizeof(*TORC2)).pMap;
+        TORC4 = SharedMemoryObject<std::remove_pointer<decltype(TORC4)>::type>(
+            "torc4", sizeof(*TORC4)).pMap;
+        TORC8 = SharedMemoryObject<std::remove_pointer<decltype(TORC8)>::type>(
+            "torc8", sizeof(*TORC8)).pMap;
+
+        memset(TORC1, 0, sizeof(*TORC1));
+        memset(TORC2, 0, sizeof(*TORC2));
+        memset(TORC4, 0, sizeof(*TORC4));
+        memset(TORC8, 0, sizeof(*TORC8));
+#endif
     } catch (...) {
         disabled = true;
         return false;
@@ -104,21 +122,27 @@ inline void Tracer::HandleTracePCGuard(uintptr_t pc, uint32_t* guard) {
         feature_map[idx] = UINT8_MAX;
 }
 
+#ifdef USE_CMPLOG
 template <class T>
 ATTRIBUTE_NO_SANITIZE_ALL
 inline void Tracer::HandleCmp(uintptr_t PC, T Arg1, T Arg2) {
-    uint64_t ArgXor = Arg1 ^ Arg2;
+    if (Arg1 == Arg2)
+        return;
+    // this is optimized out by the compiler
     switch (sizeof(T)) {
+    case 1:
+        TORC1->Insert(Arg1, Arg2);
     case 2:
-        TORC2.Insert(Arg1, Arg2);
+        TORC2->Insert(Arg1, Arg2);
     case 4:
-        TORC4.Insert(Arg1, Arg2);
+        TORC4->Insert(Arg1, Arg2);
     case 8:
-        TORC8.Insert(Arg1, Arg2);
+        TORC8->Insert(Arg1, Arg2);
     default:
         return;
     }
 }
+#endif
 
 } // namespace fuzzer
 
