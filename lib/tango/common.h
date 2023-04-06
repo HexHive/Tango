@@ -42,12 +42,15 @@ static const unsigned char popcount_hamming_8[256] = {
   5, 6, 6, 7, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 4, 5,
   5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8
 };
+ATTRIBUTE_NO_SANITIZE_ALL
 inline int Popcount1(unsigned char X) { return popcount_hamming_8[X]; }
+ATTRIBUTE_NO_SANITIZE_ALL
 inline int Popcount2(unsigned short X) {
     return \
         popcount_hamming_8[*(unsigned char *)&X[0]] + \
         popcount_hamming_8[*(unsigned char *)&X[1]];
 }
+ATTRIBUTE_NO_SANITIZE_ALL
 inline int Popcount4(unsigned int X) {
     return \
         popcount_hamming_8[*(unsigned char *)&X[0]] + \
@@ -55,6 +58,7 @@ inline int Popcount4(unsigned int X) {
         popcount_hamming_8[*(unsigned char *)&X[2]] + \
         popcount_hamming_8[*(unsigned char *)&X[3]];
 }
+ATTRIBUTE_NO_SANITIZE_ALL
 inline int Popcount8(unsigned long long X) {
     return \
         popcount_hamming_8[*(unsigned char *)&X[0]] + \
@@ -67,12 +71,12 @@ inline int Popcount8(unsigned long long X) {
         popcount_hamming_8[*(unsigned char *)&X[7]];
 }
 #else
-ATTRIBUTE_TARGET_POPCNT
+ATTRIBUTE_TARGET_POPCNT ATTRIBUTE_NO_SANITIZE_ALL
 inline int Popcount1(unsigned char X) { return __builtin_popcountll(X); }
-ATTRIBUTE_TARGET_POPCNT
+ATTRIBUTE_TARGET_POPCNT ATTRIBUTE_NO_SANITIZE_ALL
 inline int Popcount2(unsigned short X) { return __builtin_popcountll(X); }
-ATTRIBUTE_TARGET_POPCNT
+ATTRIBUTE_TARGET_POPCNT ATTRIBUTE_NO_SANITIZE_ALL
 inline int Popcount4(unsigned int X) { return __builtin_popcountll(X); }
-ATTRIBUTE_TARGET_POPCNT
+ATTRIBUTE_TARGET_POPCNT ATTRIBUTE_NO_SANITIZE_ALL
 inline int Popcount8(unsigned long long X) { return __builtin_popcountll(X); }
 #endif
