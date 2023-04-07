@@ -786,7 +786,10 @@ class CoverageExplorerContext(BaseExplorerContext):
         nbytes = sizeof(dtype)
         nbits = nbytes * 8
         msb_mask = 1 << (nbits - 1)
-        for byteorder in ('little', 'big'):
+        bo_variants = ('little',)
+        if val != 0:
+            bo_variants = ('little', 'big')
+        for byteorder in bo_variants:
             signed_variants = [val]
             if val & msb_mask:
                 signed_variants.append(-val)
