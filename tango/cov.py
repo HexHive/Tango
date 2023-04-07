@@ -572,9 +572,13 @@ class CoverageExplorerContext(BaseExplorerContext):
         entropy = self._exp._entropy
         while goal > 0 and threshold > 0:
             threshold -= 1
-            choose_torc = entropy.choice(torcs)
-            choose_idx = entropy.randint(
-                0, max(choose_torc.object.LastIdx, choose_torc.object.Length)-1)
+            while True:
+                choose_torc, = entropy.choices(torcs,
+                    weights=[sizeof(t.object.dtype) for t in torcs])
+                length = max(choose_torc.object.LastIdx, choose_torc.object.Length)
+                if length != 0:
+                    break
+            choose_idx = entropy.randint(0, length - 1)
             pair = choose_torc.object.Table[choose_idx]
             dtype = choose_torc.object.dtype
 
