@@ -131,11 +131,12 @@ inline void Tracer::HandleTracePCGuard(uintptr_t pc, uint32_t* guard) {
 template <class T>
 ATTRIBUTE_NO_SANITIZE_ALL
 inline void Tracer::HandleCmp(uintptr_t PC, T Arg1, T Arg2) {
-    if (Arg1 == Arg2)
+    if (Arg1 == Arg2 || (Arg1 <= 0xff && Arg2 <= 0xff))
         return;
     // this is optimized out by the compiler
     switch (sizeof(T)) {
     case 1:
+        // for now, this is unreachable due to the 0xff check above
         TORC1->Insert(Arg1, Arg2);
     case 2:
         TORC2->Insert(Arg1, Arg2);
