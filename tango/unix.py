@@ -970,20 +970,25 @@ class SharedMemoryObject:
         return tag
 
     @staticmethod
-    def mmap_obj(tag, size, create, force):
+    def mmap_obj(tag, size, create, force, *, truncate=False):
         # assert 0 <= size < sys.maxint
         assert 0 <= size < sys.maxsize
-        flag = (0, posix_ipc.O_CREX)[create]
+
+        if truncate:
+            ftrunc_sz = size
+        else:
+            ftrunc_sz = 0
+        flag = posix_ipc.O_CREX if create else 0
         try:
-            _mem = posix_ipc.SharedMemory(tag, flags=flag, size=size)
+            _mem = posix_ipc.SharedMemory(tag, flags=flag, size=ftrunc_sz)
         except posix_ipc.ExistentialError:
             if force:
                 posix_ipc.unlink_shared_memory(tag)
-                _mem = posix_ipc.SharedMemory(tag, flags=flag, size=size)
+                _mem = posix_ipc.SharedMemory(tag, flags=flag, size=ftrunc_sz)
             else:
                 raise
 
-        _map = mmap.mmap(_mem.fd, _mem.size)
+        _map = mmap.mmap(_mem.fd, size)
         _mem.close_fd()
 
         return _mem, _map
