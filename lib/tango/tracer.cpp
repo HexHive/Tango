@@ -97,9 +97,14 @@ bool Tracer::InitializeMaps() {
 
 ATTRIBUTE_NO_SANITIZE_ALL
 void Tracer::ClearMaps() {
-    size_t map_sz = num_guards * sizeof(uint8_t);
-    for (int i = 0; i < map_sz; ++i)
-        feature_map[i] = 0;
+    memset(feature_map, 0, num_guards);
+
+#ifdef USE_CMPLOG
+    TORC1->Clear();
+    TORC2->Clear();
+    TORC4->Clear();
+    TORC8->Clear();
+#endif
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
