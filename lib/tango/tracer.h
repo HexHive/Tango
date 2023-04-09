@@ -46,6 +46,7 @@ private:
     bool disabled;
     size_t num_guards;
     uint8_t *feature_map;
+    uintptr_t *pc_map;
 
 #ifdef USE_CMPLOG
     TableOfRecentCompares<uint8_t, 1024> *TORC1;

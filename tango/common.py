@@ -869,8 +869,8 @@ class ComponentOwner(dict, ABC):
                 f" Choosing: {list(combination.values())}")
         return combination
 
-    async def instantiate(self, component_type: ComponentKey,
-            config: Optional[dict]=None, *args, **kwargs) -> AsyncComponent:
+    async def instantiate(self, component_type: ComponentKey, *args,
+            config: Optional[dict]=None, **kwargs) -> AsyncComponent:
         """
         Calls the :py:func:`Component.instantiate` couroutine, supplying `self`
         as the owner, and `self._config` as the configuration dict if left
@@ -1029,7 +1029,7 @@ class AsyncComponent(Component):
         for component_type, requested_type in cls._capture_components.items():
             if (component := owner.get(component_type)) is None:
                 component = \
-                    await owner.instantiate(component_type, config,
+                    await owner.instantiate(component_type, config=config,
                         dependants=deps | {typ})
             if not isinstance(component, requested_type):
                 raise TypeError(f"{owner} instantiated a {component_type} as an"

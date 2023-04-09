@@ -119,17 +119,17 @@ class Fuzzer:
                 for i in range(self._argspace.sessions):
                     context = create_session_context(tg)
                     tg.create_task(
-                        self.create_session(),
+                        self.create_session(i),
                         name=f'Session-{i}',
                         context=context)
         except ExceptionGroup as exg:
             import ipdb; ipdb.set_trace()
             pass
 
-    async def create_session(self):
+    async def create_session(self, sid):
         name = asyncio.current_task().get_name()
         config = FuzzerConfig(self._argspace.config, self._overrides)
-        session = await config.instantiate('session')
+        session = await config.instantiate('session', sid)
         self._sessions.append(session)
         tg = get_session_task_group()
         tg.create_task(Suspendable(session.run()).as_coroutine(), name=name)

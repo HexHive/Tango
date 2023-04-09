@@ -43,7 +43,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
     """
     This class initializes and tracks the global state of the fuzzer.
     """
-    def __init__(self, *, explorer: BaseExplorer,
+    def __init__(self, sid, *, explorer: BaseExplorer,
             generator: BaseInputGenerator, strategy: BaseStrategy, **kwargs):
         """
         FuzzerSession initializer.
@@ -52,9 +52,17 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
         Initializes the target and establishes a communication channel.
         """
         super().__init__(**kwargs)
+        self.id = sid
+        self.loop = asyncio.get_running_loop()
         self._explorer = explorer
         self._generator = generator
         self._strategy = strategy
+
+    async def initialize(self):
+        await super().initialize()
+        # needed for accessing session-specific variables while debugging
+        self._context = get_session_context()
+        current_session.set(self)
 
     async def finalize(self, owner: ComponentOwner):
         self._explorer.register_state_reload_callback(self._state_reload_cb)
@@ -62,7 +70,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
         self._explorer.register_transition_update_callback(self._transition_update_cb)
         await super().finalize(owner)
 
-    async def _loop(self):
+    async def _loop_forever(self):
         while True:
             try:
                 await self._strategy.step()
@@ -169,8 +177,5 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
             **kwargs)
 
     async def run(self):
-        # needed for accessing session-specific variables while debugging
-        self._context = get_session_context()
-        set_current_session(self)
         # launch fuzzing loop
-        await self._loop()
+        await self._loop_forever()

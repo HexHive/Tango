@@ -3,7 +3,7 @@ from . import debug, info, warning
 
 from tango.core import (BaseState, BaseTracker, AbstractInput, LambdaProfiler,
     ValueMeanProfiler, CountProfiler, Path, BaseExplorer, BaseExplorerContext,
-    LoadableTarget, BaseInput, get_profiler)
+    LoadableTarget, BaseInput, get_profiler, get_current_session)
 from tango.replay import ReplayLoader
 from tango.unix import ProcessDriver, ProcessForkDriver, SharedMemoryObject
 from tango.webui import WebRenderer, WebDataLoader
@@ -38,6 +38,7 @@ import json
 import asyncio
 import sys
 import os
+import signal
 
 memcmp = pythonapi.memcmp
 memcmp.argtypes = (V, V, S)
@@ -315,13 +316,14 @@ class CoverageForkDriver(CoverageDriver, ProcessForkDriver):
 class CoverageTracker(BaseTracker,
         capture_components={ComponentType.driver},
         capture_paths=['tracker.native_lib', 'tracker.verify_raw_coverage',
-            'tracker.track_heat', 'tracker.use_cmplog']):
+            'tracker.track_heat', 'tracker.use_cmplog', 'fuzzer.work_dir']):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
             config['tracker'].get('type') == 'coverage'
 
-    def __init__(self, *, driver: CoverageDriver, native_lib=None,
+    def __init__(self, *, driver: CoverageDriver, work_dir: str,
+            native_lib=None,
             verify_raw_coverage: bool=False, track_heat: bool=False,
             use_cmplog: bool=False, **kwargs):
         super().__init__(**kwargs)
@@ -329,6 +331,7 @@ class CoverageTracker(BaseTracker,
         self._verify = verify_raw_coverage
         self._track_heat = track_heat
         self._use_cmplog = use_cmplog
+        self._work_dir = work_dir
 
         if native_lib:
             self._bind_lib = CDLL(native_lib)
@@ -339,6 +342,13 @@ class CoverageTracker(BaseTracker,
 
         # session-unique shm file
         self._shm_uuid = os.getpid()
+
+    async def initialize(self):
+        await super().initialize()
+        if self._track_heat:
+            session = get_current_session()
+            loop = session.loop
+            loop.add_signal_handler(signal.SIGUSR1, self._dump_pcs, session.id)
 
     async def finalize(self, owner: ComponentOwner):
         generator = owner['generator']
@@ -351,6 +361,8 @@ class CoverageTracker(BaseTracker,
         self._features = SharedMemoryObject(
             f'/tango_cov_{self._shm_uuid}', lambda s: b * (s // sizeof(b)))
         info(f"Obtained coverage map {self._features._size=}")
+        self._pc = SharedMemoryObject(
+            f'/tango_pc_{self._shm_uuid}', lambda s: S * (s // sizeof(S)))
 
         if self._use_cmplog:
             self._cmptbl = CmpLogTables(self._shm_uuid)
@@ -383,6 +395,17 @@ class CoverageTracker(BaseTracker,
                 )
             )
         ))
+
+    def _dump_pcs(self, sid):
+        cov_idx, = self._feature_heat.nonzero()
+        cov_arr = self._feature_heat[cov_idx]
+        pc_arr = np.asarray(self._pc.object, dtype=int)[cov_idx]
+        fpath = os.path.join(self._work_dir, f'cov_pc_{sid}.txt')
+        with open(fpath, "wt") as file:
+            file.write("idx\tcnt\tpc\n")
+            for idx, cnt, pc in zip(cov_idx, cov_arr, pc_arr):
+                row = f'{idx:6}\t{cnt:6}\t0x{pc:016X}\n'
+                file.write(row)
 
     @property
     def entry_state(self) -> FeatureSnapshot:

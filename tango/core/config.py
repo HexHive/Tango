@@ -44,8 +44,8 @@ class FuzzerConfig(ComponentOwner):
         info(f'Changed current working directory to {cwd}')
         self.setup_workdir()
 
-    async def instantiate(self, component_type: ComponentKey, config=None,
-            *args, **kwargs) -> AsyncComponent:
+    async def instantiate(self, component_type: ComponentKey, *args,
+            config=None, **kwargs) -> AsyncComponent:
         component_type = ComponentType(component_type)
         config = config or self._config
         component = await self.component_classes[component_type].instantiate(

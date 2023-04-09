@@ -68,9 +68,10 @@ Tracer::Tracer() {
 ATTRIBUTE_NO_SANITIZE_ALL
 bool Tracer::InitializeMaps() {
     try {
-        size_t feature_size = num_guards * sizeof(uint8_t);
         feature_map = SharedMemoryObject<uint8_t>(
-            "cov", feature_size).pMap;
+            "cov", num_guards * sizeof(uint8_t)).pMap;
+        pc_map = SharedMemoryObject<uintptr_t>(
+            "pc", num_guards * sizeof(uintptr_t)).pMap;
 
 #ifdef USE_CMPLOG
         TORC1 = SharedMemoryObject<std::remove_pointer<decltype(TORC1)>::type>(
@@ -120,6 +121,7 @@ inline void Tracer::HandleTracePCGuard(uintptr_t pc, uint32_t* guard) {
     uint32_t idx = *guard - 1;
     if (__builtin_add_overflow(feature_map[idx], 1, &feature_map[idx]))
         feature_map[idx] = UINT8_MAX;
+    pc_map[idx] = pc - 1;
 }
 
 #ifdef USE_CMPLOG
