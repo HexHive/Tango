@@ -529,16 +529,20 @@ class CoverageReplayLoader(ReplayLoader,
 
 class CoverageExplorer(BaseExplorer,
         capture_components={'tracker'},
-        capture_paths=('explorer.exclude_uncolored',)):
+        capture_paths=('explorer.exclude_uncolored', 'explorer.cmplog_samples',
+                       'explorer.cmplog_goal')):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
             config['tracker'].get('type') == 'coverage'
 
     def __init__(self, *, tracker: CoverageTracker,
-            exclude_uncolored: bool=False, **kwargs):
+            exclude_uncolored: bool=False,
+            cmplog_samples: int=100, cmplog_goal: int=10, **kwargs):
         super().__init__(tracker=tracker, **kwargs)
         self._exclude_uncolored = exclude_uncolored
+        self._cmplog_samples = cmplog_samples
+        self._cmplog_goal = cmplog_goal
 
     def get_context_input(self, input: BaseInput, **kwargs) -> BaseExplorerContext:
         return CoverageExplorerContext(input, explorer=self, **kwargs)
@@ -570,8 +574,8 @@ class CoverageExplorerContext(BaseExplorerContext):
 
         torcs = [torc for torc in self._exp._tracker._cmplog.torcs
                 if sizeof(torc.object.dtype) > 1]
-        goal = 10
-        threshold = 1000
+        goal = self._exp._cmplog_goal
+        threshold = self._exp._cmplog_samples
         entropy = self._exp._entropy
         while goal > 0 and threshold > 0:
             threshold -= 1
