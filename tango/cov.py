@@ -682,8 +682,14 @@ class CoverageExplorerContext(BaseExplorerContext):
         orig_pos1, orig_pos2 = orig_pos
 
         # find colored overlaps
-        colored, colored_pos = self._matches_in_input(colored, pair, dtype)
-        colored_pos1, colored_pos2 = colored_pos
+        colored_pos1 = np.empty((0, 3), dtype=int)
+        colored_pos2 = np.empty((0, 3), dtype=int)
+        for i in range(max(torc.object.LastIdx, torc.object.Length)):
+            cur_pair = torc.object.Table[i]
+            _, (cpos1, cpos2) = self._matches_in_input(colored, cur_pair, dtype)
+            colored_pos1 = np.vstack((colored_pos1, cpos1))
+            colored_pos2 = np.vstack((colored_pos1, cpos2))
+
         if not colored_pos1.size and not colored_pos2.size:
             return
 
