@@ -528,14 +528,17 @@ class CoverageReplayLoader(ReplayLoader,
         return state
 
 class CoverageExplorer(BaseExplorer,
-        capture_components={'tracker'}):
+        capture_components={'tracker'},
+        capture_paths=('explorer.exclude_uncolored',)):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
             config['tracker'].get('type') == 'coverage'
 
-    def __init__(self, *, tracker: CoverageTracker, **kwargs):
+    def __init__(self, *, tracker: CoverageTracker,
+            exclude_uncolored: bool=False, **kwargs):
         super().__init__(tracker=tracker, **kwargs)
+        self._exclude_uncolored = exclude_uncolored
 
     def get_context_input(self, input: BaseInput, **kwargs) -> BaseExplorerContext:
         return CoverageExplorerContext(input, explorer=self, **kwargs)
@@ -669,14 +672,15 @@ class CoverageExplorerContext(BaseExplorerContext):
             for i, instr in enumerate(instrs):
                 colored, ranges = await self._colorize_input(src, dst,
                                                              colored, instr)
-                to_delete = np.empty((0,), dtype=int)
-                for j, (off, size) in enumerate(offsets[i]):
-                    if not any(off >= r.start and \
-                            (off + size) <= r.stop for r in ranges):
-                        # this match could not be colorized, so it's probably
-                        # critical; discard it
-                        to_delete = np.append(to_delete, split[i] + j)
-                orig_pos[idx] = np.delete(pos, to_delete, axis=0)
+                if self._exp._exclude_uncolored:
+                    to_delete = np.empty((0,), dtype=int)
+                    for j, (off, size) in enumerate(offsets[i]):
+                        if not any(off >= r.start and \
+                                (off + size) <= r.stop for r in ranges):
+                            # this match could not be colorized, so it's
+                            # probably critical; discard it
+                            to_delete = np.append(to_delete, split[i] + j)
+                    orig_pos[idx] = np.delete(pos, to_delete, axis=0)
 
         # these might have been updated
         orig_pos1, orig_pos2 = orig_pos
