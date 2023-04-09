@@ -593,7 +593,7 @@ class CoverageExplorerContext(BaseExplorerContext):
                 if not rv:
                     continue
 
-                pos1, pos2 = rv
+                pos1, pos2, colpos1, colpos2, colored = rv
                 src, dst, inp = last_state, new_state, current_input
                 subst = lambda x: \
                     inp[0:instr] + PreparedInput(instructions=(x,)) + inp[instr+1:]
@@ -693,11 +693,13 @@ class CoverageExplorerContext(BaseExplorerContext):
         if not colored_pos1.size and not colored_pos2.size:
             return
 
-        idx1, _ = self.intersectnd_nosort(orig_pos1, colored_pos1, axis=0)
-        idx2, _ = self.intersectnd_nosort(orig_pos2, colored_pos2, axis=0)
+        idx1, colidx1 = self.intersectnd_nosort(orig_pos1, colored_pos1, axis=0)
+        idx2, colidx2 = self.intersectnd_nosort(orig_pos2, colored_pos2, axis=0)
 
         pos1 = np.unique(orig_pos1[idx1], axis=0)
         pos2 = np.unique(orig_pos2[idx2], axis=0)
+        colpos1 = np.unique(colored_pos1[colidx1], axis=0)
+        colpos2 = np.unique(colored_pos2[colidx2], axis=0)
 
         # restore original state
         # FIXME might not be necessary
@@ -705,7 +707,7 @@ class CoverageExplorerContext(BaseExplorerContext):
         await self._exp._loader.apply_transition((src, dst, inp), src,
             update_cache=False)
 
-        return pos1, pos2
+        return pos1, pos2, colpos1, colpos2, colored
 
     async def _colorize_input(self, src, dst, inp, instr):
         entropy = self._exp._entropy
