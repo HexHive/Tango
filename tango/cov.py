@@ -629,7 +629,9 @@ class CoverageExplorerContext(BaseExplorerContext):
                                         last_state, ex.current_state, candidate,
                                         state_changed=True)
                                     info("Discovered new state with cmplog:"
-                                        f" {ex.current_state}")
+                                        f" {ex.current_state}"
+                                        f" {orig._data[off:off + size]} ->"
+                                        f" {variant}")
                                     breadcrumbs = self._exp._current_path.copy()
                                     await self.update_transition(
                                         last_state, ex.current_state, candidate,
@@ -701,6 +703,8 @@ class CoverageExplorerContext(BaseExplorerContext):
         if not colored_pos1.size and not colored_pos2.size:
             return
 
+        debug(f"{colored_pos1.size=} and {colored_pos2.size=}")
+
         idx1, colidx1 = self.intersectnd_nosort(orig_pos1, colored_pos1, axis=0)
         idx2, colidx2 = self.intersectnd_nosort(orig_pos2, colored_pos2, axis=0)
 
@@ -709,11 +713,7 @@ class CoverageExplorerContext(BaseExplorerContext):
         colpos1 = np.unique(colored_pos1[colidx1], axis=0)
         colpos2 = np.unique(colored_pos2[colidx2], axis=0)
 
-        # restore original state
-        # FIXME might not be necessary
-        await self._exp.reload_state(src, dryrun=True)
-        await self._exp._loader.apply_transition((src, dst, inp), src,
-            update_cache=False)
+        debug(f"{pos1.size=} and {pos2.size=}")
 
         return pos1, pos2, colpos1, colpos2, colored
 
