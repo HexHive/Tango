@@ -186,7 +186,7 @@ class PtraceDebugger(object):
             try:
                 if wanted_pid and wanted_pid in self.dict and \
                         wanted_pid in self.sig_queue and self.sig_queue[wanted_pid]:
-                    warning(f"waitpid(): Fetching signal for PID {wanted_pid} from queue")
+                    debug(f"waitpid(): Fetching signal for PID {wanted_pid} from queue")
                     pid, status = (wanted_pid, self.sig_queue[wanted_pid].pop(0))
                     if not self.sig_queue[wanted_pid]:
                         self.sig_queue.pop(wanted_pid)
@@ -208,15 +208,15 @@ class PtraceDebugger(object):
                     try:
                         stat = readProcessStat(pid)
                         if stat.ppid in self.dict:
-                            warning(f"Received premature signal for a child ({pid=}) of a traced process")
+                            debug(f"Received premature signal for a child ({pid=}) of a traced process")
                         else:
                             enq = False
                             debug(f"Received signal for unknown {pid=}, ignoring")
                     except ProcError:
-                        debug(f"Process ({pid=}) died before its signal could be processed")
+                        warning(f"Process ({pid=}) died before its signal could be processed")
                         enq = False
                 else:
-                    warning(f"Received signal for unknown {pid=}, placing event in queue")
+                    debug(f"Received signal for unknown {pid=}, placing event in queue")
                 if enq:
                     if pid not in self.sig_queue:
                         self.sig_queue[pid] = list()
