@@ -98,9 +98,14 @@ bool Tracer::InitializeMaps() {
 
 ATTRIBUTE_NO_SANITIZE_ALL
 void Tracer::ClearMaps() {
-    size_t map_sz = num_guards * sizeof(uint8_t);
-    for (int i = 0; i < map_sz; ++i)
-        feature_map[i] = 0;
+    memset(feature_map, 0, num_guards);
+
+#ifdef USE_CMPLOG
+    TORC1->Clear();
+    TORC2->Clear();
+    TORC4->Clear();
+    TORC8->Clear();
+#endif
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
@@ -128,11 +133,12 @@ inline void Tracer::HandleTracePCGuard(uintptr_t pc, uint32_t* guard) {
 template <class T>
 ATTRIBUTE_NO_SANITIZE_ALL
 inline void Tracer::HandleCmp(uintptr_t PC, T Arg1, T Arg2) {
-    if (Arg1 == Arg2)
+    if (Arg1 == Arg2 || (Arg1 <= 0xff && Arg2 <= 0xff))
         return;
     // this is optimized out by the compiler
     switch (sizeof(T)) {
     case 1:
+        // for now, this is unreachable due to the 0xff check above
         TORC1->Insert(Arg1, Arg2);
     case 2:
         TORC2->Insert(Arg1, Arg2);

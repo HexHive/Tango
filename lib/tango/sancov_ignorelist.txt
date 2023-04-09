@@ -1,0 +1,2 @@
+# Disable instrumentation for all files here
+src:./*

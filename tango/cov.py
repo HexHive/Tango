@@ -3,12 +3,13 @@ from . import debug, info, warning
 
 from tango.core import (BaseState, BaseTracker, AbstractInput, LambdaProfiler,
     ValueMeanProfiler, CountProfiler, Path, BaseExplorer, BaseExplorerContext,
-    LoadableTarget, BaseInput, get_profiler, get_current_session)
+    LoadableTarget, BaseInput, get_profiler, get_current_session,
+    TransmitInstruction, PreparedInput)
 from tango.replay import ReplayLoader
 from tango.unix import ProcessDriver, ProcessForkDriver, SharedMemoryObject
 from tango.webui import WebRenderer, WebDataLoader
 from tango.common import ComponentType, ComponentOwner
-from tango.exceptions import LoadedException
+from tango.exceptions import LoadedException, StabilityException
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_svg import FigureCanvasSVG
@@ -39,6 +40,7 @@ import asyncio
 import sys
 import os
 import signal
+import bisect
 
 memcmp = pythonapi.memcmp
 memcmp.argtypes = (V, V, S)
@@ -365,7 +367,7 @@ class CoverageTracker(BaseTracker,
             f'/tango_pc_{self._shm_uuid}', lambda s: S * (s // sizeof(S)))
 
         if self._use_cmplog:
-            self._cmptbl = CmpLogTables(self._shm_uuid)
+            self._cmplog = CmpLogTables(self._shm_uuid)
 
         # initialize feature maps
         self._global = FeatureMap(self._features, bind_lib=self._bind_lib)
@@ -449,8 +451,13 @@ class CoverageTracker(BaseTracker,
 
             # update local coverage
             self._update_local()
-            # TODO at the end, clear TORCs so that they remain attributable to
+
+            # at the end, clear TORCs so that they remain attributable to
             #   the last input
+            if self._use_cmplog:
+                for torc in self._cmplog.torcs:
+                    torc.object.LastIdx = torc.object.Length = 0
+
             return next_state
         else:
             if source:
@@ -502,6 +509,10 @@ class CoverageTracker(BaseTracker,
         # update the local maps with the latest coverage readings
         self._update_local()
 
+        if self._use_cmplog:
+            for torc in self._cmplog.torcs:
+                torc.object.LastIdx = torc.object.Length = 0
+
     def _update_local(self):
         self._local_state = self.extract_snapshot(
             self._local, self._local_state,
@@ -540,14 +551,21 @@ class CoverageReplayLoader(ReplayLoader,
         return state
 
 class CoverageExplorer(BaseExplorer,
-        capture_components={'tracker'}):
+        capture_components={'tracker'},
+        capture_paths=('explorer.exclude_uncolored', 'explorer.cmplog_samples',
+                       'explorer.cmplog_goal')):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
             config['tracker'].get('type') == 'coverage'
 
-    def __init__(self, *, tracker: CoverageTracker, **kwargs):
+    def __init__(self, *, tracker: CoverageTracker,
+            exclude_uncolored: bool=False,
+            cmplog_samples: int=100, cmplog_goal: int=10, **kwargs):
         super().__init__(tracker=tracker, **kwargs)
+        self._exclude_uncolored = exclude_uncolored
+        self._cmplog_samples = cmplog_samples
+        self._cmplog_goal = cmplog_goal
 
     def get_context_input(self, input: BaseInput, **kwargs) -> BaseExplorerContext:
         return CoverageExplorerContext(input, explorer=self, **kwargs)
@@ -565,12 +583,280 @@ class CoverageExplorer(BaseExplorer,
         return inp
 
 class CoverageExplorerContext(BaseExplorerContext):
-    async def _handle_update(self,
+    async def _handle_update(self, *args, **kwargs):
+        if self._exp._tracker._use_cmplog:
+            await self._perform_cmplog(*args, **kwargs)
+        current_state, breadcrumbs = await super()._handle_update(
+            *args, **kwargs)
+
+    async def _perform_cmplog(self,
             updated, unseen,
             last_state, new_state, current_input):
-        current_state, breadcrumbs = await super()._handle_update(
-            updated, unseen,
-            last_state, new_state, current_input)
+        if not unseen:
+            return
+
+        torcs = [torc for torc in self._exp._tracker._cmplog.torcs
+                if sizeof(torc.object.dtype) > 1]
+        goal = self._exp._cmplog_goal
+        threshold = self._exp._cmplog_samples
+        entropy = self._exp._entropy
+        while goal > 0 and threshold > 0:
+            threshold -= 1
+            while True:
+                choose_torc, = entropy.choices(torcs,
+                    weights=[sizeof(t.object.dtype) for t in torcs])
+                length = max(choose_torc.object.LastIdx, choose_torc.object.Length)
+                if length != 0:
+                    break
+            choose_idx = entropy.randint(0, length - 1)
+            pair = choose_torc.object.Table[choose_idx]
+            dtype = choose_torc.object.dtype
+
+            # FIXME ensure these are copies in case dtype is not int
+            arg1 = pair.Arg1
+            arg2 = pair.Arg2
+            try:
+                rv = await self._identify_candidates(
+                    last_state, new_state, current_input,
+                    choose_torc, pair, dtype)
+
+                if not rv:
+                    continue
+
+                pos1, pos2, colpos1, colpos2, colored = rv
+                src, dst, inp = last_state, new_state, current_input
+                subst = lambda x: \
+                    inp[0:instr] + PreparedInput(instructions=(x,)) + inp[instr+1:]
+
+                for pos, val in ((pos1, arg2), (pos2, arg1)):
+                    for instr, off, size in pos:
+
+                        orig = list(inp[instr])[0]
+                        for variant in self._pattern_variants(val, dtype):
+                            if len(variant) != size:
+                                continue
+                            data = bytearray(orig._data)
+                            data[off:off + size] = variant
+                            candidate = subst(TransmitInstruction(data)).flatten()
+                            await self._exp.reload_state(src, dryrun=True)
+                            try:
+                                await self._exp._loader.apply_transition(
+                                    (src, dst, candidate), src, update_cache=True)
+                            except StabilityException as ex:
+                                # we hit something other than dst, this is good!
+                                interesting = ex.current_state not in \
+                                    self._exp._tracker.state_graph
+                                if interesting:
+                                    goal -= 1
+                                    self._exp._tracker.update_transition(
+                                        last_state, ex.current_state, candidate,
+                                        state_changed=True)
+                                    info("Discovered new state with cmplog:"
+                                        f" {ex.current_state}"
+                                        f" {orig._data[off:off + size]} ->"
+                                        f" {variant}")
+                                    breadcrumbs = self._exp._current_path.copy()
+                                    await self.update_transition(
+                                        last_state, ex.current_state, candidate,
+                                        orig_input=self.orig_input,
+                                        breadcrumbs=breadcrumbs,
+                                        state_changed=True, new_transition=True)
+                            except Exception as ex:
+                                # something horrible happened, ignore
+                                continue
+            except Exception as ex:
+                continue
+
+        await self._exp.reload_state(last_state, dryrun=True)
+        await self._exp._loader.apply_transition(
+            (last_state, new_state, current_input), last_state,
+            update_cache=False)
+
+    @staticmethod
+    def intersectnd_nosort(a, b, /, *, axis=None):
+        idx = np.indices((a.shape[axis or 0], b.shape[axis or 0]))
+        if axis is not None:
+            equals = lambda i, j: np.all(
+                a.take(i, axis=axis) == b.take(j, axis=axis))
+        else:
+            equals = lambda i, j: a[i] == b[j]
+
+        equals_ufn = np.frompyfunc(equals, 2, 1)
+        match = equals_ufn(*idx)
+        a_idx, b_idx = np.where(match)
+        return a_idx, b_idx
+
+    async def _identify_candidates(self, src, dst, inp, torc, pair, dtype):
+        inp, orig_pos = self._matches_in_input(inp, pair, dtype)
+        orig_pos1, orig_pos2 = orig_pos
+        if not orig_pos1.size and not orig_pos2.size:
+            return
+
+        # colorize the input
+        colored = inp
+        orig_pos = list(orig_pos)
+        for idx, pos in enumerate(orig_pos):
+            instrs, split = np.unique(pos[:,0], return_index=True)
+            offsets = np.split(pos[:,1:], split[1:])
+            for i, instr in enumerate(instrs):
+                colored, ranges = await self._colorize_input(src, dst,
+                                                             colored, instr)
+                if self._exp._exclude_uncolored:
+                    to_delete = np.empty((0,), dtype=int)
+                    for j, (off, size) in enumerate(offsets[i]):
+                        if not any(off >= r.start and \
+                                (off + size) <= r.stop for r in ranges):
+                            # this match could not be colorized, so it's
+                            # probably critical; discard it
+                            to_delete = np.append(to_delete, split[i] + j)
+                    orig_pos[idx] = np.delete(pos, to_delete, axis=0)
+
+        # these might have been updated
+        orig_pos1, orig_pos2 = orig_pos
+
+        # find colored overlaps
+        colored_pos1 = np.empty((0, 3), dtype=int)
+        colored_pos2 = np.empty((0, 3), dtype=int)
+        for i in range(max(torc.object.LastIdx, torc.object.Length)):
+            cur_pair = torc.object.Table[i]
+            _, (cpos1, cpos2) = self._matches_in_input(colored, cur_pair, dtype)
+            colored_pos1 = np.vstack((colored_pos1, cpos1))
+            colored_pos2 = np.vstack((colored_pos1, cpos2))
+
+        if not colored_pos1.size and not colored_pos2.size:
+            return
+
+        debug(f"{colored_pos1.size=} and {colored_pos2.size=}")
+
+        idx1, colidx1 = self.intersectnd_nosort(orig_pos1, colored_pos1, axis=0)
+        idx2, colidx2 = self.intersectnd_nosort(orig_pos2, colored_pos2, axis=0)
+
+        pos1 = np.unique(orig_pos1[idx1], axis=0)
+        pos2 = np.unique(orig_pos2[idx2], axis=0)
+        colpos1 = np.unique(colored_pos1[colidx1], axis=0)
+        colpos2 = np.unique(colored_pos2[colidx2], axis=0)
+
+        debug(f"{pos1.size=} and {pos2.size=}")
+
+        return pos1, pos2, colpos1, colpos2, colored
+
+    async def _colorize_input(self, src, dst, inp, instr):
+        entropy = self._exp._entropy
+        orig = list(inp[instr])[0]
+        subst = lambda x: \
+            inp[0:instr] + PreparedInput(instructions=(x,)) + inp[instr+1:]
+
+        data = bytearray(orig._data)
+        ranges = [slice(0, len(data))]
+        colored_ranges = []
+        while ranges:
+            rng = ranges.pop()
+            if rng.stop <= rng.start:
+                break
+            backup = data[rng]
+            data[rng] = entropy.randbytes(rng.stop - rng.start)
+            colored = subst(TransmitInstruction(data))
+            await self._exp.reload_state(src, dryrun=True)
+            try:
+                await self._exp._loader.apply_transition(
+                    (src, dst, colored), src, update_cache=False)
+                inp = colored.flatten()
+                bisect.insort(colored_ranges, rng,
+                    key=lambda s: s.stop - s.start)
+                need_reapply = False
+            except Exception:
+                data[rng] = backup
+                bisect.insort(ranges, slice(rng.start, rng.stop // 2),
+                    key=lambda s: s.stop - s.start)
+                bisect.insort(ranges, slice(rng.stop // 2 + 1, rng.stop),
+                    key=lambda s: s.stop - s.start)
+                need_reapply = True
+
+        if need_reapply:
+            await self._exp.reload_state(src, dryrun=True)
+            await self._exp._loader.apply_transition((src, dst, inp), src,
+                update_cache=False)
+        return inp, colored_ranges
+
+    @classmethod
+    def _matches_in_input(cls, inp, pair, dtype):
+        vars1 = cls._pattern_variants(pair.Arg1, dtype)
+        vars2 = cls._pattern_variants(pair.Arg2, dtype)
+
+        pos1 = np.empty((0, 3), dtype=int)
+        pos2 = np.empty((0, 3), dtype=int)
+
+        # first we search in individual instructions
+        for idx, instr in enumerate(inp):
+            if not isinstance(instr, TransmitInstruction):
+                continue
+            for variant in vars1:
+                arrs = tuple(np.array(((idx, offset, len(variant)),), dtype=int)
+                    for offset in cls._find_pattern(variant, instr._data))
+                if arrs:
+                    pos1 = np.vstack((pos1, np.concatenate(arrs)))
+            for variant in vars2:
+                arrs = tuple(np.array(((idx, offset, len(variant)),), dtype=int)
+                    for offset in cls._find_pattern(variant, instr._data))
+                if arrs:
+                    pos2 = np.vstack((pos2, np.concatenate(arrs)))
+
+        # otherwise, value might be across boundaries
+        if not pos1.size and not pos2.size:
+            data = b''.join(x._data
+                for x in inp if isinstance(x, TransmitInstruction))
+            inp = PreparedInput(instructions=(TransmitInstruction(data),))
+            for variant in vars1:
+                arrs = tuple(np.array(((idx, offset, len(variant)),), dtype=int)
+                    for offset in cls._find_pattern(variant, data))
+                if arrs:
+                    pos1 = np.vstack((pos1, np.concatenate(arrs)))
+            for variant in vars2:
+                arrs = tuple(np.array(((idx, offset, len(variant)),), dtype=int)
+                    for offset in cls._find_pattern(variant, data))
+                if arrs:
+                    pos2 = np.vstack((pos2, np.concatenate(arrs)))
+
+        return inp, (pos1, pos2)
+
+    @classmethod
+    def _pattern_variants(cls, val, dtype):
+        if dtype in (ctypes.c_uint8, ctypes.c_uint16,
+                     ctypes.c_uint32, ctypes.c_uint64):
+            yield from cls._int_pattern_variants(val, dtype)
+
+    @classmethod
+    def _int_pattern_variants(cls, val, dtype):
+        nbytes = sizeof(dtype)
+        nbits = nbytes * 8
+        msb_mask = 1 << (nbits - 1)
+        bo_variants = ('little',)
+        if val != 0:
+            bo_variants = ('little', 'big')
+        for byteorder in bo_variants:
+            signed_variants = [val]
+            if val & msb_mask:
+                signed_variants.append(-val)
+            for sval in signed_variants:
+                for rval in (sval-1, sval, sval+1):
+                    for n in range(nbytes):
+                        try:
+                            yield rval.to_bytes(n + 1, byteorder=byteorder,
+                                                signed=rval < 0)
+                        except OverflowError:
+                            continue
+                    # check for string literal ints
+                    yield str(rval).encode()
+
+    @classmethod
+    def _find_pattern(cls, pattern, data):
+        start = 0
+        while True:
+            offset = data.find(pattern, start)
+            if offset == -1:
+                break
+            yield offset
+            start = offset + 1
 
 class CoverageWebRenderer(WebRenderer,
         capture_components=('tracker',)):
@@ -677,17 +963,23 @@ class CmpLogTables:
             f'/tango_torc8_{uuid}',
             lambda s: self.get_table_type(ctypes.c_uint64))
 
+    @property
+    def torcs(self):
+        yield from (getattr(self, name)
+            for name in ('TORC1', 'TORC2', 'TORC4', 'TORC8'))
+
     @staticmethod
-    def get_table_type(dtype, capacity=1024):
+    def get_table_type(dtyp, capacity=1024):
         class Pair(Structure):
             _fields_ = (
-                ('Arg1', dtype),
-                ('Arg2', dtype),
+                ('Arg1', dtyp),
+                ('Arg2', dtyp),
             )
         class TableOfRecentCompares(Structure):
             _fields_ = (
                 ('Length', S),
-                ('Idx', S),
+                ('LastIdx', S),
                 ('Table', Pair * capacity),
             )
+            dtype = dtyp
         return TableOfRecentCompares

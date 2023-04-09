@@ -21,6 +21,7 @@ comma:=,
 SANCOV_FLAGS := $(subst $(space),$(comma),$(SANCOV_FLAGS))
 
 CFLAGS += -fsanitize-coverage=$(SANCOV_FLAGS)
+CFLAGS += -fsanitize-coverage-ignorelist=sancov_ignorelist.txt
 CXXFLAGS := $(CFLAGS)
 
 .PHONY: all clean
