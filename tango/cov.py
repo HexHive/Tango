@@ -635,6 +635,11 @@ class CoverageExplorerContext(BaseExplorerContext):
             except Exception as ex:
                 continue
 
+        await self._exp.reload_state(last_state, dryrun=True)
+        await self._exp._loader.apply_transition(
+            (last_state, new_state, current_input), last_state,
+            update_cache=False)
+
     @staticmethod
     def intersectnd_nosort(a, b, /, *, axis=None):
         idx = np.indices((a.shape[axis or 0], b.shape[axis or 0]))
