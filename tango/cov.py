@@ -696,8 +696,8 @@ class CoverageExplorerContext(BaseExplorerContext):
         idx1, _ = self.intersectnd_nosort(orig_pos1, colored_pos1, axis=0)
         idx2, _ = self.intersectnd_nosort(orig_pos2, colored_pos2, axis=0)
 
-        pos1 = orig_pos1[idx1]
-        pos2 = orig_pos2[idx2]
+        pos1 = np.unique(orig_pos1[idx1], axis=0)
+        pos2 = np.unique(orig_pos2[idx2], axis=0)
 
         # restore original state
         # FIXME might not be necessary
