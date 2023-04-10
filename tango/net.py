@@ -136,16 +136,19 @@ class _TransportFormatDescriptor(FormatDescriptor):
     after the non-default `fmt`, satisfying the requirements for a dataclass.
     """
     protocol: str
+    port: int
 
 @dataclass(frozen=True)
 class TransportFormatDescriptor(NetworkFormatDescriptor, _TransportFormatDescriptor):
     def __get__(self, obj, owner):
         if obj is None:
-            return self
+            return None
         return getattr(obj, '_fmt')
 
     def __set__(self, obj, value):
-        fmt = type(self)(protocol=value)
+        if not value:
+            return
+        fmt = type(self)(protocol=value[0], port=value[1])
         object.__setattr__(obj, '_fmt', fmt)
 
 @dataclass(kw_only=True, frozen=True)
@@ -167,12 +170,13 @@ class PortDescriptor:
 @dataclass(kw_only=True, frozen=True)
 class TransportChannelFactory(NetworkChannelFactory,
         capture_paths=['channel.port']):
-    port: PortDescriptor = PortDescriptor()
     protocol: str
-    fmt: FormatDescriptor = TransportFormatDescriptor(protocol=None)
+    port: PortDescriptor = PortDescriptor()
+    fmt: FormatDescriptor = TransportFormatDescriptor(protocol=None, port=None)
 
     def __post_init__(self):
-        object.__setattr__(self, 'fmt', self.protocol) # implicit casting through the descriptor
+        # implicit casting through the descriptor
+        object.__setattr__(self, 'fmt', (self.protocol, self.port))
 
     @property
     def fields(self) -> Mapping[str, Any]:
@@ -932,11 +936,11 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
         if self._fmt.protocol == "tcp":
             layer = TCP
             cli = random.randint(40000, 65534)
-            srv = random.randint(cli + 1, 65535)
+            srv = self._fmt.port
         elif self._fmt.protocol == "udp":
             layer = UDP
             cli = random.randint(40000, 65534)
-            srv = random.randint(cli + 1, 65535)
+            srv = self._fmt.port
         else:
             raise NotImplementedError
 
