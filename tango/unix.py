@@ -846,27 +846,27 @@ class FileDescriptorChannel(PtraceChannel):
             process: PtraceProcess, syscall: PtraceSyscall, *, kw, **kwargs):
         is_entry = syscall.result is None
         processed = False
-        try:
-            orig_ignore_callback = kw['orig_ignore_callback']
-            orig_break_on_entry = kw.get('break_on_entry', False)
-            orig_break_on_exit = kw.get('break_on_exit', True)
-            orig_match_condition = (is_entry and orig_break_on_entry) or \
-                (not is_entry and orig_break_on_exit)
-            if not orig_ignore_callback(syscall) and orig_match_condition:
-                orig_syscall_callback = kw['orig_syscall_callback']
-                processed = orig_syscall_callback(process, syscall, **kwargs)
 
-            if not self._dup_ignore_callback(syscall) and not is_entry:
-                self._dup_syscall_exit_callback_internal(process, syscall)
-            elif not self._close_ignore_callback(syscall) and not is_entry:
-                self._close_syscall_exit_callback_internal(process, syscall)
-            elif not self._select_ignore_callback(syscall) and is_entry:
-                self._select_syscall_entry_callback_internal(process, syscall)
-        finally:
-            if is_entry and not processed:
-                process.syscall()
-                processed = True
-            return processed
+        orig_ignore_callback = kw['orig_ignore_callback']
+        orig_break_on_entry = kw.get('break_on_entry', False)
+        orig_break_on_exit = kw.get('break_on_exit', True)
+        orig_match_condition = (is_entry and orig_break_on_entry) or \
+            (not is_entry and orig_break_on_exit)
+        if not orig_ignore_callback(syscall) and orig_match_condition:
+            orig_syscall_callback = kw['orig_syscall_callback']
+            processed = orig_syscall_callback(process, syscall, **kwargs)
+
+        if not self._dup_ignore_callback(syscall) and not is_entry:
+            self._dup_syscall_exit_callback_internal(process, syscall)
+        elif not self._close_ignore_callback(syscall) and not is_entry:
+            self._close_syscall_exit_callback_internal(process, syscall)
+        elif not self._select_ignore_callback(syscall) and is_entry:
+            self._select_syscall_entry_callback_internal(process, syscall)
+
+        if is_entry and not processed:
+            process.syscall()
+            processed = True
+        return processed
 
     def _dup_syscall_exit_callback_internal(self,
             process: PtraceProcess, syscall: PtraceSyscall):

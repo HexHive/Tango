@@ -372,14 +372,13 @@ class TCPChannel(NetworkChannel):
 
     def _setup_syscall_callback_accept(self, process, syscall, listenfd):
         assert syscall.result is None # only break_on_entry=True
-        try:
-            if self._select_match_fds(process, syscall, (listenfd,)) != listenfd:
-                return
-            self._setup_accepting = True
-            self.cb_socket_accepting(process, syscall)
-        finally:
-            process.syscall()
-            return True
+        if self._select_match_fds(process, syscall, (listenfd,)) != listenfd:
+            return
+        self._setup_accepting = True
+        self.cb_socket_accepting(process, syscall)
+
+        process.syscall()
+        return True
 
     def _setup_ignore_callback_accept(self, syscall):
         return syscall.name not in ('accept', 'accept4', 'poll', 'ppoll',
@@ -669,30 +668,29 @@ class UDPChannel(NetworkChannel):
     ### Callbacks ###
     def _setup_syscall_callback(self, process, syscall, fds, binds, address):
         is_entry = syscall.result is None
-        try:
-            if syscall.name == 'socket' and not is_entry:
-                domain = syscall.arguments[0].value
-                typ = syscall.arguments[1].value
-                if domain != socket.AF_INET or (typ & socket.SOCK_DGRAM) == 0:
-                    return
-                fd = syscall.result
-                fds[fd] = UDPSocketState()
-            elif syscall.name == 'bind':
-                fd = syscall.arguments[0].value
-                if fd not in fds:
-                    return
-                # if syscall_entry, we'll do it again later
-                result = fds[fd].event(process, syscall, entry=is_entry)
-                if result is not None:
-                    binds[fd] = result
-                    candidates = [x[0] for x in binds.items() if x[1][2] == address[1]]
-                    if candidates:
-                        self._sockfd = candidates[0]
-                        self.cb_socket_binding(process, syscall)
-        finally:
-            if is_entry:
-                process.syscall()
-            return is_entry
+        if syscall.name == 'socket' and not is_entry:
+            domain = syscall.arguments[0].value
+            typ = syscall.arguments[1].value
+            if domain != socket.AF_INET or (typ & socket.SOCK_DGRAM) == 0:
+                return
+            fd = syscall.result
+            fds[fd] = UDPSocketState()
+        elif syscall.name == 'bind':
+            fd = syscall.arguments[0].value
+            if fd not in fds:
+                return
+            # if syscall_entry, we'll do it again later
+            result = fds[fd].event(process, syscall, entry=is_entry)
+            if result is not None:
+                binds[fd] = result
+                candidates = [x[0] for x in binds.items() if x[1][2] == address[1]]
+                if candidates:
+                    self._sockfd = candidates[0]
+                    self.cb_socket_binding(process, syscall)
+
+        if is_entry:
+            process.syscall()
+        return is_entry
 
     def _setup_ignore_callback(self, syscall):
         return syscall.name not in ('socket', 'bind')
