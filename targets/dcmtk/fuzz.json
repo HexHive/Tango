@@ -1,37 +1,39 @@
 {
-	"exec": {
-		"path": "./dcmqrscp",
-		"args": ["./dcmqrscp", "--single-process", "-c", "dcmqrscp.cfg"],
-		"cwd": "./",
-		"env": {
-			"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0",
-			"DCMDICTPATH": "./dicom.dic"
-		}
-	},
-	"channel": {
-		"type": "tcp",
-		"tcp": {
-			"endpoint": "127.0.0.1",
-			"port": 5158
-		}
-	},
-	"loader": {
-		"type": "replay",
+	"driver": {
+		"type": "unix",
+		"exec": {
+			"path": "./dcmqrscp",
+			"args": ["./dcmqrscp", "--single-process", "-c", "dcmqrscp.cfg"],
+			"cwd": "./",
+			"env": {
+				"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0",
+				"DCMDICTPATH": "./dicom.dic"
+			}
+		},
 		"forkserver": true,
 		"disable_aslr": true
 	},
-	"input": {
-		"type": "reactive"
+	"loader": {
+		"type": "replay"
 	},
-	"statemanager": {
-		"type": "coverage",
-		"strategy": "uniform"
+	"channel": {
+		"type": "tcp",
+		"endpoint": "127.0.0.1",
+		"port": 5158
+	},
+	"generator": {
+		"type": "reactive",
+		"seeds": "./seeds/"
+	},
+	"tracker": {
+		"type": "coverage"
+	},
+	"strategy": {
+		"type": "uniform"
 	},
 	"fuzzer": {
 		"cwd": "./targets/dcmtk/",
-		"lib": "./lib/",
-		"seeds": "./seeds/",
-		"workdir": "./workdir/",
+		"work_dir": "./workdir/",
 		"resume": true
 	}
 }
