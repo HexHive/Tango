@@ -1018,8 +1018,8 @@ class AsyncComponent(Component):
             raise RuntimeError(f"{typ.name} has a cyclical dependency!")
 
         if (new_component := owner.get(cls._component_type)):
-            assert new_component in self._initialized and \
-                new_component in self._finalized
+            assert new_component in owner._initialized and \
+                new_component in owner._finalized
             return new_component
 
         for path in cls._capture_paths:
