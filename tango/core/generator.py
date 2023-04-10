@@ -97,7 +97,7 @@ class BaseInputGenerator(AbstractInputGenerator,
         long_name = f'[{label}] {repr(input)}'
 
         if filepath is None:
-            filename = slugify(f'0x{input.id:08X}.{self._fmt.typ}')
+            filename = slugify(f'0x{input.id:08X}.{self._fmt.typ}.tango')
             filepath = os.path.join(self._work_dir, category, filename)
         self._input_kls(file=filepath).dump(full_input, name=long_name)
 
