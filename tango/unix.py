@@ -818,7 +818,12 @@ class FileDescriptorChannel(PtraceChannel):
         debug(f"File descriptor duplicated in dup_fd={syscall.result}")
 
     def close_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
-        self._refcounter[syscall.arguments[0].value] -= 1
+        if syscall.result != 0:
+            return
+        fd = syscall.arguments[0].value
+        self._refcounter[fd] -= 1
+        if not self._refcounter[fd]:
+            self._refcounter.pop(fd)
         if sum(self._refcounter.values()) == 0:
             raise ChannelBrokenException(
                 "Channel closed while waiting for server to read")

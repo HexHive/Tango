@@ -73,14 +73,12 @@ class NetworkChannel(FileDescriptorChannel):
                     return None
         return matched_fd
 
-    def _close_syscall_exit_callback_internal(self,
-            process: PtraceProcess, syscall: PtraceSyscall):
+    def close_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
         if not super()._close_ignore_callback(syscall):
-            super()._close_syscall_entry_callback_internal(process, syscall)
-        else:
-            if syscall.name == 'shutdown' and syscall.result == 0:
-                raise ChannelBrokenException(
-                    "Channel shutdown while waiting for server to read")
+            super().close_callback(process, syscall)
+        elif syscall.name == 'shutdown' and syscall.result == 0:
+            raise ChannelBrokenException(
+                "Channel shutdown while waiting for server to read")
 
 class NetNSContext (object):
     """
