@@ -241,8 +241,11 @@ class PtraceChannel(AbstractChannel):
                 # it needs to stop waiting
                 warning(traceback.format_exc())
 
-    def _wait_for_syscall(self, process: PtraceProcess=None):
-        return self._debugger.waitSyscall(process=process)
+    def _wait_for_syscall(self, process: PtraceProcess=None, **kwargs):
+        if process:
+            return self._debugger.waitProcessEvent(pid=process.pid, **kwargs)
+        else:
+            return self._debugger.waitProcessEvent(**kwargs)
 
     def _monitor_syscalls_internal_loop(self,
             stop_event: Event,
@@ -253,33 +256,34 @@ class PtraceChannel(AbstractChannel):
             process: PtraceProcess = None,
             **kwargs):
         last_process = None
-        while True:
+        monitoring = True
+        while monitoring:
             if not self._debugger:
-                raise ProcessTerminatedException("Process was terminated while waiting for syscalls", exitcode=None)
+                raise ProcessTerminatedException(
+                    "Process was terminated while waiting for syscalls",
+                    exitcode=None)
+
+            debug("Waiting for syscall...")
+            event = self._wait_for_syscall(process)
+            if not event:
+                continue
 
             try:
-                debug("Waiting for syscall...")
-                # if waitSyscall does not raise an exception, then event is
-                # a syscall, otherwise it's some other ProcessEvent
-                event = self._wait_for_syscall(process)
-                if event is None:
-                    continue
-                sc = self.process_event(event, ignore_callback, syscall_callback,
+                rv = self.process_event(event, ignore_callback, syscall_callback,
                     break_on_entry=break_on_entry, break_on_exit=break_on_exit,
                     **kwargs)
-                if sc is not None:
+                if rv and event.is_syscall_stop():
                     last_process = event.process
-            except ProcessEvent as e:
-                self.process_event(e, ignore_callback, syscall_callback,
-                    break_on_entry=break_on_entry, break_on_exit=break_on_exit,
-                    **kwargs)
+            except Exception as ex:
+                raise
 
             if break_callback():
                 debug("Syscall monitoring finished, breaking out of debug loop")
                 if stop_event:
                     stop_event.set()
-                break
-        return last_process
+                monitoring = False
+        else:
+            return last_process
 
     def monitor_syscalls(self,
             monitor_target: Callable,
@@ -446,7 +450,7 @@ class PtraceForkChannel(PtraceChannel):
         except Exception as event:
             super().process_auxiliary_event(event, ignore_callback)
 
-    def _wait_for_syscall(self, process: PtraceProcess=None):
+    def _wait_for_syscall(self, process: PtraceProcess=None, **kwargs):
         # this next block ensures that a forked child does not exit before
         # the forkserver traps. in that scenario, the wake-up call is sent
         # before the forkserver traps, and then it traps forever
@@ -454,7 +458,11 @@ class PtraceForkChannel(PtraceChannel):
         if not self._wait_for_proc and self._event_queue:
             event = self._event_queue.pop(0)
         else:
-            event = self._debugger.waitSyscall(process=process)
+            if process:
+                event = self._debugger.waitProcessEvent(pid=process.pid, **kwargs)
+            else:
+                event = self._debugger.waitProcessEvent(**kwargs)
+
             if self._wait_for_proc and event.process != self._proc:
                 self._event_queue.append(event)
                 debug("Received event while waiting for forkserver; enqueued!")
