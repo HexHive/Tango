@@ -117,18 +117,18 @@ class SeedableStrategy(BaseStrategy,
         self._minimize_seeds = minimize_seeds
         self._validate_seeds = validate_seeds
 
+    async def initialize(self):
+        # while loading seeds, new states may be discovered; until the session
+        # takes over, we will be informing the input generator of this
+        self._explorer.register_state_update_callback(self._state_update_cb)
+        self._explorer.register_transition_update_callback(self._transition_update_cb)
+
     async def finalize(self, owner: ComponentOwner):
         """
         Loops over the initial set of seeds to populate the state machine with
         known states.
         """
         # TODO also load in existing queue if config.resume is True
-
-        # while loading seeds, new states may be discovered; until the session
-        # takes over, we will be informing the input generator of this
-        self._explorer.register_state_update_callback(self._state_update_cb)
-        self._explorer.register_transition_update_callback(self._transition_update_cb)
-
         for input in self._generator.seeds:
             try:
                 await self._explorer.reload_state()
