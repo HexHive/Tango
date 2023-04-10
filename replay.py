@@ -1,4 +1,8 @@
-from tangofuzz.fuzzer import FuzzerConfig
+# we disable profiling before importing tango
+import os
+os.environ['TANGO_NO_PROFILE'] = 'y'
+
+from tango.core import FuzzerConfig
 import asyncio
 import argparse
 import logging
@@ -30,11 +34,17 @@ def configure_verbosity(level):
     logging.getLogger().setLevel(numeric_level)
 
 async def replay(config, file):
-    gen = await config.input_generator
+    gen = await config.instantiate('generator')
     inp = gen.load_input(file)
-    ld = await config.loader
-    await ld.load_state(None, None)
-    await ld.execute_input(inp)
+    gen._input_kls(file=f'replay.{gen._fmt.typ}').dumpi(inp)
+
+    ld = await config.instantiate('loader')
+    try:
+        await ld.load_state(None).asend(None)
+    except StopAsyncIteration:
+        pass
+    drv = await config.instantiate('driver')
+    await drv.execute_input(inp)
 
 def main():
     args = parse_args()
@@ -58,8 +68,8 @@ def main():
             d[key] = value
 
     config = FuzzerConfig(args.config, overrides)
-    config._config["exec"]["stdout"] = "inherit"
-    config._config["exec"]["stderr"] = "inherit"
+    config._config["driver"]["exec"]["stdout"] = "inherit"
+    config._config["driver"]["exec"]["stderr"] = "inherit"
     asyncio.run(replay(config, args.file))
 
 if __name__ == '__main__':
