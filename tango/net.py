@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pyroute2.netns import setns
 from os import getpid
 from typing import ByteString, Tuple, Iterable, Mapping, Any, Optional
-from functools import cached_property
+from functools import cache
 import errno
 import struct
 import select
@@ -190,8 +190,8 @@ class TCPChannelFactory(TransportChannelFactory,
 
     protocol: str = "tcp"
 
-    def create(self, pobj: Popen, netns: str) -> AbstractChannel:
-        ch = TCPChannel(pobj=pobj, netns=netns, **self.fields)
+    def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
+        ch = TCPChannel(pobj=pobj, netns=netns, **self.fields, **kwargs)
         ch.connect((self.endpoint, self.port))
         return ch
 
@@ -485,21 +485,17 @@ class TCPForkChannelFactory(TCPChannelFactory,
         return super().match_config(config) and \
             config['driver'].get('forkserver')
 
-    def create(self, pobj: Popen, netns: str) -> AbstractChannel:
-        object.__setattr__(self, '_pobj', pobj)
-        object.__setattr__(self, '_netns', netns)
-        ch = self.forkchannel
+    def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
+        ch = self._create_once(pobj=pobj, netns=netns, **self.fields, **kwargs)
         ch.connect((self.endpoint, self.port))
         return ch
 
-    @cached_property
-    def forkchannel(self):
+    @cache
+    def _create_once(self, **kwargs):
         if self.fork_before_accept:
-            return TCPForkBeforeAcceptChannel(pobj=self._pobj,
-                          netns=self._netns, **self.fields)
+            return TCPForkBeforeAcceptChannel(**kwargs)
         else:
-            return TCPForkAfterListenChannel(pobj=self._pobj,
-                          netns=self._netns, **self.fields)
+            return TCPForkAfterListenChannel(**kwargs)
 
     @property
     def fields(self) -> Mapping[str, Any]:
@@ -549,8 +545,8 @@ class UDPChannelFactory(TransportChannelFactory,
 
     protocol: str = "udp"
 
-    def create(self, pobj: Popen, netns: str) -> AbstractChannel:
-        ch = UDPChannel(pobj=pobj, netns=netns, **self.fields)
+    def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
+        ch = UDPChannel(pobj=pobj, netns=netns, **self.fields, **kwargs)
         ch.connect((self.endpoint, self.port))
         return ch
 
@@ -791,20 +787,16 @@ class UDPForkChannelFactory(UDPChannelFactory,
             config['driver'].get('forkserver')
 
     def create(self, pobj: Popen, netns: str) -> AbstractChannel:
-        object.__setattr__(self, '_pobj', pobj)
-        object.__setattr__(self, '_netns', netns)
-        ch = self.forkchannel
+        ch = self._create_once(pobj=pobj, netns=netns, **self.fields, **kwargs)
         ch.connect((self.endpoint, self.port))
         return ch
 
-    @cached_property
-    def forkchannel(self):
+    @cache
+    def _create_once(self, **kwargs):
         if self.fork_before_bind:
-            return UDPForkBeforeBindChannel(pobj=self._pobj,
-                              netns=self._netns, **self.fields)
+            return UDPForkBeforeBindChannel(**kwargs)
         else:
-            return UDPForkChannel(pobj=self._pobj,
-                              netns=self._netns, **self.fields)
+            return UDPForkChannel(**kwargs)
 
     @property
     def fields(self) -> Mapping[str, Any]:

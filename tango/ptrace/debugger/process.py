@@ -1,4 +1,4 @@
-from tango.ptrace import debug, info, warning, error
+from tango.ptrace import debug, info, warning, critical, error
 from tango.ptrace.binding import (
     HAS_PTRACE_SINGLESTEP, HAS_PTRACE_EVENTS,
     HAS_PTRACE_SIGINFO, HAS_PTRACE_IO, HAS_PTRACE_GETREGS,
@@ -164,6 +164,10 @@ class PtraceProcess(object):
         self.running = True
         self.exited = False
         self.parent = parent
+        if parent and parent.root:
+            self.root = parent.root
+        else:
+            self.root = self
         self.children = []
         self.was_attached = is_attached
         self.is_attached = False
@@ -338,6 +342,27 @@ class PtraceProcess(object):
             self.waitExit()
         self._notRunning()
         return True
+
+    def terminateTree(self, wait_exit=True):
+        try:
+            while True:
+                try:
+                    # WARN it seems necessary to wait for the child to exit,
+                    # otherwise the forkserver may misbehave, and the fuzzer
+                    # will receive a lot of ForkChildKilledEvents
+                    self.terminate()
+                    break
+                except PtraceError as ex:
+                    critical(f"Attempted to terminate non-existent process ({ex})")
+                    break
+                except ProcessExit as ex:
+                    debug(f"{ex.process} exited while terminating {self}")
+                    continue
+        finally:
+            if self in self.debugger:
+                self.debugger.deleteProcess(self)
+        for p in self.children:
+            p.terminateTree(wait_exit=wait_exit)
 
     def waitExit(self):
         while True:

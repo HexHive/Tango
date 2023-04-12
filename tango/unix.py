@@ -21,7 +21,7 @@ from tango.exceptions import (ChannelTimeoutException, StabilityException,
 
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import IO, AsyncGenerator, Callable, Iterable, Optional
+from typing import IO, AsyncGenerator, Callable, Iterable, Optional, Any
 from pyroute2 import netns, IPRoute
 from subprocess import Popen, TimeoutExpired, DEVNULL, PIPE
 from concurrent.futures import ThreadPoolExecutor
@@ -57,7 +57,8 @@ if HAS_SECCOMP_FILTER:
     from tango.ptrace.syscall import SYSCALL_NUMBERS as NR
 
 class PtraceChannel(AbstractChannel):
-    def __init__(self, pobj: Popen, *, use_seccomp: bool, **kwargs):
+    def __init__(self, pobj: Popen, *, use_seccomp: bool, observed: dict=None,
+            **kwargs):
         super().__init__(**kwargs)
         self._pobj = pobj
         self._use_seccomp = use_seccomp
@@ -92,6 +93,19 @@ class PtraceChannel(AbstractChannel):
         self.prepare_process(self._proc, default_ignore, resume=True)
 
         self._monitor_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='PtraceMonitorExecutor')
+        self.observed = {}
+        if observed:
+            self.observed.update(observed)
+            for process in observed:
+                self._debugger.addProcess(process.pid, is_attached=True)
+
+    @property
+    def root(self):
+        return self._proc
+
+    @root.setter
+    def root(self, value):
+        self._proc = value
 
     def prepare_process(self, process, ignore_callback, resume=True):
         if not process in self._debugger:
@@ -228,6 +242,16 @@ class PtraceChannel(AbstractChannel):
         else:
             process.syscall(signum)
 
+    def push_observe(self, callback: Callable[[ProcessEvent, Exception], Any]) \
+            -> PtraceProcess:
+        self.observed[self.root] = callback
+        rv = self.root
+        self.root = None
+        return rv
+
+    def pop_observe(self, root: PtraceProcess):
+        self.observed.pop(root, None)
+
     def timeout_handler(self, stop_event):
         if not stop_event.wait(timeout * self._timescale):
             warning('Ptrace event timed out')
@@ -275,7 +299,10 @@ class PtraceChannel(AbstractChannel):
                 if rv and event.is_syscall_stop():
                     last_process = event.process
             except Exception as ex:
-                raise
+                if (cb := self.observed.get(event.process.root)):
+                    cb(event, ex)
+                else:
+                    raise
 
             if break_callback():
                 debug("Syscall monitoring finished, breaking out of debug loop")
@@ -322,33 +349,24 @@ class PtraceChannel(AbstractChannel):
             result = future.result()
         return (last_process, result)
 
-    def terminator(self, process):
-        try:
-            while True:
-                try:
-                    # WARN it seems necessary to wait for the child to exit, otherwise
-                    # the forkserver may misbehave, and the fuzzer will receive a lot of
-                    # ForkChildKilledEvents
-                    process.terminate()
-                    break
-                except PtraceError as ex:
-                    critical(f"Attempted to terminate non-existent process ({ex})")
-                except ProcessExit as ex:
-                    debug(f"{ex.process} exited while terminating {process}")
-                    continue
-        finally:
-            if process in self._debugger:
-                self._debugger.deleteProcess(process)
-        for p in process.children:
-            self.terminator(p)
-
-    def close(self, terminate, **kwargs):
+    def close(self, *, terminate):
         self._monitor_executor.shutdown(wait=True)
-        if terminate:
-            self.terminator(self._proc)
+        if terminate and self.root:
+            self.root.terminateTree()
+
+    def _del_observed(self):
+        """
+        This ensures that observed processes do not get terminated by
+        debugger.quit().
+        Responsibility then falls on the caller to transfer the observed to
+        another debugger or ultimately terminate them.
+        """
+        for process in self.observed:
+            self._debugger.deleteProcess(process)
 
     def __del__(self):
         self.close(terminate=True)
+        self._del_observed()
         self._debugger.quit()
 
 class PtraceForkChannel(PtraceChannel):
@@ -393,6 +411,14 @@ class PtraceForkChannel(PtraceChannel):
                 self._forkserver = base_addr + run_base
             debug(f"Forkserver found at 0x{self._forkserver:016X}")
 
+    @property
+    def root(self):
+        return self._forked_child
+
+    @root.setter
+    def root(self, value):
+        self._forked_child = value
+
     def process_exit(self, event):
         try:
             super().process_exit(event)
@@ -410,6 +436,8 @@ class PtraceForkChannel(PtraceChannel):
             # die. We will wake it up when we kill the forked_child.
             # Otherwise, the child trapped and we resume its execution
             if event.process != self._proc:
+                event.process.parent = None
+                event.process.root = event.process
                 self._forked_child = event.process
                 # restore correct trap byte and registers
                 self._cleanup_forkserver(event.process)
@@ -449,6 +477,12 @@ class PtraceForkChannel(PtraceChannel):
             CountProfiler("infant_mortality")(1)
         except Exception as event:
             super().process_auxiliary_event(event, ignore_callback)
+
+    def push_observe(self, callback: Callable[[ProcessEvent, Exception], Any]) \
+            -> PtraceProcess:
+        if self._forked_child:
+            self._wakeup_forkserver()
+        return super().push_observe(callback)
 
     def _wait_for_syscall(self, process: PtraceProcess=None, **kwargs):
         # this next block ensures that a forked child does not exit before
@@ -543,11 +577,10 @@ class PtraceForkChannel(PtraceChannel):
 
             self._proc_trapped = False
 
-    def close(self, terminate, **kwargs):
+    def close(self, **kwargs):
+        super().close(**kwargs)
         if self._forked_child:
-            if terminate:
-                self.terminator(self._forked_child)
-            # when we kill the forked_child, we wake up the forkserver from the trap
+            # when we kill the forked_child, we wake up the forkserver from trap
             self._wakeup_forkserver()
 
     ### Callbacks ###
@@ -584,7 +617,7 @@ class PtraceChannelFactory(AbstractChannelFactory,
             config['driver'].get('type') == 'unix'
 
     @abstractmethod
-    def create(self, pobj: Popen, netns: str) -> PtraceChannel:
+    def create(self, pobj: Popen, netns: str, **kwargs) -> PtraceChannel:
         pass
 
 @dataclass
@@ -706,7 +739,9 @@ class ProcessDriver(BaseDriver,
     @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
     def relaunch(self):
         ## Kill current process, if any
+        observed = None
         if self._pobj:
+            observed = self._channel.observed
             # ensure that the channel is closed and the debugger detached
             self._channel.close(terminate=True)
 
@@ -733,7 +768,8 @@ class ProcessDriver(BaseDriver,
         self._pobj = self._popen()
 
         ## Establish a connection
-        self._channel = self._factory.create(self._pobj, self._netns_name)
+        self._channel = self._factory.create(self._pobj, self._netns_name,
+            observed=observed)
 
     @property
     def channel(self):

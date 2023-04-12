@@ -9,7 +9,8 @@ from tango.replay import ReplayLoader
 from tango.unix import ProcessDriver, ProcessForkDriver, SharedMemoryObject
 from tango.webui import WebRenderer, WebDataLoader
 from tango.common import ComponentType, ComponentOwner
-from tango.exceptions import LoadedException, StabilityException
+from tango.exceptions import (
+    LoadedException, StabilityException, ChannelBrokenException)
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_svg import FigureCanvasSVG
@@ -551,7 +552,7 @@ class CoverageReplayLoader(ReplayLoader,
         return state
 
 class CoverageExplorer(BaseExplorer,
-        capture_components={'tracker'},
+        capture_components={'tracker', 'driver'},
         capture_paths=('explorer.exclude_uncolored', 'explorer.cmplog_samples',
                        'explorer.cmplog_goal')):
     @classmethod
@@ -559,16 +560,23 @@ class CoverageExplorer(BaseExplorer,
         return super().match_config(config) and \
             config['tracker'].get('type') == 'coverage'
 
-    def __init__(self, *, tracker: CoverageTracker,
+    def __init__(self, *, tracker: CoverageTracker, driver: CoverageDriver,
             exclude_uncolored: bool=False,
             cmplog_samples: int=100, cmplog_goal: int=10, **kwargs):
-        super().__init__(tracker=tracker, **kwargs)
+        super().__init__(tracker=tracker, driver=driver, **kwargs)
         self._exclude_uncolored = exclude_uncolored
         self._cmplog_samples = cmplog_samples
         self._cmplog_goal = cmplog_goal
 
     def get_context_input(self, input: BaseInput, **kwargs) -> BaseExplorerContext:
         return CoverageExplorerContext(input, explorer=self, **kwargs)
+
+    async def follow(self, input: BaseInput, **kwargs):
+        context_input = self.get_context_input(input, **kwargs)
+        try:
+            await self._driver.execute_input(context_input)
+        except ChannelBrokenException as ex:
+            pass
 
     async def _minimize_transition(self, state_or_path: LoadableTarget,
             dst: FeatureSnapshot, input: BaseInput) -> BaseInput:

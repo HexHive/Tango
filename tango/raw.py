@@ -12,7 +12,7 @@ from tango.common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
 from typing import ByteString, Iterable, Mapping, Any
 from subprocess import Popen
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cache
 import errno
 import struct
 import select
@@ -29,8 +29,8 @@ __all__ = [
 class StdIOChannelFactory(FileDescriptorChannelFactory):
     fmt: FormatDescriptor = FormatDescriptor('raw')
 
-    def create(self, pobj: Popen, netns: str) -> AbstractChannel:
-        ch = StdIOChannel(pobj=pobj, **self.fields)
+    def create(self, pobj: Popen, **kwargs) -> AbstractChannel:
+        ch = StdIOChannel(pobj=pobj, **self.fields, **kwargs)
         ch.connect()
         return ch
 
@@ -109,6 +109,7 @@ class StdIOChannel(FileDescriptorChannel):
 
     def close(self, **kwargs):
         if self._file is not None and not self._file.closed:
+            # FIXME should close self._file here?
             self._file.flush()
         super().close(**kwargs)
 
@@ -162,15 +163,14 @@ class StdIOForkChannelFactory(StdIOChannelFactory,
         return super().match_config(config) and \
             config['driver'].get('forkserver')
 
-    def create(self, pobj: Popen, netns: str) -> AbstractChannel:
-        object.__setattr__(self, '_pobj', pobj)
-        ch = self.forkchannel
+    def create(self, pobj: Popen, **kwargs) -> AbstractChannel:
+        ch = self._create_once(pobj=pobj, **kwargs)
         ch.connect()
         return ch
 
-    @cached_property
-    def forkchannel(self):
-        return StdIOForkChannel(pobj=self._pobj, **self.fields)
+    @cache
+    def _create_once(self, **kwargs):
+        return StdIOForkChannel(**kwargs, **self.fields)
 
 class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
     def __init__(self, work_dir: str, **kwargs):
