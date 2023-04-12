@@ -885,6 +885,8 @@ class FileDescriptorChannel(PtraceChannel):
 
     def _close_syscall_exit_callback_internal(self,
             process: PtraceProcess, syscall: PtraceSyscall):
+        if syscall.arguments[0].value not in self._refcounter:
+            return
         self.close_callback(process, syscall)
 
     def _select_syscall_entry_callback_internal(self,
