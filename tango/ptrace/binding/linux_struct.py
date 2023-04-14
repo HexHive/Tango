@@ -1,8 +1,9 @@
 from tango.ptrace.cpu_info import (
     CPU_64BITS, CPU_PPC32, CPU_PPC64, CPU_ARM32, CPU_AARCH64)
 from ctypes import (Structure, Union, sizeof, POINTER,
-                    c_char, c_ushort, c_int, c_uint, c_ulong, c_void_p,
+                    c_char, c_ushort, c_int, c_uint, c_ulong, c_void_p, c_int32,
                     c_uint8, c_uint16, c_uint32, c_uint64, c_size_t, c_int64)
+import signal
 
 pid_t = c_int
 uid_t = c_ushort
@@ -332,3 +333,55 @@ class seccomp_data(Structure):
         ("instruction_pointer", c_uint64),
         ("args", c_uint64*6),
     )
+
+class signalfd_siginfo(Structure):
+    _fields_ = (
+        ("ssi_signo", c_uint32),     # Signal number
+        ("ssi_errno", c_int32),      # Error number (unused)
+        ("ssi_code", c_int32),       # Signal code
+        ("ssi_pid", c_uint32),       # PID of sender
+        ("ssi_uid", c_uint32),       # Real UID of sender
+        ("ssi_fd", c_int32),         # File descriptor (SIGIO)
+        ("ssi_tid", c_uint32),       # Kernel timer ID (POSIX timers)
+        ("ssi_band", c_uint32),      # Band event (SIGIO)
+        ("ssi_overrun", c_uint32),   # POSIX timer overrun count
+        ("ssi_trapno", c_uint32),    # Trap number that caused signal
+        ("ssi_status", c_int32),     # Exit status or signal (SIGCHLD)
+        ("ssi_int", c_int32),        # Integer sent by sigqueue(3)
+        ("ssi_ptr", c_uint64),       # Pointer sent by sigqueue(3)
+        ("ssi_utime", c_uint64),     # User CPU time consumed (SIGCHLD)
+        ("ssi_stime", c_uint64),     # System CPU time consumed
+                                     #   (SIGCHLD)
+        ("ssi_addr", c_uint64),      # Address that generated signal
+                                     #   (for hardware-generated signals)
+        ("ssi_addr_lsb", c_uint16),  # Least significant bit of address
+                                     #   (SIGBUS; since Linux 2.6.37)
+        ("pad", c_uint8*46),         # Pad size to 128 bytes (allow for
+                                     #   additional fields in the future)
+    )
+
+class _sigset(Structure):
+    _fields_ = []
+    _signals = sorted(signal.valid_signals())
+    _i = _j = 0
+    while _i < signal.Signals.SIGRTMAX:
+        _i += 1
+        if int(s := _signals[_j]) == _i:
+            _j += 1
+            signum = int(s)
+            if type(s) is int:
+                signame = f'SIG{signum:03}'
+            else:
+                signame = s.name
+            bitfield = (signame, c_uint64, 1)
+            _fields_.append(bitfield)
+        else:
+            _fields_.append(('_pad', c_uint64, 1))
+    del _i, _j, _signals
+
+class sigset(Union):
+    _fields_ = (
+        ('_sigs', _sigset),
+        ('mask', c_uint64)
+    )
+    _anonymous_ = '_sigs',

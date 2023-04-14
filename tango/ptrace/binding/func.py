@@ -5,8 +5,11 @@ from tango.ptrace.os_tools import (RUNNING_LINUX, RUNNING_BSD, RUNNING_OPENBSD,
 from tango.ptrace.cpu_info import CPU_64BITS, CPU_WORD_SIZE, CPU_POWERPC, CPU_AARCH64
 
 from os import strerror
-from ctypes import (addressof, c_int, get_errno, set_errno, sizeof, Structure,
-    Array)
+from ctypes import (addressof, get_errno, set_errno, sizeof, Structure,
+    Array, POINTER, byref)
+from ctypes import (
+    c_int, c_void_p, c_size_t, c_ssize_t,
+)
 
 if RUNNING_OPENBSD:
     from tango.ptrace.binding.openbsd_struct import (
@@ -446,3 +449,60 @@ else:
 if HAS_PTRACE_IO:
     def ptrace_io(pid, io_desc):
         ptrace(PTRACE_IO, pid, addressof(io_desc))
+
+if RUNNING_LINUX:
+    HAS_SIGNALFD = True
+    from tango.ptrace.binding.linux_struct import sigset, signalfd_siginfo
+    from tango.ptrace.ctypes_libc import libc
+    from signal import Signals
+
+    signalfd = libc.signalfd
+    signalfd.argtypes = (
+        c_int,            # fd
+        POINTER(sigset),  # mask
+        c_int,            # flags
+    )
+    signalfd.restype = c_int
+
+    read = libc.read
+    read.argtypes = (
+        c_int,            # fd
+        c_void_p,         # buf
+        c_size_t,         # size
+    )
+    read.restype = c_ssize_t
+
+    SFD_CLOEXEC  = 0o02000000
+    SFD_NONBLOCK = 0o00004000
+
+    def create_signalfd(*sigs, flags=0):
+        sset = sigset()
+        for sig in sigs:
+            if isinstance(sig, str):
+                if not hasattr(sset, sig):
+                    raise ValueError(f"{sig} is an invalid signal name.")
+                setattr(sset, sig, 1)
+            elif isinstance(sig, Signals):
+                sset.mask |= 1 << (sig.value - 1)
+            elif isinstance(sig, int) and sig < Signals.SIGRTMAX:
+                sset.mask |= 1 << (sig - 1)
+            else:
+                raise ValueError(f"{sig} is not a valid signal identifier")
+        fd = signalfd(-1, byref(sset), flags)
+        if fd < 0:
+            error = strerror(get_errno())
+            raise RuntimeError(f"Failed to create signalfd: {error}")
+        return fd
+
+    def read_signalfd(fd, sinfo=None):
+        sinfo = sinfo or signalfd_siginfo()
+        rv = read(fd, byref(sinfo), sizeof(sinfo))
+        if rv < 0:
+            error = strerror(get_errno())
+            raise RuntimeError(f"Failed to read from signalfd {fd}: {error}")
+        elif rv == 0:
+            raise EOFError(f"End-of-file on signalfd {fd}")
+        return sinfo
+
+else:
+    HAS_SIGNALFD = False

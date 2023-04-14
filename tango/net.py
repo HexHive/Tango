@@ -7,9 +7,9 @@ from tango.ptrace.syscall import PtraceSyscall, SYSCALL_REGISTER
 from tango.ptrace.debugger import PtraceProcess
 from tango.unix import (PtraceChannel, PtraceForkChannel, PtraceChannelFactory,
     FileDescriptorChannel, FileDescriptorChannelFactory)
-from tango.common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
 from tango.exceptions import ChannelBrokenException
 
+from asyncstdlib.functools import cache as async_cache
 from subprocess  import Popen
 from dataclasses import dataclass
 from pyroute2.netns import setns
@@ -19,10 +19,10 @@ from functools import cache
 import errno
 import struct
 import select
-import threading
 import socket
 import random
 import time
+import asyncio
 
 from scapy.all import Ether, IP, TCP, UDP, Packet, PcapReader, PcapWriter, Raw
 
@@ -39,6 +39,7 @@ class NetworkChannel(FileDescriptorChannel):
         super().__init__(**kwargs)
         self._netns = netns
         self._ctx = NetNSContext(nsname=self._netns)
+        self._socket = None
 
     def nssocket(self, *args):
         """
@@ -49,6 +50,10 @@ class NetworkChannel(FileDescriptorChannel):
             s = socket.socket(*args)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             return s
+
+    @property
+    def file(self):
+        return self._socket
 
     ## Callbacks
     def _select_ignore_callback(self, syscall: PtraceSyscall) -> bool:
@@ -79,6 +84,10 @@ class NetworkChannel(FileDescriptorChannel):
         elif syscall.name == 'shutdown' and syscall.result == 0:
             raise ChannelBrokenException(
                 "Channel shutdown while waiting for server to read")
+
+    def _send_ignore_callback(self, syscall):
+        return super()._send_ignore_callback(syscall) and \
+            syscall.name not in ('recv', 'recvfrom', 'recvmsg')
 
 class NetNSContext (object):
     """
@@ -190,9 +199,10 @@ class TCPChannelFactory(TransportChannelFactory,
 
     protocol: str = "tcp"
 
-    def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
+    async def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
         ch = TCPChannel(pobj=pobj, netns=netns, **self.fields, **kwargs)
-        ch.connect((self.endpoint, self.port))
+        await ch.setup((self.endpoint, self.port))
+        await ch.connect((self.endpoint, self.port))
         return ch
 
     @classmethod
@@ -207,10 +217,8 @@ class TCPChannel(NetworkChannel):
             connect_timeout: float, **kwargs):
         super().__init__(**kwargs)
         self._connect_timeout = connect_timeout * self._timescale if connect_timeout else None
-        self._socket = None
         self._accept_process = None
         self._sockfd = -1
-        self.setup((endpoint, port))
 
     def cb_socket_listening(self, process, syscall):
         pass
@@ -221,7 +229,8 @@ class TCPChannel(NetworkChannel):
     def cb_socket_accepted(self, process, syscall):
         pass
 
-    def setup(self, address: tuple):
+    async def setup(self, address: tuple):
+        await super().setup()
         ## Wait for a socket that is listening on the same port
         # FIXME check for matching address too
         self._setup_listeners = {}
@@ -229,25 +238,25 @@ class TCPChannel(NetworkChannel):
         self._setup_accepting = False
 
         # wait until target sets up a listening socket
-        self.monitor_syscalls(None, self._setup_ignore_callback,
+        await self.monitor_syscalls(None, self._setup_ignore_callback,
             self._setup_break_callback, self._setup_syscall_callback,
             fds={}, listeners=self._setup_listeners, address=address,
             timeout=self._connect_timeout)
 
         # wait until socket begins accepting
-        self.monitor_syscalls(None, self._setup_ignore_callback_accept,
+        await self.monitor_syscalls(None, self._setup_ignore_callback_accept,
             self._setup_break_callback_accept, self._setup_syscall_callback_accept,
             timeout=self._connect_timeout, break_on_entry=True,
             break_on_exit=False, listenfd=self._listenfd)
 
-    def connect(self, address: tuple):
+    async def connect(self, address: tuple):
         self._socket = self.nssocket(socket.AF_INET, socket.SOCK_STREAM)
         ## Now that we've verified the server is listening, we can connect.
         ## Listen for a call to accept() to get the connected socket fd
         self._connect_address = address
         self._sockfd = -1
         self._refcounter.clear()
-        self._accept_process, _ = self.monitor_syscalls(
+        self._accept_process, _ = await self.monitor_syscalls(
             self._connect_monitor_target, self._connect_ignore_callback,
             self._connect_break_callback, self._connect_syscall_callback,
             listenfd=self._listenfd, timeout=self._connect_timeout)
@@ -255,56 +264,17 @@ class TCPChannel(NetworkChannel):
 
         # wait for the next read, recv, select, or poll
         # or wait for the parent to fork, and trace child for these calls
-        self.sync()
+        await self.sync()
         assert self.synced
 
-    # this is needed so that poll_sync is executed by GLOBAL_ASYNC_EXECUTOR
-    # so that the ptraced child is accessed by the same tracer
-    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
-    def a_sync(self):
-        return self.sync()
-
-    async def send(self, data: ByteString) -> int:
-        # flush any data left in the receive buffer
-        await self.receive()
-
-        sent = 0
-        while sent < len(data):
-            sent += await self._send_sync(data[sent:])
-
-        await self.a_sync()
-        assert self.synced
-        debug(f"Sent data to server: {data}")
-        return sent
-
-    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
-    def _send_sync(self, data: ByteString) -> int:
-        self._send_server_received = 0
-        self._send_client_sent = 0
-        # Set up a barrier so that client_sent is ready when checking for break
-        self._send_barrier = threading.Barrier(2)
-        self._send_barrier_passed = False
-
-        self._send_data = data
-        _, ret = self.monitor_syscalls(self._send_send_monitor,
-            self._send_ignore_callback, self._send_break_callback,
-            self._send_syscall_callback, timeout=self._data_timeout)
-        return ret
-
-    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
-    def receive(self) -> ByteString:
+    async def read_bytes(self) -> ByteString:
         chunks = []
         while True:
-            try:
-                poll, _, _ = select.select([self._socket], [], [], 0)
-                if self._socket not in poll:
-                    data = b''.join(chunks)
-                    if data:
-                        debug(f"Received data from server: {data}")
-                    return data
-            except ValueError as ex:
-                raise ChannelBrokenException(
-                    "socket fd is negative, socket is closed") from ex
+            if not self.is_file_readable():
+                data = b''.join(chunks)
+                if data:
+                    debug(f"Received data from server: {data}")
+                return data
 
             try:
                 ret = self._socket.recv(self.RECV_CHUNK_SIZE)
@@ -317,14 +287,16 @@ class TCPChannel(NetworkChannel):
                 data = b''.join(chunks)
                 debug(f"Received data from server: {data}")
                 return data
-
             chunks.append(ret)
 
-    def close(self, **kwargs):
+    async def write_bytes(self, data: ByteString) -> int:
+        return self._socket.send(data)
+
+    async def close(self, **kwargs):
         if self._socket is not None:
             self._socket.close()
             self._socket = None
-        super().close(**kwargs)
+        await super().close(**kwargs)
 
     @classmethod
     def _select_match_fds(cls, process: PtraceProcess, syscall: PtraceSyscall,
@@ -341,7 +313,7 @@ class TCPChannel(NetworkChannel):
         return matched_fd
 
     ### Callbacks ###
-    def _setup_syscall_callback(self, process, syscall, fds, listeners, address):
+    async def _setup_syscall_callback(self, process, syscall, fds, listeners, address):
         if syscall.name == 'socket':
             domain = syscall.arguments[0].value
             typ = syscall.arguments[1].value
@@ -367,10 +339,10 @@ class TCPChannel(NetworkChannel):
     def _setup_ignore_callback(self, syscall):
         return syscall.name not in ('socket', 'bind', 'listen')
 
-    def _setup_break_callback(self):
+    async def _setup_break_callback(self):
         return any(x[2] == self._setup_address[1] for x in self._setup_listeners.values())
 
-    def _setup_syscall_callback_accept(self, process, syscall, listenfd):
+    async def _setup_syscall_callback_accept(self, process, syscall, listenfd):
         assert syscall.result is None # only break_on_entry=True
         if self._select_match_fds(process, syscall, (listenfd,)) != listenfd:
             return
@@ -384,10 +356,10 @@ class TCPChannel(NetworkChannel):
         return syscall.name not in ('accept', 'accept4', 'poll', 'ppoll',
             'select', 'pselect6')
 
-    def _setup_break_callback_accept(self):
+    async def _setup_break_callback_accept(self):
         return self._setup_accepting
 
-    def _connect_syscall_callback(self, process, syscall, listenfd):
+    async def _connect_syscall_callback(self, process, syscall, listenfd):
         if syscall.name in ('accept', 'accept4') \
                 and syscall.arguments[0].value == listenfd \
                 and syscall.result >= 0:
@@ -398,49 +370,11 @@ class TCPChannel(NetworkChannel):
     def _connect_ignore_callback(self, syscall):
         return syscall.name not in ('accept', 'accept4')
 
-    def _connect_break_callback(self):
+    async def _connect_break_callback(self):
         return len(self._refcounter) > 0
 
-    def _connect_monitor_target(self):
+    async def _connect_monitor_target(self):
         return self._socket.connect(self._connect_address)
-
-    def _send_syscall_callback(self, process, syscall):
-        if syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') \
-                and syscall.arguments[0].value in self._refcounter:
-            if syscall.result <= 0:
-                raise ChannelBrokenException(
-                    "Server failed to read data off socket")
-            self._send_server_received += syscall.result
-
-    def _send_ignore_callback(self, syscall):
-        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg')
-
-    def _send_break_callback(self):
-        if not self._send_barrier_passed:
-            try:
-                self._send_barrier.wait()
-            except threading.BrokenBarrierError:
-                raise ChannelBrokenException("Barrier broke while waiting")
-            else:
-                self._send_barrier_passed = True
-        debug(f"{self._send_client_sent=}; {self._send_server_received=}")
-        if self._send_client_sent == 0 or \
-                self._send_server_received > self._send_client_sent:
-            raise ChannelBrokenException(
-                "Client sent no bytes, or server received too many bytes!")
-        return self._send_server_received == self._send_client_sent
-
-    def _send_send_monitor(self):
-        try:
-            ret = self._socket.send(self._send_data)
-            if ret == 0:
-                raise ChannelBrokenException("Failed to send any data")
-        except Exception:
-            self._send_barrier.abort()
-            raise
-        self._send_client_sent = ret
-        self._send_barrier.wait()
-        return ret
 
 class ListenerSocketState:
     SOCKET_UNBOUND = 1
@@ -485,17 +419,20 @@ class TCPForkChannelFactory(TCPChannelFactory,
         return super().match_config(config) and \
             config['driver'].get('forkserver')
 
-    def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
-        ch = self._create_once(pobj=pobj, netns=netns, **self.fields, **kwargs)
-        ch.connect((self.endpoint, self.port))
+    async def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
+        ch = await self._create_once(
+            pobj=pobj, netns=netns, **self.fields, **kwargs)
+        await ch.connect((self.endpoint, self.port))
         return ch
 
-    @cache
-    def _create_once(self, **kwargs):
+    @async_cache
+    async def _create_once(self, **kwargs):
         if self.fork_before_accept:
-            return TCPForkBeforeAcceptChannel(**kwargs)
+            ch = TCPForkBeforeAcceptChannel(**kwargs)
         else:
-            return TCPForkAfterListenChannel(**kwargs)
+            ch = TCPForkAfterListenChannel(**kwargs)
+        await ch.setup((self.endpoint, self.port))
+        return ch
 
     @property
     def fields(self) -> Mapping[str, Any]:
@@ -503,16 +440,10 @@ class TCPForkChannelFactory(TCPChannelFactory,
         return self.exclude_keys(d, 'fork_before_accept')
 
 class TCPForkAfterListenChannel(TCPChannel, PtraceForkChannel):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
     def cb_socket_listening(self, process, syscall):
         self._invoke_forkserver(process)
 
 class TCPForkBeforeAcceptChannel(TCPChannel, PtraceForkChannel):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
     def cb_socket_accepting(self, process, syscall):
         # The syscall instruction cannot be "cancelled". Instead we replace it
         # by a call to an invalid syscall so the kernel returns immediately, and
@@ -545,9 +476,10 @@ class UDPChannelFactory(TransportChannelFactory,
 
     protocol: str = "udp"
 
-    def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
+    async def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
         ch = UDPChannel(pobj=pobj, netns=netns, **self.fields, **kwargs)
-        ch.connect((self.endpoint, self.port))
+        await ch.setup((self.endpoint, self.port))
+        await ch.connect((self.endpoint, self.port))
         return ch
 
     @classmethod
@@ -562,11 +494,9 @@ class UDPChannel(NetworkChannel):
                     connect_timeout: float, **kwargs):
         super().__init__(**kwargs)
         self._connect_timeout = connect_timeout * self._timescale if connect_timeout else None
-        self._socket = None
         self._bind_process = None
         self._sockconnected = False
         self._sockfd = -1
-        self.setup((endpoint, port))
 
     def cb_socket_binding(self, process, syscall):
         pass
@@ -574,24 +504,25 @@ class UDPChannel(NetworkChannel):
     def cb_socket_bound(self, process, syscall):
         pass
 
-    def setup(self, address: tuple):
+    async def setup(self, address: tuple):
+        await super().setup()
         ## Wait for a socket that is listening on the same port
         # FIXME check for matching address too
         self._setup_binds = {}
         self._setup_address = address
 
-        self.monitor_syscalls(None,
+        await self.monitor_syscalls(None,
             self._setup_ignore_callback,
             self._setup_break_callback, self._setup_syscall_callback,
             timeout=self._connect_timeout, break_on_entry=True,
             break_on_exit=True, fds={}, binds=self._setup_binds, address=address)
 
-    def connect(self, address: tuple):
+    async def connect(self, address: tuple):
         self._socket = self.nssocket(socket.AF_INET, socket.SOCK_DGRAM)
         self._refcounter.clear()
         self._sockconnected = False
         self._connect_address = address
-        self._bind_process, _ = self.monitor_syscalls(
+        self._bind_process, _ = await self.monitor_syscalls(
             self._connect_monitor_target, self._connect_ignore_callback,
             self._connect_break_callback, self._connect_syscall_callback,
             timeout=self._connect_timeout)
@@ -600,52 +531,10 @@ class UDPChannel(NetworkChannel):
 
         # wait for the next read, recv, select, or poll
         # or wait for the parent to fork, and trace child for these calls
-        self.sync()
+        await self.sync()
         assert self.synced
 
-    # this is needed so that poll_sync is executed by GLOBAL_ASYNC_EXECUTOR
-    # so that the ptraced child is accessed by the same tracer
-    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
-    def a_sync(self):
-        return self.sync()
-
-    async def send(self, data: ByteString) -> int:
-        # flush any data left in the receive buffer
-        while await self.receive():
-            pass
-
-        if len(data):
-            sent = await self._send_sync(data)
-            await self.a_sync()
-            assert self.synced
-        else:
-            sent = 0
-        debug(f"Sent data to server: {data[:sent]}")
-        return sent
-
-    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
-    def _send_sync(self, data: ByteString) -> int:
-        self._send_server_received = 0
-        self._send_client_sent = 0
-        ## Set up a barrier so that client_sent is ready when checking for break condition
-        self._send_barrier = threading.Barrier(2)
-        self._send_barrier_passed = False
-
-        self._send_data = data
-        _, ret = self.monitor_syscalls(self._send_send_monitor,
-            self._send_ignore_callback, self._send_break_callback,
-            self._send_syscall_callback, timeout=self._data_timeout)
-        return ret
-
-    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
-    def receive(self) -> ByteString:
-        try:
-            poll, _, _ = select.select([self._socket], [], [], 0)
-            if self._socket not in poll:
-                return b''
-        except ValueError:
-            raise ChannelBrokenException("socket fd is negative, socket is closed")
-
+    async def read_bytes(self) -> ByteString:
         try:
             data = self._socket.recv(self.MAX_DATAGRAM_SIZE)
         except ConnectionResetError as ex:
@@ -655,14 +544,17 @@ class UDPChannel(NetworkChannel):
             debug(f"Received data from server: {data}")
         return data
 
-    def close(self, **kwargs):
+    async def write_bytes(self, data: ByteString) -> int:
+        return self._socket.send(data)
+
+    async def close(self, **kwargs):
         if self._socket is not None:
             self._socket.close()
             self._socket = None
-        super().close(**kwargs)
+        await super().close(**kwargs)
 
     ### Callbacks ###
-    def _setup_syscall_callback(self, process, syscall, fds, binds, address):
+    async def _setup_syscall_callback(self, process, syscall, fds, binds, address):
         is_entry = syscall.result is None
         if syscall.name == 'socket' and not is_entry:
             domain = syscall.arguments[0].value
@@ -691,10 +583,10 @@ class UDPChannel(NetworkChannel):
     def _setup_ignore_callback(self, syscall):
         return syscall.name not in ('socket', 'bind')
 
-    def _setup_break_callback(self):
+    async def _setup_break_callback(self):
         return any(x[2] == self._setup_address[1] for x in self._setup_binds.values())
 
-    def _connect_syscall_callback(self, process, syscall):
+    async def _connect_syscall_callback(self, process, syscall):
         if syscall.name == 'bind' \
                 and syscall.arguments[0].value == self._sockfd \
                 and syscall.result == 0:
@@ -705,49 +597,15 @@ class UDPChannel(NetworkChannel):
     def _connect_ignore_callback(self, syscall):
         return syscall.name != 'bind'
 
-    def _connect_break_callback(self):
+    async def _connect_break_callback(self):
         return self._sockconnected
 
-    def _connect_monitor_target(self):
+    async def _connect_monitor_target(self):
         return self._socket.connect(self._connect_address)
 
-    def _send_syscall_callback(self, process, syscall):
-        if syscall.name in ('read', 'recv', 'recvfrom', 'recvmsg') \
-                and syscall.arguments[0].value in self._refcounter:
-            if syscall.result <= 0:
-                raise ChannelBrokenException(
-                    "Server failed to read data off socket")
-            self._send_server_received = syscall.result
-
-    def _send_ignore_callback(self, syscall):
-        return syscall.name not in ('read', 'recv', 'recvfrom', 'recvmsg')
-
-    def _send_break_callback(self):
-        if not self._send_barrier_passed:
-            try:
-                self._send_barrier.wait()
-            except threading.BrokenBarrierError:
-                raise ChannelBrokenException("Barrier broke while waiting")
-            else:
-                self._send_barrier_passed = True
-        debug(f"{self._send_client_sent=}; {self._send_server_received=}")
-        if self._send_client_sent == 0 or \
-                self._send_server_received > self._send_client_sent:
-            raise ChannelBrokenException(
-                "Client sent no bytes, or server received too many bytes!")
-        return self._send_server_received > 0
-
-    def _send_send_monitor(self):
-        try:
-            ret = self._socket.send(self._send_data)
-            if ret == 0:
-                raise ChannelBrokenException("Failed to send any data")
-        except Exception:
-            self._send_barrier.abort()
-            raise
-        self._send_client_sent = ret
-        self._send_barrier.wait()
-        return ret
+    async def _send_break_callback(self):
+        return await super()._send_break_callback() or \
+            self._send_server_received > 0
 
 class UDPSocketState:
     SOCKET_UNBOUND = 1
@@ -786,17 +644,20 @@ class UDPForkChannelFactory(UDPChannelFactory,
         return super().match_config(config) and \
             config['driver'].get('forkserver')
 
-    def create(self, pobj: Popen, netns: str) -> AbstractChannel:
-        ch = self._create_once(pobj=pobj, netns=netns, **self.fields, **kwargs)
-        ch.connect((self.endpoint, self.port))
+    async def create(self, pobj: Popen, netns: str) -> AbstractChannel:
+        ch = await self._create_once(
+            pobj=pobj, netns=netns, **self.fields, **kwargs)
+        await ch.connect((self.endpoint, self.port))
         return ch
 
-    @cache
-    def _create_once(self, **kwargs):
+    @async_cache
+    async def _create_once(self, **kwargs):
         if self.fork_before_bind:
-            return UDPForkBeforeBindChannel(**kwargs)
+            ch = UDPForkBeforeBindChannel(**kwargs)
         else:
-            return UDPForkChannel(**kwargs)
+            ch = UDPForkChannel(**kwargs)
+        await ch.setup((self.endpoint, self.port))
+        return ch
 
     @property
     def fields(self) -> Mapping[str, Any]:
@@ -804,27 +665,22 @@ class UDPForkChannelFactory(UDPChannelFactory,
         return self.exclude_keys(d, 'fork_before_bind')
 
 class UDPForkChannel(UDPChannel, PtraceForkChannel):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
     def cb_socket_bound(self, process, syscall):
         self._invoke_forkserver(process)
 
-    def connect(self, address: tuple):
+    async def connect(self, address: tuple):
         if not self._sockconnected:
-            super().connect(address)
+            await super().connect(address)
         else:
             self._socket = self.nssocket(socket.AF_INET, socket.SOCK_DGRAM)
             self._socket.connect(address)
-            self.sync()
+            await self.sync()
 
 class UDPForkBeforeBindChannel(UDPChannel, PtraceForkChannel):
     # Forking just before a bind will result in the same socket being bound in
     # multiple child processes (because they all copy a reference of the
     # parent's sockfd), and this is not allowed behavior by Linux's TCP/IP
     # stack. It will result in EINVAL (errno 22: Invalid argument)
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
 
     def cb_socket_binding(self, process, syscall):
         # The syscall instruction cannot be "cancelled". Instead we replace it

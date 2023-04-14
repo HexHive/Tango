@@ -10,13 +10,13 @@ class SyscallState(object):
         self.ignore_callback = None
         self.clear()
 
-    def event(self, options):
+    async def event(self, options):
         if self.next_event == "exit":
-            return self.exit()
+            return await self.exit()
         else:
-            return self.enter(options)
+            return await self.enter(options)
 
-    def enter(self, options):
+    async def enter(self, options):
         # syscall enter
         regs = self.process.getregs()
         self.syscall = PtraceSyscall(self.process, options, regs)
@@ -29,7 +29,7 @@ class SyscallState(object):
         self.next_event = "exit"
         return self.syscall
 
-    def exit(self):
+    async def exit(self):
         if self.syscall:
             self.syscall.exit()
         if self.ignore_exec_trap \
@@ -37,7 +37,7 @@ class SyscallState(object):
                 and not self.process.debugger.trace_exec:
             # Ignore the SIGTRAP after exec() syscall exit
             self.process.syscall()
-            self.process.waitSignals(SIGTRAP, SIGTRAP | 0x80)
+            await self.process.waitSignals(SIGTRAP, SIGTRAP | 0x80)
         if self.syscall and ((not self.ignore_callback) \
                 or (not self.ignore_callback(self.syscall))):
             syscall = self.syscall

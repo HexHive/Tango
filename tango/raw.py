@@ -7,16 +7,15 @@ from tango.ptrace.debugger import PtraceProcess
 from tango.unix import (PtraceChannel, PtraceForkChannel, PtraceChannelFactory,
     FileDescriptorChannel, FileDescriptorChannelFactory)
 from tango.exceptions import ChannelBrokenException
-from tango.common import sync_to_async, GLOBAL_ASYNC_EXECUTOR
+from tango.common import sync_to_async
 
 from typing import ByteString, Iterable, Mapping, Any
 from subprocess import Popen
 from dataclasses import dataclass
-from functools import cache
+from asyncstdlib.functools import cache as async_cache
 import errno
 import struct
 import select
-import threading
 import os
 import stat
 
@@ -29,9 +28,10 @@ __all__ = [
 class StdIOChannelFactory(FileDescriptorChannelFactory):
     fmt: FormatDescriptor = FormatDescriptor('raw')
 
-    def create(self, pobj: Popen, **kwargs) -> AbstractChannel:
+    async def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
         ch = StdIOChannel(pobj=pobj, **self.fields, **kwargs)
-        ch.connect()
+        await ch.setup()
+        await ch.connect()
         return ch
 
     @classmethod
@@ -45,6 +45,25 @@ class StdIOChannel(FileDescriptorChannel):
         self._stdinfd = -1
         self._file = None
 
+    @property
+    def file(self):
+        return self._file
+
+    async def connect(self):
+        self._reset_refs()
+        self._file = self._pobj.stdin
+        # wait for the next read, recv, select, or poll
+        # or wait for the parent to fork, and trace child for these calls
+        await self.sync()
+        assert self.synced
+
+    async def read_bytes(self) -> ByteString:
+        # FIXME for now, stdout/stderr are not piped
+        return b''
+
+    async def write_bytes(self, data: ByteString) -> int:
+        return self._file.write(data)
+
     def cb_stdin_polled(self, process, syscall):
         pass
 
@@ -57,101 +76,11 @@ class StdIOChannel(FileDescriptorChannel):
         self._stdinfd = 0
         self._refcounter[0] = 1
 
-    def connect(self):
-        self._reset_refs()
-        self._file = self._pobj.stdin
-        # wait for the next read, recv, select, or poll
-        # or wait for the parent to fork, and trace child for these calls
-        self.sync()
-        assert self.synced
-
-    # this is needed so that poll_sync is executed by GLOBAL_ASYNC_EXECUTOR
-    # so that the ptraced child is accessed by the same tracer
-    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
-    def a_sync(self):
-        return self.sync()
-
-    async def send(self, data: ByteString) -> int:
-        # flush any data left in the receive buffer
-        await self.receive()
-
-        sent = 0
-        while sent < len(data):
-            partial = await self._send_sync(data[sent:])
-            sent += partial
-            CountProfiler('bytes_sent')(partial)
-
-        await self.a_sync()
-        assert self.synced
-        debug(f"Sent data to server: {data}")
-
-        # we do this since TransmitInteraction.perform already counts sent bytes
-        CountProfiler('bytes_sent')(-sent)
-        return sent
-
-    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
-    def _send_sync(self, data: ByteString) -> int:
-        self._send_server_received = 0
-        self._send_client_sent = 0
-        ## Set up a barrier so that client_sent is ready when checking for break condition
-        self._send_barrier = threading.Barrier(2)
-        self._send_barrier_passed = False
-
-        self._send_data = data
-        _, ret = self.monitor_syscalls(self._send_send_monitor,
-            self._send_ignore_callback, self._send_break_callback,
-            self._send_syscall_callback)
-        return ret
-
-    async def receive(self) -> ByteString:
-        # FIXME for now, stdout/stderr are not piped
-        return b''
-
-    def close(self, **kwargs):
+    async def close(self, **kwargs):
         if self._file is not None and not self._file.closed:
             # FIXME should close self._file here?
             self._file.flush()
-        super().close(**kwargs)
-
-    ### Callbacks ###
-    def _send_syscall_callback(self, process, syscall):
-        if syscall.name == 'read' and \
-                syscall.arguments[0].value in self._refcounter:
-            if syscall.result == 0:
-                raise ChannelBrokenException(
-                    "Server failed to read data off stdin")
-            self._send_server_received += syscall.result
-
-    def _send_ignore_callback(self, syscall):
-        return syscall.name != 'read'
-
-    def _send_break_callback(self):
-        if not self._send_barrier_passed:
-            try:
-                self._send_barrier.wait()
-            except threading.BrokenBarrierError:
-                raise ChannelBrokenException("Barrier broke while waiting")
-            else:
-                self._send_barrier_passed = True
-        debug(f"{self._send_client_sent=}; {self._send_server_received=}")
-        # FIXME is there a case where client_sent == 0?
-        if self._send_client_sent == 0 or \
-                self._send_server_received > self._send_client_sent:
-            raise ChannelBrokenException(
-                "Client sent no bytes, or server received too many bytes!")
-        return self._send_server_received == self._send_client_sent
-
-    def _send_send_monitor(self):
-        try:
-            ret = self._file.write(self._send_data)
-            if ret == 0:
-                raise ChannelBrokenException("Failed to send any data")
-        except Exception:
-            self._send_barrier.abort()
-            raise
-        self._send_client_sent = ret
-        self._send_barrier.wait()
-        return ret
+        await super().close(**kwargs)
 
 @dataclass(kw_only=True, frozen=True)
 class StdIOForkChannelFactory(StdIOChannelFactory,
@@ -163,14 +92,16 @@ class StdIOForkChannelFactory(StdIOChannelFactory,
         return super().match_config(config) and \
             config['driver'].get('forkserver')
 
-    def create(self, pobj: Popen, **kwargs) -> AbstractChannel:
-        ch = self._create_once(pobj=pobj, **kwargs)
-        ch.connect()
+    async def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
+        ch = await self._create_once(pobj=pobj, **kwargs)
+        await ch.connect()
         return ch
 
-    @cache
-    def _create_once(self, **kwargs):
-        return StdIOForkChannel(**kwargs, **self.fields)
+    @async_cache
+    async def _create_once(self, **kwargs):
+        ch = StdIOForkChannel(**kwargs, **self.fields)
+        await ch.setup()
+        return ch
 
 class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
     def __init__(self, work_dir: str, **kwargs):
@@ -182,27 +113,27 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
         self._fifo = os.path.join(self._work_dir, 'input.pipe')
         self._setup_fifo()
 
-    def connect(self):
+    async def connect(self):
         self._reconnect = True
-        super().connect()
+        await super().connect()
 
         if not self._awaited:
             # FIXME it is preferred that this be part of PtraceForkChannel, but
             # it can only be done outside the call frame of an existing
             # monitor_syscalls call.
-            self.monitor_syscalls(None,
+            await self.monitor_syscalls(None,
                 self._invoke_forkserver_ignore_callback,
                 self._invoke_forkserver_break_callback,
                 self._invoke_forkserver_syscall_callback, process=self._proc)
             self._awaited = True
-            self.sync()
+            await self.sync()
             assert self.synced
 
-    def close(self, **kwargs):
+    async def close(self, **kwargs):
         if self._file is not None and not self._file.closed:
             self._file.close()
             self._file = None
-        super().close(**kwargs)
+        await super().close(**kwargs)
 
     def cb_stdin_polled(self, process, syscall):
         if not self._injected:
@@ -241,17 +172,21 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
             process.setreg('rax', self._syscall_num)
             super()._cleanup_forkserver(process)
 
-    def sync(self):
+    async def sync(self):
+        async def break_cb():
+            return self.synced
+        async def syscall_cb(syscall):
+            assert False # will never be called
         self.synced = False
         ignore_cb = lambda s: True
-        break_cb = lambda: self.synced
-        syscall_cb = lambda p, s: False # will never be called
-        self.monitor_syscalls(self._sync_monitor, ignore_cb, break_cb, syscall_cb,
+        await self.monitor_syscalls(
+            self._sync_monitor_target, ignore_cb, break_cb, syscall_cb,
             break_on_entry=False, break_on_exit=False,
             timeout=self._data_timeout)
 
     ## Callbacks
-    def _sync_monitor(self):
+    @sync_to_async()
+    def _sync_monitor_target(self):
         if self._awaited and self._reconnect:
             self._file = open(self._fifo, 'wb', buffering=0)
             self._reconnect = False

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tango.common      import async_property, AsyncComponent, ComponentType
+from tango.common      import AsyncComponent, ComponentType
 from tango.core.profiler import FrequencyProfiler, EventProfiler, CountProfiler
 
 from abc         import ABC, abstractmethod
@@ -41,7 +41,7 @@ class AbstractChannel(ABC):
         pass
 
     @abstractmethod
-    def close(self):
+    async def close(self):
         pass
 
     @property
@@ -80,7 +80,7 @@ class AbstractChannelFactory(AsyncComponent, ABC,
         return obj
 
     @abstractmethod
-    def create(self) -> AbstractChannel:
+    async def create(self) -> AbstractChannel:
         pass
 
     @property

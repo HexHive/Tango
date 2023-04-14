@@ -2,7 +2,7 @@ from tango.ptrace import debug, info, warning, error
 from tango.ptrace import PtraceError
 from tango.ptrace.debugger import (PtraceProcess, ProcessSignal, ProcessExit,
                             ForkChildKilledEvent)
-from tango.ptrace.binding import HAS_PTRACE_EVENTS
+from tango.ptrace.binding import HAS_PTRACE_EVENTS, HAS_SIGNALFD
 from tango.ptrace.os_tools import HAS_PROC
 if HAS_PTRACE_EVENTS:
     from tango.ptrace.binding.func import (
@@ -12,9 +12,14 @@ if HAS_PTRACE_EVENTS:
 from tango.ptrace.binding import ptrace_detach
 if HAS_PROC:
     from tango.ptrace.linux_proc import readProcessStat, ProcError
+if HAS_SIGNALFD:
+    from tango.ptrace.binding import (
+        create_signalfd, read_signalfd, SFD_CLOEXEC, SFD_NONBLOCK)
+    import asyncio
 
 from os import waitpid, WNOHANG, WUNTRACED
-from signal import SIGTRAP, SIGSTOP, SIGCHLD, SIGKILL
+from signal import (
+    SIGTRAP, SIGSTOP, SIGCHLD, SIGKILL, pthread_sigmask, SIG_BLOCK)
 from errno import ECHILD
 from time import sleep
 from collections import defaultdict
@@ -69,7 +74,7 @@ class PtraceDebugger(object):
      - use_sysgood (bool): sysgood option is enabled?
     """
 
-    def __init__(self):
+    def __init__(self, *, loop=None):
         self.dict = {}   # pid -> PtraceProcess object
         self.list = []
         self.options = 0
@@ -88,23 +93,57 @@ class PtraceDebugger(object):
         # signals and deliver them later to traced processes, there will be
         # undefined behavior.
         self.sig_queue = LRU(10)
+        self.sig_queue.set_callback(self._sig_queue_evict)
+        self.sig_evicted = list()
         self.enableSysgood()
 
-    def addProcess(self, pid, is_attached, parent=None, is_thread=False):
+        if HAS_SIGNALFD:
+            loop = loop or asyncio.get_running_loop()
+            # FIXME should block SIGCHLD? this may interfere with the asyncio
+            # child process monitor
+            pthread_sigmask(SIG_BLOCK, {SIGCHLD})
+            self._sigfd = create_signalfd(SIGCHLD,
+                flags=SFD_CLOEXEC | SFD_NONBLOCK)
+
+            self._sigfd_event = asyncio.Event()
+            # we'll use this as a placeholder for siginfo instead of reallocing
+            self._sigfd_siginfo = None
+            loop.add_reader(self._sigfd, self._signalfd_ready_cb)
+            # we flush waitpid once initially to fetch queued signals
+            self._flush_and_enqueue()
+
+    def _sig_queue_evict(self, pid, queue, always_expand=True):
+        if pid not in self.dict:
+            # hard luck; we could not find an owner in time
+            return
+
+        if always_expand or all(p in self.dict for p in self.sig_queue.keys()):
+            # the LRU is full, but all PIDs belong to the debugger;
+            # we expand the LRU so as not to lose signals for known PIDs
+            self.sig_queue.set_size(self.sig_queue.get_size() * 2)
+            warning("Expanded LRU cache due to necessary eviction")
+
+        # we keep track of known evicted PIDs to be re-used later
+        self.sig_evicted.append((pid, queue))
+
+    def traceProcess(self, process):
+        if process.pid in self.dict:
+            raise KeyError(f"The pid {process.pid} is already registered!")
+        self.dict[process.pid] = process
+        self.list.append(process)
+
+    async def addProcess(self, pid, is_attached, parent=None, is_thread=False):
         """
         Add a new process using its identifier. Use is_attached=False to
         attach an existing (running) process, and is_attached=True to trace
         a new (stopped) process.
         """
-        if pid in self.dict:
-            raise KeyError("The process %s is already registered!" % pid)
         process = PtraceProcess(self, pid, is_attached,
                                 parent=parent, is_thread=is_thread)
         debug("Attach %s to debugger" % process)
-        self.dict[pid] = process
-        self.list.append(process)
+        self.traceProcess(process)
         try:
-            process.waitSignals(SIGTRAP, SIGSTOP)
+            await process.waitSignals(SIGTRAP, SIGSTOP)
         except KeyboardInterrupt:
             error(
                 "User interrupt! Force the process %s attach "
@@ -141,6 +180,23 @@ class PtraceDebugger(object):
             process.terminate()
             process.detach()
 
+    if HAS_SIGNALFD:
+        def _signalfd_ready_cb(self):
+            self._sigfd_siginfo = read_signalfd(self._sigfd, self._sigfd_siginfo)
+            assert self._sigfd_siginfo.ssi_signo == SIGCHLD
+            self._flush_and_enqueue()
+
+        def _flush_and_enqueue(self):
+            ready = False
+            while True:
+                pid, status = self._waitpid(None, blocking=False)
+                if pid <= 0:
+                    break
+                self._push_status(pid, status)
+                ready = True
+            if ready:
+                self._sigfd_event.set()
+
     def _waitpid(self, wanted_pid, blocking=True):
         """
         Wait for a process event from a specific process (if wanted_pid is
@@ -175,7 +231,55 @@ class PtraceDebugger(object):
                                 % (pid, wanted_pid), pid=pid)
         return pid, status
 
-    def _wait_event(self, wanted_pid, blocking=True):
+    def _dequeue(self, pid=None):
+        if pid:
+            if queue := self.sig_queue.get(pid):
+                return pid, queue
+            for p, queue in self.sig_evicted:
+                if p == pid:
+                    return pid, queue
+        else:
+            if self.sig_evicted:
+                rv = self.sig_evicted.pop(0)
+            else:
+                rv = self.sig_queue.peek_last_item()
+            return rv
+        return None
+
+    async def _fetch_status(self, wanted_pid, blocking=True):
+        queue = None
+        if HAS_SIGNALFD and blocking:
+            while True:
+                rv = self._dequeue(wanted_pid)
+                if rv:
+                    wanted_pid, queue = rv
+                    break
+                await self._sigfd_event.wait()
+                self._sigfd_event.clear()
+            # at this point, we must only fetch from a queue
+            assert queue
+
+        if not queue:
+            if not (rv := self._dequeue(wanted_pid)):
+                return self._waitpid(wanted_pid, blocking=blocking)
+            else:
+                debug(f"waitpid(): Fetching signal for PID {wanted_pid} from queue")
+                wanted_pid, queue = rv
+
+        status = queue.pop(0)
+        if queue and not wanted_pid in self.sig_queue:
+            # must have been popped from the eviction list
+            self.sig_queue[wanted_pid] = queue
+        elif not queue:
+            self.sig_queue.pop(wanted_pid, None)
+        return wanted_pid, status
+
+    def _push_status(self, pid, status):
+        if not (queue := self.sig_queue.get(pid)):
+            queue = self.sig_queue[pid] = list()
+        queue.append(status)
+
+    async def _wait_event(self, wanted_pid, blocking=True):
         """
         Wait for a process event from the specified process identifier. If
         blocking=False, return None if there is no new event, otherwise return
@@ -184,16 +288,9 @@ class PtraceDebugger(object):
         process = None
         while not process:
             try:
-                if wanted_pid and wanted_pid in self.dict and \
-                        wanted_pid in self.sig_queue and self.sig_queue[wanted_pid]:
-                    debug(f"waitpid(): Fetching signal for PID {wanted_pid} from queue")
-                    pid, status = (wanted_pid, self.sig_queue[wanted_pid].pop(0))
-                    if not self.sig_queue[wanted_pid]:
-                        self.sig_queue.pop(wanted_pid)
-                else:
-                    pid, status = self._waitpid(wanted_pid, blocking=blocking)
+                pid, status = await self._fetch_status(wanted_pid)
             except OSError as err:
-                if err.errno == ECHILD:
+                if wanted_pid and err.errno == ECHILD:
                     process = self.dict[wanted_pid]
                     return process.processTerminated()
                 else:
@@ -207,39 +304,44 @@ class PtraceDebugger(object):
                 if HAS_PROC:
                     try:
                         stat = readProcessStat(pid)
-                        if stat.ppid in self.dict:
-                            debug(f"Received premature signal for a child ({pid=}) of a traced process")
+                        if parent := self.dict.get(stat.ppid):
+                            debug(f"Received premature signal for"
+                                  f" a child ({pid=}) of"
+                                  f" a traced process ({parent=})")
                         else:
                             enq = False
-                            debug(f"Received signal for unknown {pid=}, ignoring")
+                            debug(f"Ignoring signal for unknown {pid=}")
                     except ProcError:
-                        warning(f"Process ({pid=}) died before its signal could be processed")
                         enq = False
+                        warning(f"Process ({pid=}) died before"
+                                 " its signal could be processed")
                 else:
-                    debug(f"Received signal for unknown {pid=}, placing event in queue")
+                    debug(f"Received signal for unknown {pid=},"
+                           " placing event in queue")
                 if enq:
-                    if pid not in self.sig_queue:
-                        self.sig_queue[pid] = list()
-                    self.sig_queue[pid].append(status)
+                    self._push_status(pid, status)
+                    if HAS_SIGNALFD:
+                        # yield control to the event loop to populate sigqueue
+                        await asyncio.sleep(0)
                 continue
 
-        return process.processStatus(status)
+        return await process.processStatus(status)
 
-    def waitProcessEvent(self, pid=None, blocking=True):
+    async def waitProcessEvent(self, pid=None, blocking=True):
         """
         Wait for a process event from a specific process (if pid option is
         set) or any process (default). If blocking=False, return None if there
         is no new event, otherwise return an object based on ProcessEvent.
         """
-        return self._wait_event(pid, blocking=blocking)
+        return await self._wait_event(pid, blocking=blocking)
 
-    def waitSignals(self, *signals, pid=None, blocking=True):
+    async def waitSignals(self, *signals, pid=None, blocking=True):
         """
         Wait for any signal or some specific signals (if specified) from a
         specific process (if pid keyword is set) or any process (default).
         Return a ProcessSignal object or raise an unexpected ProcessEvent.
         """
-        event = self._wait_event(pid, blocking=blocking)
+        event = await self._wait_event(pid, blocking=blocking)
         if event is None:
             return
         if event.__class__ != ProcessSignal:
@@ -249,16 +351,16 @@ class PtraceDebugger(object):
             return event
         raise event
 
-    def waitSyscall(self, process=None, blocking=True):
+    async def waitSyscall(self, process=None, blocking=True):
         """
         Wait for the next syscall event (enter or exit) for a specific process
         (if specified) or any process (default). Return a ProcessSignal object
         or raise an unexpected ProcessEvent.
         """
         if process:
-            event = self.waitProcessEvent(pid=process.pid, blocking=blocking)
+            event = await self.waitProcessEvent(pid=process.pid, blocking=blocking)
         else:
-            event = self.waitProcessEvent(blocking=blocking)
+            event = await self.waitProcessEvent(blocking=blocking)
         if event is None:
             return
         if event.is_syscall_stop():
@@ -318,6 +420,7 @@ class PtraceDebugger(object):
             return
         self.trace_clone = True
         self.options |= PTRACE_O_TRACECLONE
+        debug("Debugger trace execs (options=%s)" % self.options)
         self.updateProcessOptions()
 
     def traceSeccomp(self):
@@ -326,6 +429,7 @@ class PtraceDebugger(object):
             return
         self.trace_seccomp = True
         self.options |= PTRACE_O_TRACESECCOMP
+        debug("Debugger trace execs (options=%s)" % self.options)
         self.updateProcessOptions()
 
     def enableSysgood(self):

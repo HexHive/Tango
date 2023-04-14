@@ -321,16 +321,16 @@ class PtraceProcess(object):
     def kill(self, signum):
         kill(self.pid, signum)
 
-    def terminate(self, wait_exit=True):
+    async def terminate(self, wait_exit=True, signum=SIGTERM):
         if not self.running or not self.was_attached:
             return True
         debug("Terminate %s" % self)
         done = False
         try:
             if self.is_stopped:
-                self.cont(SIGTERM)
+                self.cont(signum)
             else:
-                self.kill(SIGTERM)
+                self.kill(signum)
         except PtraceError as event:
             if event.errno == ESRCH:
                 done = True
@@ -339,18 +339,18 @@ class PtraceProcess(object):
         if not done:
             if not wait_exit:
                 return False
-            self.waitExit()
+            await self.waitExit()
         self._notRunning()
         return True
 
-    def terminateTree(self, wait_exit=True):
+    async def terminateTree(self, **kwargs):
         try:
             while True:
                 try:
                     # WARN it seems necessary to wait for the child to exit,
                     # otherwise the forkserver may misbehave, and the fuzzer
                     # will receive a lot of ForkChildKilledEvents
-                    self.terminate()
+                    await self.terminate(**kwargs)
                     break
                 except PtraceError as ex:
                     critical(f"Attempted to terminate non-existent process ({ex})")
@@ -362,12 +362,12 @@ class PtraceProcess(object):
             if self in self.debugger:
                 self.debugger.deleteProcess(self)
         for p in self.children:
-            p.terminateTree(wait_exit=wait_exit)
+            await p.terminateTree(**kwargs)
 
-    def waitExit(self):
+    async def waitExit(self):
         while True:
             # Wait for any process signal
-            event = self.waitEvent()
+            event = await self.waitEvent()
             event_cls = event.__class__
 
             # Process exited: we are done
@@ -391,16 +391,16 @@ class PtraceProcess(object):
                 warning(f"{event.process} received {event} while waiting for exit,"
                     f" but the signal could not be delivered {ex=}.")
 
-    def processStatus(self, status):
+    async def processStatus(self, status):
         # Process exited?
         if WIFEXITED(status):
             code = WEXITSTATUS(status)
-            event = self.processExited(code)
+            event = await self.processExited(code)
 
         # Process killed by a signal?
         elif WIFSIGNALED(status):
             signum = WTERMSIG(status)
-            event = self.processKilled(signum)
+            event = await self.processKilled(signum)
 
         # Invalid process status?
         elif not WIFSTOPPED(status):
@@ -409,35 +409,35 @@ class PtraceProcess(object):
         # Ptrace event?
         elif HAS_PTRACE_EVENTS and WPTRACEEVENT(status):
             event = WPTRACEEVENT(status)
-            event = self.ptraceEvent(event)
+            event = await self.ptraceEvent(event)
 
         else:
             signum = WSTOPSIG(status)
-            event = self.processSignal(signum)
+            event = await self.processSignal(signum)
         return event
 
     def processTerminated(self):
         self._notRunning()
         return ProcessExit(self)
 
-    def processExited(self, code):
+    async def processExited(self, code):
         if RUNNING_BSD and not self.exited:
             # on FreeBSD, we have to waitpid() twice
             # to avoid zombi process!?
             self.exited = True
-            self.waitExit()
+            await self.waitExit()
         self._notRunning()
         return ProcessExit(self, exitcode=code)
 
-    def processKilled(self, signum):
+    async def processKilled(self, signum):
         self._notRunning()
         return ProcessExit(self, signum=signum)
 
-    def processSignal(self, signum):
+    async def processSignal(self, signum):
         self.is_stopped = True
         return ProcessSignal(signum, self)
 
-    def processSeccompEvent(self, event):
+    async def processSeccompEvent(self, event):
         self.is_stopped = True
         if self.syscall_state.next_event == 'exit':
             # tracer is aware of syscall-entry, so we must not double-notify it.
@@ -445,18 +445,18 @@ class PtraceProcess(object):
             debug(f"seccomp_trace event received while expecting"
                 f" syscall-exit-stop; retrying")
             self.syscall()
-            return self.waitEvent()
+            return await self.waitEvent()
         else:
             debug("seccomp_trace event received as syscall-enter-stop")
             return event
 
-    def ptraceEvent(self, event):
+    async def ptraceEvent(self, event):
         if not HAS_PTRACE_EVENTS:
             self.notImplementedError()
         if event in NEW_PROCESS_EVENT:
             new_pid = ptrace_geteventmsg(self.pid)
             is_thread = (event == PTRACE_EVENT_CLONE)
-            new_process = self.debugger.addProcess(
+            new_process = await self.debugger.addProcess(
                 new_pid, is_attached=True, parent=self, is_thread=is_thread)
             self.children.append(new_process)
             return NewProcessEvent(new_process)
@@ -464,7 +464,7 @@ class PtraceProcess(object):
             return ProcessExecution(self)
         elif event == PTRACE_EVENT_SECCOMP:
             event = SeccompEvent(self)
-            return self.processSeccompEvent(event)
+            return await self.processSeccompEvent(event)
         else:
             raise ProcessError(self, "Unknown ptrace event: %r" % event)
 
@@ -821,14 +821,14 @@ class PtraceProcess(object):
         debug("Set %s options to %s" % (self, options))
         ptrace_setoptions(self.pid, options)
 
-    def waitEvent(self, blocking=True):
-        return self.debugger.waitProcessEvent(pid=self.pid, blocking=blocking)
+    async def waitEvent(self, blocking=True):
+        return await self.debugger.waitProcessEvent(pid=self.pid, blocking=blocking)
 
-    def waitSignals(self, *signals, blocking=True):
-        return self.debugger.waitSignals(*signals, blocking=blocking, pid=self.pid)
+    async def waitSignals(self, *signals, blocking=True):
+        return await self.debugger.waitSignals(*signals, blocking=blocking, pid=self.pid)
 
-    def waitSyscall(self, blocking=True):
-        return self.debugger.waitSyscall(self, blocking=blocking)
+    async def waitSyscall(self, blocking=True):
+        return await self.debugger.waitSyscall(self, blocking=blocking)
 
     def findBreakpoint(self, address):
         for bp in self.breakpoints.values():

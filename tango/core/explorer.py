@@ -77,7 +77,7 @@ class BaseExplorer(AbstractExplorer,
         self._last_state = self._tracker.entry_state
         # FIXME might not be the best place to do this, but root state is not
         # propagated anywhere else
-        self._state_update_cb(self._last_state,
+        await self._state_update_cb(self._last_state,
             breadcrumbs=[], input=None, orig_input=None)
         await super().finalize(owner)
 

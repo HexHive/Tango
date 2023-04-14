@@ -15,18 +15,18 @@ from tango.ptrace import PtraceError
 from tango.ptrace.func_call import FunctionCallOptions
 from tango.ptrace.syscall import PtraceSyscall, SOCKET_SYSCALL_NAMES
 from tango.ptrace.tools import signal_to_exitcode
-from tango.common import sync_to_async, GLOBAL_ASYNC_EXECUTOR, ComponentType
+from tango.ptrace.linux_proc import readProcessStat
+from tango.common import ComponentType
 from tango.exceptions import (ChannelTimeoutException, StabilityException,
     ProcessCrashedException, ProcessTerminatedException, ChannelBrokenException)
 
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import IO, AsyncGenerator, Callable, Iterable, Optional, Any
+from typing import (
+    IO, AsyncGenerator, Callable, Iterable, Optional, Any, ByteString)
 from pyroute2 import netns, IPRoute
 from subprocess import Popen, TimeoutExpired, DEVNULL, PIPE
-from concurrent.futures import ThreadPoolExecutor
 from elftools.elf.elffile import ELFFile
-from threading import Event, Thread
 from uuid import uuid4
 from string import ascii_letters, digits
 import os
@@ -38,12 +38,13 @@ import struct
 import select
 import posix_ipc
 import mmap
+import asyncio
 
 __all__ = [
     'ProcessDriver', 'ProcessForkDriver',
     'PtraceChannel', 'PtraceForkChannel', 'PtraceChannelFactory',
     'FileDescriptorChannel', 'FileDescriptorChannelFactory',
-    'SharedMemoryObject'
+    'SharedMemoryObject', 'resolve_symbol'
 ]
 
 SOCKET_SYSCALL_NAMES = SOCKET_SYSCALL_NAMES.union(('read', 'write'))
@@ -58,7 +59,9 @@ if HAS_SECCOMP_FILTER:
 
 class PtraceChannel(AbstractChannel):
     def __init__(self, pobj: Popen, *, use_seccomp: bool, observed: dict=None,
-            **kwargs):
+            on_syscall_exception: Optional[Callable[
+                ProcessEvent, PtraceSyscall, Exception]]=None,
+            loop=None, **kwargs):
         super().__init__(**kwargs)
         self._pobj = pobj
         self._use_seccomp = use_seccomp
@@ -85,19 +88,18 @@ class PtraceChannel(AbstractChannel):
         self._debugger.traceClone()
         if use_seccomp:
             self._debugger.traceSeccomp()
-        self._proc = self._debugger.addProcess(self._pobj.pid, is_attached=True)
 
-        # FIXME this is never really used; it's just a placeholder that went
-        # obsolete
-        default_ignore = lambda syscall: syscall.name not in SOCKET_SYSCALL_NAMES
-        self.prepare_process(self._proc, default_ignore, resume=True)
-
-        self._monitor_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='PtraceMonitorExecutor')
         self.observed = {}
         if observed:
             self.observed.update(observed)
             for process in observed:
-                self._debugger.addProcess(process.pid, is_attached=True)
+                self._debugger.traceProcess(process)
+
+        self.on_syscall_exception = on_syscall_exception
+
+    async def setup(self):
+        self._proc = await self._debugger.addProcess(self._pobj.pid, is_attached=True)
+        self.prepare_process(self._proc, resume=True)
 
     @property
     def root(self):
@@ -107,32 +109,33 @@ class PtraceChannel(AbstractChannel):
     def root(self, value):
         self._proc = value
 
-    def prepare_process(self, process, ignore_callback, resume=True):
+    def prepare_process(self, process, *, ignore_callback=None, resume=True):
         if not process in self._debugger:
-            self._debugger.addProcess(process, is_attached=True)
+            self._debugger.traceProcess(process)
 
         if self._process_all:
             ignore_callback = lambda x: False
-        process.syscall_state.ignore_callback = ignore_callback
+        if ignore_callback:
+            process.syscall_state.ignore_callback = ignore_callback
 
         if resume:
             self.resume_process(process)
 
-    def process_syscall(self, process, syscall, syscall_callback, is_entry, **kwargs) -> bool:
+    async def process_syscall(self, process, syscall, syscall_callback, is_entry, **kwargs) -> bool:
         # ensure that the syscall has finished successfully before callback
         if is_entry or syscall.result >= 0:
             # calling syscall.format() takes a lot of time and should be
             # avoided in production, even if logging is disabled
-            if self._process_all or self._verbose:
+            if self._verbose:
                 debug(f"syscall requested: [{process.pid}] {syscall.format()}")
             else:
                 debug(f"syscall requested: [{process.pid}] {syscall.name}")
-            processed = syscall_callback(process, syscall, **kwargs)
+            processed = await syscall_callback(process, syscall, **kwargs)
         else:
             processed = False
         return processed
 
-    def process_exit(self, event):
+    async def process_exit(self, event):
         debug(f"Process with {event.process.pid=} exited, deleting from debugger")
         debug(f"Reason: {event}")
         self._debugger.deleteProcess(event.process)
@@ -143,10 +146,8 @@ class PtraceChannel(AbstractChannel):
         else:
             raise ProcessTerminatedException(f"Process with {event.process.pid=} terminated abnormally with {event.exitcode=}", exitcode=event.exitcode)
 
-    def process_signal(self, event):
-        if event.signum == signal.SIGUSR2:
-            raise ChannelTimeoutException("Channel timeout when waiting for syscall")
-        elif event.signum in (signal.SIGINT, signal.SIGWINCH):
+    async def process_signal(self, event):
+        if event.signum in (signal.SIGINT, signal.SIGWINCH):
             debug(f"Process with {event.process.pid=} received SIGINT or SIGWINCH {event.signum=}")
             # Ctrl-C or resizing the window should not be passed to child
             self.resume_process(event.process)
@@ -163,7 +164,7 @@ class PtraceChannel(AbstractChannel):
         self.resume_process(event.process, signum)
         exitcode = signal_to_exitcode(event.signum)
 
-    def process_new(self, event, ignore_callback):
+    async def process_new(self, event, ignore_callback):
         # monitor child for syscalls as well. may be needed for multi-thread or multi-process targets
         debug(f"Target process with {event.process.parent.pid=} forked, adding child process with {event.process.pid=} to debugger")
         if event.process.is_attached:
@@ -172,30 +173,30 @@ class PtraceChannel(AbstractChannel):
             self.prepare_process(event.process, ignore_callback, resume=True)
         self.resume_process(event.process.parent)
 
-    def process_exec(self, event):
+    async def process_exec(self, event):
         debug(f"Target process with {event.process.pid=} called exec; removing from debugger")
         event.process.detach()
 
-    def process_auxiliary_event(self, event, ignore_callback):
+    async def process_auxiliary_event(self, event, ignore_callback):
         try:
             raise event
         except ProcessExit as event:
-            self.process_exit(event)
+            await self.process_exit(event)
         except ProcessSignal as event:
-            self.process_signal(event)
+            await self.process_signal(event)
         except NewProcessEvent as event:
-            self.process_new(event, ignore_callback)
+            await self.process_new(event, ignore_callback)
         except ProcessExecution as event:
-            self.process_exec(event)
+            await self.process_exec(event)
 
-    def process_event(self, event, ignore_callback, syscall_callback, *,
+    async def process_event(self, event, ignore_callback, syscall_callback, *,
         break_on_entry: bool, break_on_exit: bool, **kwargs):
         if event is None:
             return
 
         is_syscall = event.is_syscall_stop()
         if not is_syscall:
-            self.process_auxiliary_event(event, ignore_callback)
+            await self.process_auxiliary_event(event, ignore_callback)
         else:
             # Process syscall enter or exit
             # debug(f"Target process with {event.process.pid=} requested a syscall")
@@ -206,7 +207,7 @@ class PtraceChannel(AbstractChannel):
             # debug(f"syscall traced: [{event.process.pid}] {sc.name=} with {state.name=} and {state.next_event=}")
             #############
 
-            syscall = state.event(self._syscall_options)
+            syscall = await state.event(self._syscall_options)
             is_entry = state.next_event == 'exit'
             is_exit = not is_entry
 
@@ -219,8 +220,12 @@ class PtraceChannel(AbstractChannel):
             processed = False
             try:
                 if should_process:
-                    processed = self.process_syscall(event.process, syscall,
+                    processed = await self.process_syscall(event.process, syscall,
                         syscall_callback, is_entry, **kwargs)
+            except Exception as ex:
+                if self.on_syscall_exception:
+                    self.on_syscall_exception(event, syscall, ex)
+                raise
             finally:
                 if not processed:
                     if is_entry:
@@ -242,37 +247,32 @@ class PtraceChannel(AbstractChannel):
         else:
             process.syscall(signum)
 
-    def push_observe(self, callback: Callable[[ProcessEvent, Exception], Any]) \
+    async def push_observe(self,
+            callback: Callable[[ProcessEvent, Exception], Any]) \
             -> PtraceProcess:
+        if not self.root:
+            return
+        for proc in self._debugger:
+            if proc.root == self.root:
+                # we ignore all syscalls for existing observed processes
+                proc.syscall_state.ignore_callback = lambda x: True
         self.observed[self.root] = callback
         rv = self.root
         self.root = None
         return rv
 
-    def pop_observe(self, root: PtraceProcess):
-        self.observed.pop(root, None)
+    async def pop_observe(self, root: PtraceProcess, kill: bool=True):
+        if self.observed.pop(root, None) and kill:
+            debug(f"{root} timed out under observation; terminating!")
+            await root.terminateTree(wait_exit=True, signum=signal.SIGTERM)
 
-    def timeout_handler(self, stop_event):
-        if not stop_event.wait(timeout * self._timescale):
-            warning('Ptrace event timed out')
-            # send timeout signal to be intercepted by ptrace
-            try:
-                # get any child process, fail gracefully if all are dead
-                proc = next(iter(self._debugger))
-                proc.kill(signal.SIGUSR2)
-            except Exception as ex:
-                # FIXME may still need to signal the debugger somehow that
-                # it needs to stop waiting
-                warning(traceback.format_exc())
-
-    def _wait_for_syscall(self, process: PtraceProcess=None, **kwargs):
+    async def _wait_for_syscall(self, process: PtraceProcess=None, **kwargs):
         if process:
-            return self._debugger.waitProcessEvent(pid=process.pid, **kwargs)
+            return await self._debugger.waitProcessEvent(pid=process.pid, **kwargs)
         else:
-            return self._debugger.waitProcessEvent(**kwargs)
+            return await self._debugger.waitProcessEvent(**kwargs)
 
-    def _monitor_syscalls_internal_loop(self,
-            stop_event: Event,
+    async def _monitor_syscalls_internal_loop(self,
             ignore_callback: Callable[[PtraceSyscall], bool],
             break_callback: Callable[..., bool],
             syscall_callback: Callable[[PtraceProcess, PtraceSyscall], None],
@@ -282,37 +282,56 @@ class PtraceChannel(AbstractChannel):
         last_process = None
         monitoring = True
         while monitoring:
-            if not self._debugger:
-                raise ProcessTerminatedException(
-                    "Process was terminated while waiting for syscalls",
-                    exitcode=None)
-
-            debug("Waiting for syscall...")
-            event = self._wait_for_syscall(process)
-            if not event:
-                continue
-
             try:
-                rv = self.process_event(event, ignore_callback, syscall_callback,
-                    break_on_entry=break_on_entry, break_on_exit=break_on_exit,
-                    **kwargs)
-                if rv and event.is_syscall_stop():
-                    last_process = event.process
-            except Exception as ex:
-                if (cb := self.observed.get(event.process.root)):
-                    cb(event, ex)
-                else:
-                    raise
+                if not self._debugger:
+                    raise ProcessTerminatedException(
+                        "Process was terminated while waiting for syscalls",
+                        exitcode=None)
 
-            if break_callback():
-                debug("Syscall monitoring finished, breaking out of debug loop")
-                if stop_event:
-                    stop_event.set()
-                monitoring = False
+                debug("Waiting for syscall...")
+                event = await self._wait_for_syscall(process)
+                if not event:
+                    continue
+
+                cur_break_on_entry = break_on_entry
+                cur_break_on_exit = break_on_exit
+                cur_syscall_callback = syscall_callback
+                cur_ignore_callback = ignore_callback
+
+                if (observe_cb := self.observed.get(event.process.root)):
+                    debug(f"Masking event for {event.process} with root={event.process.root}")
+                    cur_break_on_entry = cur_break_on_exit = False
+                    cur_syscall_callback = lambda *args, **kwargs: None
+                    # we also ensure that, if an observed process forks, its child's
+                    # syscalls are also ignored
+                    cur_ignore_callback = lambda s: True
+                elif event.process.root not in self._debugger and \
+                        event.process.root != self.root:
+                    debug(f"Received rogue event ({event}) for {event.process}")
+                    continue
+
+                try:
+                    rv = await self.process_event(
+                        event, cur_ignore_callback, cur_syscall_callback,
+                        break_on_entry=cur_break_on_entry,
+                        break_on_exit=cur_break_on_exit, **kwargs)
+                    if rv and not observe_cb and event.is_syscall_stop():
+                        last_process = event.process
+                except Exception as ex:
+                    if observe_cb:
+                        observe_cb(event, ex)
+                    else:
+                        raise
+
+                if await break_callback():
+                    debug("Syscall monitoring finished, breaking out of debug loop")
+                    monitoring = False
+            except asyncio.CancelledError:
+                break
         else:
             return last_process
 
-    def monitor_syscalls(self,
+    async def monitor_syscalls(self,
             monitor_target: Callable,
             ignore_callback: Callable[[PtraceSyscall], bool],
             break_callback: Callable[..., bool],
@@ -320,39 +339,41 @@ class PtraceChannel(AbstractChannel):
             timeout: float = None,
             process: PtraceProcess = None,
             **kwargs):
+        # DEBUG
+        if self._process_all:
+            ignore_callback = lambda x: False
         procs = (process,) if process else self._debugger
         for proc in procs:
             # update the ignore_callback of processes in the debugger
-            if self._process_all:
-                ignore_callback = lambda x: False
             proc.syscall_state.ignore_callback = ignore_callback
+
+        ## Prepare coroutine
+        tasks = [self._monitor_syscalls_internal_loop(
+            ignore_callback, break_callback, syscall_callback,
+            process=process, **kwargs)]
 
         ## Execute monitor target
         if monitor_target:
-            future = self._monitor_executor.submit(monitor_target)
+            tasks.append(monitor_target())
+
+        gather = asyncio.gather(*tasks)
+
+        ## Wrap coroutine in timer if necessary
+        if timeout is not None:
+            gather = asyncio.wait_for(gather, timeout)
 
         ## Listen for and process syscalls
-        stop_event = None
-        if timeout is not None:
-            stop_event = Event()
-            timeout_timer = Thread(target=self.timeout_handler, args=(stop_event,))
-            timeout_timer.daemon = True
-            timeout_timer.start()
+        try:
+            results = await gather
+        except asyncio.TimeoutError:
+            warning('Ptrace event timed out')
+            raise ChannelTimeoutException("Channel timeout when waiting for syscall")
+        return results
 
-        last_process = self._monitor_syscalls_internal_loop(stop_event,
-                ignore_callback, break_callback, syscall_callback,
-                process=process, **kwargs)
-
-        ## Return the target's result
-        result = None
-        if monitor_target:
-            result = future.result()
-        return (last_process, result)
-
-    def close(self, *, terminate):
-        self._monitor_executor.shutdown(wait=True)
-        if terminate and self.root:
-            self.root.terminateTree()
+    async def close(self, *, terminate: bool=True):
+        if terminate:
+            if self.root:
+                await self.root.terminateTree()
 
     def _del_observed(self):
         """
@@ -365,7 +386,6 @@ class PtraceChannel(AbstractChannel):
             self._debugger.deleteProcess(process)
 
     def __del__(self):
-        self.close(terminate=True)
         self._del_observed()
         self._debugger.quit()
 
@@ -379,37 +399,10 @@ class PtraceForkChannel(PtraceChannel):
         self._event_queue = []
         self._forked_child = None
 
+    async def setup(self):
+        await super().setup()
         # extract forkserver location
-        with open(self._pobj.args[0], 'rb') as f:
-            elf = ELFFile(f)
-
-            # get forkserver offset from image base
-            if not elf.has_dwarf_info():
-                raise RuntimeError("Debug symbols are needed for forkserver")
-            dwarf = elf.get_dwarf_info()
-            try:
-                debug("Searching for forkserver symbol")
-                die = next(die for cu in dwarf.iter_CUs()
-                                 for die in cu.iter_DIEs()
-                                     if 'DW_AT_name' in die.attributes and
-                                         die.attributes['DW_AT_name'].value == b'forkserver'
-                )
-            except StopIteration:
-                raise RuntimeError("Forkserver symbol not found")
-            base_addr = die.attributes['DW_AT_low_pc'].value
-
-            if elf.header['e_type'] == 'ET_EXEC':
-                self._forkserver = base_addr
-            elif elf.header['e_type'] == 'ET_DYN':
-                # get runtime image base
-                vmmaps = self._proc.readMappings()
-                assert vmmaps[0].pathname == self._pobj.args[0], \
-                    ("Path to first module in the vmmap did not match the path"
-                     " to the executable. Maybe you are using a symbolic link"
-                     " as the path to the target?")
-                run_base = vmmaps[0].start
-                self._forkserver = base_addr + run_base
-            debug(f"Forkserver found at 0x{self._forkserver:016X}")
+        self._symb_forkserver = resolve_symbol(self._proc, 'forkserver')
 
     @property
     def root(self):
@@ -419,18 +412,18 @@ class PtraceForkChannel(PtraceChannel):
     def root(self, value):
         self._forked_child = value
 
-    def process_exit(self, event):
+    async def process_exit(self, event):
         try:
-            super().process_exit(event)
+            await super().process_exit(event)
         finally:
             # if the current target exits unexpectedly, we also report it to the forkserver
             if event.process == self._forked_child:
-                self._wakeup_forkserver()
+                await self._wakeup_forkserver()
             elif event.process == self._proc:
                 error("Forkserver crashed!")
                 raise ForkserverCrashedException
 
-    def process_signal(self, event):
+    async def process_signal(self, event):
         if event.signum == signal.SIGTRAP:
             # If the forkserver traps, that means it's waiting for its child to
             # die. We will wake it up when we kill the forked_child.
@@ -449,20 +442,20 @@ class PtraceForkChannel(PtraceChannel):
                 if self._proc_untrap:
                     # When the child dies unexpectedly (ForkChildKilledEvent),
                     # we wake up the server
-                    self._wakeup_forkserver()
+                    await self._wakeup_forkserver()
                     self._proc_untrap = False
                 self._wait_for_proc = False
         elif event.signum == signal.SIGCHLD and event.process == self._proc:
             # when the forkserver receives SIGCHLD, we ignore it
             self.resume_process(event.process)
         else:
-            super().process_signal(event)
+            await super().process_signal(event)
 
-    def process_auxiliary_event(self, event, ignore_callback):
+    async def process_auxiliary_event(self, event, ignore_callback):
         try:
             raise event
         except NewProcessEvent as event:
-            self.process_new(event, ignore_callback)
+            await self.process_new(event, ignore_callback)
             if event.process.parent == self._proc and event.process.is_attached:
                 # pause children and queue up syscalls until forkserver traps
                 self._wait_for_proc = True
@@ -476,15 +469,16 @@ class PtraceForkChannel(PtraceChannel):
             self._proc_untrap = True
             CountProfiler("infant_mortality")(1)
         except Exception as event:
-            super().process_auxiliary_event(event, ignore_callback)
+            await super().process_auxiliary_event(event, ignore_callback)
 
-    def push_observe(self, callback: Callable[[ProcessEvent, Exception], Any]) \
+    async def push_observe(self,
+            callback: Callable[[ProcessEvent, Exception], Any]) \
             -> PtraceProcess:
         if self._forked_child:
-            self._wakeup_forkserver()
-        return super().push_observe(callback)
+            await self._wakeup_forkserver()
+        return await super().push_observe(callback)
 
-    def _wait_for_syscall(self, process: PtraceProcess=None, **kwargs):
+    async def _wait_for_syscall(self, process: PtraceProcess=None, **kwargs):
         # this next block ensures that a forked child does not exit before
         # the forkserver traps. in that scenario, the wake-up call is sent
         # before the forkserver traps, and then it traps forever
@@ -493,9 +487,9 @@ class PtraceForkChannel(PtraceChannel):
             event = self._event_queue.pop(0)
         else:
             if process:
-                event = self._debugger.waitProcessEvent(pid=process.pid, **kwargs)
+                event = await self._debugger.waitProcessEvent(pid=process.pid, **kwargs)
             else:
-                event = self._debugger.waitProcessEvent(**kwargs)
+                event = await self._debugger.waitProcessEvent(**kwargs)
 
             if self._wait_for_proc and event.process != self._proc:
                 self._event_queue.append(event)
@@ -537,7 +531,7 @@ class PtraceForkChannel(PtraceChannel):
             self._stack_push(process, address)
 
             # redirect control flow to the forkserver
-            process.setreg(CPU_INSTR_POINTER, self._forkserver)
+            process.setreg(CPU_INSTR_POINTER, self._symb_forkserver)
 
     def _invoke_forkserver(self, process: PtraceProcess):
         address = process.getInstrPointer()
@@ -552,7 +546,7 @@ class PtraceForkChannel(PtraceChannel):
             # redirect control flow back where it should have resumed
             process.setreg(CPU_INSTR_POINTER, self._trap_rip)
 
-    def _wakeup_forkserver(self):
+    async def _wakeup_forkserver(self):
         if self._proc_trapped:
             debug("Waking up forkserver :)")
             self.resume_process(self._proc)
@@ -565,7 +559,7 @@ class PtraceForkChannel(PtraceChannel):
                 for process in self._debugger:
                     process.syscall_state._ignore_callback = process.syscall_state.ignore_callback
 
-                self.monitor_syscalls(None,
+                await self.monitor_syscalls(None,
                     self._wakeup_forkserver_ignore_callback,
                     self._wakeup_forkserver_break_callback,
                     self._wakeup_forkserver_syscall_callback,
@@ -577,29 +571,31 @@ class PtraceForkChannel(PtraceChannel):
 
             self._proc_trapped = False
 
-    def close(self, **kwargs):
-        super().close(**kwargs)
+    async def close(self, *, terminate: bool=True):
+        # we skip shutting down the executor
         if self._forked_child:
+            if terminate:
+                await self._forked_child.terminateTree()
             # when we kill the forked_child, we wake up the forkserver from trap
-            self._wakeup_forkserver()
+            await self._wakeup_forkserver()
 
     ### Callbacks ###
     def _invoke_forkserver_ignore_callback(self, syscall):
         return True
 
-    def _invoke_forkserver_break_callback(self):
+    async def _invoke_forkserver_break_callback(self):
         return self._proc_trapped
 
-    def _invoke_forkserver_syscall_callback(self, process, syscall):
+    async def _invoke_forkserver_syscall_callback(self, process, syscall):
         pass
 
     def _wakeup_forkserver_ignore_callback(self, syscall):
         return False
 
-    def _wakeup_forkserver_break_callback(self):
+    async def _wakeup_forkserver_break_callback(self):
         return self._wakeup_forkserver_syscall_found
 
-    def _wakeup_forkserver_syscall_callback(self, process, syscall):
+    async def _wakeup_forkserver_syscall_callback(self, process, syscall):
         is_entry = syscall.result is None
         self._wakeup_forkserver_syscall_found = True
         if is_entry:
@@ -617,7 +613,7 @@ class PtraceChannelFactory(AbstractChannelFactory,
             config['driver'].get('type') == 'unix'
 
     @abstractmethod
-    def create(self, pobj: Popen, netns: str, **kwargs) -> PtraceChannel:
+    async def create(self, pobj: Popen, netns: str, **kwargs) -> PtraceChannel:
         pass
 
 @dataclass
@@ -646,6 +642,7 @@ class ProcessDriver(BaseDriver,
         self._exec_env = self.setup_execution_environment(exec)
         self._pobj = None # Popen object of child process
         self._netns_name = f'ns:{uuid4()}'
+        self._disable_aslr = disable_aslr
 
         if disable_aslr:
             ADDR_NO_RANDOMIZE = 0x0040000
@@ -687,6 +684,7 @@ class ProcessDriver(BaseDriver,
 
     def _prepare_process(self):
         os.setsid()
+        signal.pthread_sigmask(signal.SIG_SETMASK, {})
         netns.setns(self._netns_name, flags=os.O_CREAT)
         with IPRoute() as ipr:
             ipr.link('set', index=1, state='up')
@@ -736,14 +734,13 @@ class ProcessDriver(BaseDriver,
                 SECCOMP_FILTER_FLAG_TSYNC, ctypes.addressof(prog))):
             raise RuntimeError("Failed to install seccomp bpf")
 
-    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
-    def relaunch(self):
+    async def relaunch(self):
         ## Kill current process, if any
         observed = None
         if self._pobj:
             observed = self._channel.observed
             # ensure that the channel is closed and the debugger detached
-            self._channel.close(terminate=True)
+            await self._channel.close(terminate=True)
 
             # close pipes, if any
             for f in ('in', 'out', 'err'):
@@ -768,8 +765,12 @@ class ProcessDriver(BaseDriver,
         self._pobj = self._popen()
 
         ## Establish a connection
-        self._channel = self._factory.create(self._pobj, self._netns_name,
-            observed=observed)
+        await self.create_channel(observed=observed)
+
+    async def create_channel(self, **kwargs):
+        self._channel = await self._factory.create(self._pobj, self._netns_name,
+            **kwargs)
+        return self._channel
 
     @property
     def channel(self):
@@ -795,20 +796,19 @@ class ProcessForkDriver(ProcessDriver):
         return super().match_config(config) and \
             config['driver'].get('forkserver')
 
-    @sync_to_async(executor=GLOBAL_ASYNC_EXECUTOR)
-    def relaunch(self):
+    async def relaunch(self):
         if not self._pobj:
             ## Launch new process
             self._pobj = self._popen()
         elif self._channel:
             ## Kill current process, if any
             try:
-                self._channel.close(terminate=True)
+                await self._channel.close(terminate=True)
             except ProcessLookupError:
                 pass
 
         ## Establish a connection
-        self._channel = self._factory.create(self._pobj, self._netns_name)
+        await self.create_channel()
 
 class ForkserverCrashedException(RuntimeError):
     pass
@@ -821,12 +821,12 @@ class FileDescriptorChannel(PtraceChannel):
             else None
         self.synced = False
 
-    def process_new(self, *args, **kwargs):
-        super().process_new(*args, **kwargs)
+    async def process_new(self, *args, **kwargs):
+        await super().process_new(*args, **kwargs)
         for fd in self._refcounter:
             self._refcounter[fd] += 1
 
-    def monitor_syscalls(self,
+    async def monitor_syscalls(self,
             monitor_target: Callable,
             ignore_callback: Callable[[PtraceSyscall], bool],
             break_callback: Callable[..., bool],
@@ -844,18 +844,75 @@ class FileDescriptorChannel(PtraceChannel):
         kwargs['break_on_entry'] = True
         kwargs['break_on_exit'] = True
         new_syscall_callback = self._tracer_syscall_callback
-        return super().monitor_syscalls(monitor_target, new_ignore_callback,
+        return await super().monitor_syscalls(
+            monitor_target, new_ignore_callback,
             break_callback, new_syscall_callback, timeout=timeout,
             process=process, kw=orig_kwargs, **kwargs)
 
-    def sync(self):
+    @abstractmethod
+    async def read_bytes(self) -> ByteString:
+        pass
+
+    @abstractmethod
+    async def write_bytes(self, data) -> int:
+        pass
+
+    @property
+    @abstractmethod
+    def file(self):
+        pass
+
+    async def sync(self):
+        async def break_cb():
+            return self.synced
+        async def syscall_cb(syscall):
+            assert False # will never be called
         self.synced = False
         ignore_cb = lambda s: True
-        break_cb = lambda: self.synced
-        syscall_cb = lambda p, s: False # will never be called
-        self.monitor_syscalls(None, ignore_cb, break_cb, syscall_cb,
+        await self.monitor_syscalls(None, ignore_cb, break_cb, syscall_cb,
             break_on_entry=False, break_on_exit=False,
             timeout=self._data_timeout)
+
+    async def send(self, data: ByteString) -> int:
+        # flush any data left in the receive buffer
+        while await self.receive():
+            pass
+
+        if len(data):
+            sent = await self._send_some(data)
+            await self.sync()
+            assert self.synced
+        else:
+            sent = 0
+        debug(f"Sent data to target: {data[:sent]}")
+        return sent
+
+    async def receive(self) -> ByteString:
+        if not self.is_file_readable():
+            return b''
+        return await self.read_bytes()
+
+    def is_file_readable(self):
+        try:
+            poll, _, _ = select.select([self.file], [], [], 0)
+            if self.file not in poll:
+                return False
+        except ValueError:
+            raise ChannelBrokenException("file fd is invalid")
+        return True
+
+    async def _send_some(self, data: ByteString) -> int:
+        self._send_server_received = 0
+        self._send_client_sent = 0
+        # Set up a barrier so that client_sent is ready when checking for break
+        self._send_barrier = asyncio.Barrier(2)
+        self._send_barrier_passed = False
+
+        self._send_data = data
+        _, ret = await self.monitor_syscalls(self._send_monitor_target,
+            self._send_ignore_callback, self._send_break_callback,
+            self._send_syscall_callback, timeout=self._data_timeout)
+        return ret
 
     def dup_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
         self._refcounter[syscall.result] = 1
@@ -886,7 +943,7 @@ class FileDescriptorChannel(PtraceChannel):
         return syscall.name not in ('read', 'poll', 'ppoll', 'select',
             'pselect6')
 
-    def _tracer_syscall_callback(self,
+    async def _tracer_syscall_callback(self,
             process: PtraceProcess, syscall: PtraceSyscall, *, kw, **kwargs):
         is_entry = syscall.result is None
         processed = False
@@ -898,7 +955,7 @@ class FileDescriptorChannel(PtraceChannel):
             (not is_entry and orig_break_on_exit)
         if not orig_ignore_callback(syscall) and orig_match_condition:
             orig_syscall_callback = kw['orig_syscall_callback']
-            processed = orig_syscall_callback(process, syscall, **kwargs)
+            processed = await orig_syscall_callback(process, syscall, **kwargs)
 
         if not self._dup_ignore_callback(syscall) and not is_entry:
             self._dup_syscall_exit_callback_internal(process, syscall)
@@ -983,6 +1040,43 @@ class FileDescriptorChannel(PtraceChannel):
             case _:
                 return None
         return matched_fd
+
+    def _send_ignore_callback(self, syscall):
+        return syscall.name != 'read'
+
+    async def _send_syscall_callback(self, process, syscall):
+        if not self._send_ignore_callback(syscall) and \
+                syscall.arguments[0].value in self._refcounter:
+            if syscall.result <= 0:
+                raise ChannelBrokenException(
+                    "Target failed to read data off file")
+            self._send_server_received += syscall.result
+
+    async def _send_break_callback(self):
+        if not self._send_barrier_passed:
+            try:
+                await self._send_barrier.wait()
+            except asyncio.BrokenBarrierError:
+                raise ChannelBrokenException("Barrier broke while waiting")
+            else:
+                self._send_barrier_passed = True
+        assert self._send_client_sent > 0
+        debug(f"{self._send_client_sent=}; {self._send_server_received=}")
+        if self._send_server_received > self._send_client_sent:
+            raise ChannelBrokenException("Target received too many bytes!")
+        return self._send_server_received == self._send_client_sent
+
+    async def _send_monitor_target(self):
+        try:
+            ret = await self.write_bytes(self._send_data)
+            if ret == 0:
+                raise ChannelBrokenException("Failed to send any data")
+        except Exception:
+            await self._send_barrier.abort()
+            raise
+        self._send_client_sent = ret
+        await self._send_barrier.wait()
+        return ret
 
 @dataclass(kw_only=True, frozen=True)
 class FileDescriptorChannelFactory(PtraceChannelFactory,
@@ -1078,3 +1172,68 @@ class SharedMemoryObject:
             self._map.close()
         if self._mem is not None and self._owner:
             self._mem.unlink()
+
+def resolve_dwarf_symbol(elf: ELFFile, symbol: str):
+    if not elf.has_dwarf_info():
+        raise ValueError("DWARF info is needed for resolving symbols")
+    dwarf = elf.get_dwarf_info()
+    try:
+        debug(f"Searching for {symbol=}")
+        die = next(die
+            for cu in dwarf.iter_CUs()
+                for die in cu.iter_DIEs()
+                if 'DW_AT_name' in die.attributes and
+                    die.attributes['DW_AT_name'].value == symbol.encode()
+        )
+    except StopIteration:
+        raise KeyError(f"{symbol=} not found")
+    rel_addr = die.attributes['DW_AT_low_pc'].value
+    return rel_addr
+
+def resolve_symtab_symbol(elf: ELFFile, symbol: str):
+    symtab = elf.get_section_by_name('.symtab')
+    if not symtab:
+        raise ValueError(
+            "An unstripped binary must be used for resolving symbols!")
+    symbols = symtab.get_symbol_by_name(symbol)
+    if not symbols:
+        raise KeyError(f"{symbol=} not found")
+    elif len(symbols) > 1:
+        raise ValueError("Multiple symbols found, ambiguous resolution")
+
+    symbol, = symbols
+    rel_addr = symbol['st_value']
+    return rel_addr
+
+def resolve_symbol(process: PtraceProcess, symbol: str):
+    path = os.path.realpath(readProcessStat(process.pid).program)
+    with open(path, 'rb') as file:
+        elf = ELFFile(file)
+        for fn in (resolve_symtab_symbol, resolve_dwarf_symbol):
+            try:
+                rel_addr = fn(elf, symbol)
+                break
+            except (KeyError, ValueError):
+                pass
+        else:
+            raise RuntimeError(f"Failed to find {symbol=}")
+
+        if elf.header['e_type'] == 'ET_EXEC':
+            addr = rel_addr
+        elif elf.header['e_type'] == 'ET_DYN':
+            # get runtime image base
+            vmmaps = process.readMappings()
+            try:
+                base_map = next(m for m in vmmaps if m.pathname == path)
+            except StopIteration:
+                raise RuntimeError(
+                    "Could not find matching vmmap entry."
+                    " Maybe you are using a symbolic link"
+                    " as the path to the target?")
+            load_base = base_map.start
+            addr = rel_addr + load_base
+        else:
+            raise RuntimeError(f"Entry `{elf.header['e_type']}` not supported")
+
+        debug(f"{symbol=} found at 0x{addr:016X}")
+        return addr
