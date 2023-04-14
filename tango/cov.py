@@ -6,7 +6,9 @@ from tango.core import (BaseState, BaseTracker, AbstractInput, LambdaProfiler,
     LoadableTarget, BaseInput, get_profiler, get_current_session,
     TransmitInstruction, PreparedInput)
 from tango.replay import ReplayLoader
-from tango.unix import ProcessDriver, ProcessForkDriver, SharedMemoryObject
+from tango.unix import (
+    ProcessDriver, ProcessForkDriver, SharedMemoryObject, resolve_symbol)
+from tango.ptrace.debugger import PtraceProcess
 from tango.webui import WebRenderer, WebDataLoader
 from tango.common import ComponentType, ComponentOwner
 from tango.exceptions import (
@@ -274,15 +276,19 @@ class NPFeatureMap(FeatureMap):
                np.array_equal(self._feature_arr, other._feature_arr)
 
 class CoverageDriver(ProcessDriver,
-        capture_paths=('driver.clear_coverage',)):
+        capture_paths=('driver.clear_coverage', 'tracker.exclude_postmortem')):
     @classmethod
     def match_config(cls, config: dict):
         return super().match_config(config) and \
             config['tracker'].get('type') == 'coverage'
 
-    def __init__(self, *, clear_coverage: Optional[bool]=False, **kwargs):
+    def __init__(self, *,
+            clear_coverage: bool=False, exclude_postmortem: bool=True,
+            **kwargs):
         super().__init__(**kwargs)
         self._clear_cov = clear_coverage
+        self._exclude_postmortem = exclude_postmortem
+        self._symb_tracer = None
 
     async def finalize(self, owner: ComponentOwner):
         # WARN this bypasses the expected component hierarchy and would usually
@@ -292,6 +298,15 @@ class CoverageDriver(ProcessDriver,
         self._tracker: CoverageTracker = owner['tracker']
         assert isinstance(self._tracker, CoverageTracker)
         await super().finalize(owner)
+
+    async def relaunch(self):
+        await super().relaunch()
+        if self._exclude_postmortem and not self._symb_tracer:
+            # FIXME we only resolve it once; this may be problematic when not
+            # using the forkserver and ASLR is enabled
+            assert self._disable_aslr, "ASLR must be disabled with disable_aslr"
+            process = self._channel._proc
+            self._symb_tracer = resolve_symbol(process, 'CoverageTracer')
 
     async def execute_input(self, input: AbstractInput):
         try:
@@ -311,6 +326,29 @@ class CoverageDriver(ProcessDriver,
         finally:
             ValueMeanProfiler("input_len", samples=100)(idx)
             CountProfiler("total_instructions")(idx)
+
+    def disable_coverage_tracer(self, root: PtraceProcess):
+        disabled_p = self._symb_tracer + StructTracer.disabled.offset
+        disabled_v = (1).to_bytes(StructTracer.disabled.size,
+                                  byteorder=sys.byteorder)
+        try:
+            root.writeBytes(disabled_p, disabled_v)
+        except PtraceError as ex:
+            warning(f"Failed to disable coverage in {root}: {ex=}")
+        for process in root.children:
+            self.disable_coverage_tracer(process)
+
+    async def create_channel(self, **kwargs):
+        if self._exclude_postmortem:
+            # we need to disable coverage before the tracer resumes the process;
+            # if we only react after the monitor_syscalls finishes and raises an
+            # exception, it would be too late.
+            kwargs['on_syscall_exception'] = self.on_syscall_exception
+        return await super().create_channel(**kwargs)
+
+    def on_syscall_exception(self, event, syscall, exc):
+        if isinstance(exc, ChannelBrokenException):
+            self.disable_coverage_tracer(event.process)
 
 # this class exists only to allow matching with forkserver==true
 class CoverageForkDriver(CoverageDriver, ProcessForkDriver):
@@ -991,3 +1029,11 @@ class CmpLogTables:
             )
             dtype = dtyp
         return TableOfRecentCompares
+
+class StructTracer(Structure):
+    _fields_ = (
+        ('initialized', ctypes.c_bool),
+        ('disabled', ctypes.c_bool),
+        ('num_guards', ctypes.c_size_t),
+        ('_reserved', ctypes.c_void_p), # we do not care past this point
+    )

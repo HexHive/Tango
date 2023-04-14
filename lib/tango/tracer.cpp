@@ -20,8 +20,6 @@
 
 namespace fuzzer {
 
-Tracer CoverageTracer;
-
 template <class T>
 struct SharedMemoryObject {
     T *pMap;
@@ -156,65 +154,66 @@ inline void Tracer::HandleCmp(uintptr_t PC, T Arg1, T Arg2) {
 
 
 extern "C" {
+fuzzer::Tracer CoverageTracer;
 
 ATTRIBUTE_NO_SANITIZE_ALL
 void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
-    fuzzer::CoverageTracer.InitializeGuards(start, stop);
+    CoverageTracer.InitializeGuards(start, stop);
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
 void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
     uintptr_t PC = reinterpret_cast<uintptr_t>(GET_CALLER_PC());
-    fuzzer::CoverageTracer.HandleTracePCGuard(PC, guard);
+    CoverageTracer.HandleTracePCGuard(PC, guard);
 }
 
 #ifdef USE_CMPLOG
 ATTRIBUTE_NO_SANITIZE_ALL
 void __sanitizer_cov_trace_cmp8(uint64_t Arg1, uint64_t Arg2) {
   uintptr_t PC = reinterpret_cast<uintptr_t>(GET_CALLER_PC());
-  fuzzer::CoverageTracer.HandleCmp(PC, Arg1, Arg2);
+  CoverageTracer.HandleCmp(PC, Arg1, Arg2);
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
 void __sanitizer_cov_trace_const_cmp8(uint64_t Arg1, uint64_t Arg2) {
   uintptr_t PC = reinterpret_cast<uintptr_t>(GET_CALLER_PC());
-  fuzzer::CoverageTracer.HandleCmp(PC, Arg1, Arg2);
+  CoverageTracer.HandleCmp(PC, Arg1, Arg2);
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
 void __sanitizer_cov_trace_cmp4(uint32_t Arg1, uint32_t Arg2) {
   uintptr_t PC = reinterpret_cast<uintptr_t>(GET_CALLER_PC());
-  fuzzer::CoverageTracer.HandleCmp(PC, Arg1, Arg2);
+  CoverageTracer.HandleCmp(PC, Arg1, Arg2);
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
 void __sanitizer_cov_trace_const_cmp4(uint32_t Arg1, uint32_t Arg2) {
   uintptr_t PC = reinterpret_cast<uintptr_t>(GET_CALLER_PC());
-  fuzzer::CoverageTracer.HandleCmp(PC, Arg1, Arg2);
+  CoverageTracer.HandleCmp(PC, Arg1, Arg2);
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
 void __sanitizer_cov_trace_cmp2(uint16_t Arg1, uint16_t Arg2) {
   uintptr_t PC = reinterpret_cast<uintptr_t>(GET_CALLER_PC());
-  fuzzer::CoverageTracer.HandleCmp(PC, Arg1, Arg2);
+  CoverageTracer.HandleCmp(PC, Arg1, Arg2);
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
 void __sanitizer_cov_trace_const_cmp2(uint16_t Arg1, uint16_t Arg2) {
   uintptr_t PC = reinterpret_cast<uintptr_t>(GET_CALLER_PC());
-  fuzzer::CoverageTracer.HandleCmp(PC, Arg1, Arg2);
+  CoverageTracer.HandleCmp(PC, Arg1, Arg2);
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
 void __sanitizer_cov_trace_cmp1(uint8_t Arg1, uint8_t Arg2) {
   uintptr_t PC = reinterpret_cast<uintptr_t>(GET_CALLER_PC());
-  fuzzer::CoverageTracer.HandleCmp(PC, Arg1, Arg2);
+  CoverageTracer.HandleCmp(PC, Arg1, Arg2);
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
 void __sanitizer_cov_trace_const_cmp1(uint8_t Arg1, uint8_t Arg2) {
   uintptr_t PC = reinterpret_cast<uintptr_t>(GET_CALLER_PC());
-  fuzzer::CoverageTracer.HandleCmp(PC, Arg1, Arg2);
+  CoverageTracer.HandleCmp(PC, Arg1, Arg2);
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
@@ -247,18 +246,18 @@ void __sanitizer_cov_trace_switch(uint64_t Val, uint64_t *Cases) {
   // Apply HandleCmp to {Val,Smaller} and {Val, Larger},
   // use i as the PC modifier for HandleCmp.
   if (ValSizeInBits == 16) {
-    fuzzer::CoverageTracer.HandleCmp(PC + 2 * i, static_cast<uint16_t>(Val),
+    CoverageTracer.HandleCmp(PC + 2 * i, static_cast<uint16_t>(Val),
                           (uint16_t)(Smaller));
-    fuzzer::CoverageTracer.HandleCmp(PC + 2 * i + 1, static_cast<uint16_t>(Val),
+    CoverageTracer.HandleCmp(PC + 2 * i + 1, static_cast<uint16_t>(Val),
                           (uint16_t)(Larger));
   } else if (ValSizeInBits == 32) {
-    fuzzer::CoverageTracer.HandleCmp(PC + 2 * i, static_cast<uint32_t>(Val),
+    CoverageTracer.HandleCmp(PC + 2 * i, static_cast<uint32_t>(Val),
                           (uint32_t)(Smaller));
-    fuzzer::CoverageTracer.HandleCmp(PC + 2 * i + 1, static_cast<uint32_t>(Val),
+    CoverageTracer.HandleCmp(PC + 2 * i + 1, static_cast<uint32_t>(Val),
                           (uint32_t)(Larger));
   } else {
-    fuzzer::CoverageTracer.HandleCmp(PC + 2*i, Val, Smaller);
-    fuzzer::CoverageTracer.HandleCmp(PC + 2*i + 1, Val, Larger);
+    CoverageTracer.HandleCmp(PC + 2*i, Val, Smaller);
+    CoverageTracer.HandleCmp(PC + 2*i + 1, Val, Larger);
   }
 }
 #endif

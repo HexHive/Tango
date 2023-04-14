@@ -56,6 +56,9 @@ private:
 #endif
 };
 
-extern Tracer CoverageTracer;
 
 } // namespace fuzzer
+
+extern "C" {
+    extern fuzzer::Tracer CoverageTracer;
+}
