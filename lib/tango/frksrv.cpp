@@ -44,8 +44,10 @@ static void _forkserver() {
         } else {
             fifofd = open(fifopath, O_RDONLY);
             free(fifopath);
-            dup2(fifofd, STDIN_FILENO);
-            close(fifofd);
+            if (fifofd >= 0) {
+                dup2(fifofd, STDIN_FILENO);
+                close(fifofd);
+            }
             break;
         }
     }
