@@ -3,6 +3,7 @@ import os
 os.environ['TANGO_NO_PROFILE'] = 'y'
 
 from tango.core import FuzzerConfig
+from tango.raw import RawInput
 import asyncio
 import argparse
 import logging
@@ -36,6 +37,7 @@ def configure_verbosity(level):
 async def replay(config, file):
     gen = await config.instantiate('generator')
     inp = gen.load_input(file)
+    RawInput(file=f'replay.{gen._fmt.typ}.bin', fmt=gen._fmt).dumpi(inp)
     gen._input_kls(file=f'replay.{gen._fmt.typ}').dumpi(inp)
 
     ld = await config.instantiate('loader')
