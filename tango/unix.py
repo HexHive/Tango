@@ -479,13 +479,12 @@ class PtraceForkChannel(PtraceChannel):
             # die. We will wake it up when we kill the forked_child.
             # Otherwise, the child trapped and we resume its execution
             if event.process != self._proc:
-                event.process.parent = None
-                event.process.root = event.process
-                self._forked_child = event.process
+                forked_child = event.process
+                self._forked_child = forked_child.root = forked_child
                 # restore correct trap byte and registers
-                self._cleanup_forkserver(event.process)
+                self._cleanup_forkserver(forked_child)
                 # resume execution of the child process
-                self.resume_process(event.process)
+                self.resume_process(forked_child)
             else:
                 debug("Forkserver trapped, waiting for wake-up call")
                 self._proc_trapped = True
