@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from . import info, warning, critical, error
-from functools import partial, wraps, cached_property, cache
-from async_property import async_property, async_cached_property
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum, EnumType, auto
@@ -19,8 +17,7 @@ import inspect
 import time
 
 __all__ = [
-    'GLOBAL_ASYNC_EXECUTOR', 'async_property', 'cached_property',
-    'async_cached_property', 'async_enumerate', 'async_suspendable',
+    'GLOBAL_ASYNC_EXECUTOR', 'async_enumerate', 'async_suspendable',
     'sync_to_async', 'timeit', 'Suspendable', 'ComponentType', 'ComponentOwner',
     'ComponentKey', 'Component', 'AsyncComponent',
     'create_session_context', 'get_session_context', 'get_session_task_group'

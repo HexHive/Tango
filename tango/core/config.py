@@ -7,9 +7,10 @@ from tango.core.explorer import AbstractExplorer
 from tango.core.generator import AbstractInputGenerator
 from tango.core.strategy import AbstractStrategy
 from tango.core.session import FuzzerSession
-from tango.common import (cached_property, AsyncComponent, ComponentOwner,
+from tango.common import (AsyncComponent, ComponentOwner,
     ComponentType, ComponentKey)
 
+from functools import cached_property
 from random import Random
 from pathlib import Path
 import json
