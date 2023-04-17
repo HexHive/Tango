@@ -23,7 +23,8 @@ from tango.exceptions import (ChannelTimeoutException, StabilityException,
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from typing import (
-    IO, AsyncGenerator, Callable, Iterable, Optional, Any, ByteString)
+    IO, AsyncGenerator, Callable, Iterable, Optional, Any, ByteString,
+    Awaitable)
 from pyroute2 import netns, IPRoute
 from subprocess import Popen, TimeoutExpired, DEVNULL, PIPE
 from elftools.elf.elffile import ELFFile
@@ -44,7 +45,7 @@ __all__ = [
     'ProcessDriver', 'ProcessForkDriver',
     'PtraceChannel', 'PtraceForkChannel', 'PtraceChannelFactory',
     'FileDescriptorChannel', 'FileDescriptorChannelFactory',
-    'SharedMemoryObject', 'resolve_symbol'
+    'SharedMemoryObject', 'resolve_symbol', 'EventOptions'
 ]
 
 SOCKET_SYSCALL_NAMES = SOCKET_SYSCALL_NAMES.union(('read', 'write'))
@@ -56,6 +57,15 @@ if HAS_SECCOMP_FILTER:
         SECCOMP_FILTER_FLAG_TSYNC, SECCOMP_SET_MODE_FILTER)
     from tango.ptrace.binding.linux_struct import seccomp_data
     from tango.ptrace.syscall import SYSCALL_NUMBERS as NR
+
+@dataclass
+class EventOptions:
+    ignore_callback: Callable[[PtraceSyscall], bool] = lambda s: True
+    syscall_callback: Callable[[PtraceProcess, PtraceSyscall], Awaitable] = None
+    break_on_entry: bool = False
+    break_on_exit: bool = False
+
+DefaultOptions = EventOptions()
 
 class PtraceChannel(AbstractChannel):
     def __init__(self, pobj: Popen, *, use_seccomp: bool, observed: dict=None,
@@ -113,12 +123,18 @@ class PtraceChannel(AbstractChannel):
     def root(self, value):
         self._proc = value
 
-    def prepare_process(self, process, *, ignore_callback=None, resume=True):
+    def prepare_process(self, process, *,
+            ignore_callback=None, mask=None, resume=True):
         if not process in self._debugger:
             self._debugger.traceProcess(process)
 
         if self._process_all:
             ignore_callback = lambda x: False
+        if mask:
+            ignore_callback = mask
+        elif opts := self.observed.get(process.root):
+            ignore_callback = opts[1].ignore_callback
+
         if ignore_callback:
             process.syscall_state.ignore_callback = ignore_callback
 
@@ -174,7 +190,8 @@ class PtraceChannel(AbstractChannel):
         if event.process.is_attached:
             # sometimes, child process might have been killed at creation,
             # so the debugger detaches it; we check for that here
-            self.prepare_process(event.process, ignore_callback, resume=True)
+            self.prepare_process(
+                event.process, ignore_callback=ignore_callback, resume=True)
         self.resume_process(event.process.parent)
 
     async def process_exec(self, event):
@@ -193,14 +210,14 @@ class PtraceChannel(AbstractChannel):
         except ProcessExecution as event:
             await self.process_exec(event)
 
-    async def process_event(self, event, ignore_callback, syscall_callback, *,
-        break_on_entry: bool, break_on_exit: bool, **kwargs):
+    async def process_event(self, event: ProcessEvent, opts: EventOptions,
+            **kwargs):
         if event is None:
             return
 
         is_syscall = event.is_syscall_stop()
         if not is_syscall:
-            await self.process_auxiliary_event(event, ignore_callback)
+            await self.process_auxiliary_event(event, opts.ignore_callback)
         else:
             # Process syscall enter or exit
             # debug(f"Target process with {event.process.pid=} requested a syscall")
@@ -215,17 +232,17 @@ class PtraceChannel(AbstractChannel):
             is_entry = state.next_event == 'exit'
             is_exit = not is_entry
 
-            match_condition = (break_on_entry and is_entry) or \
-                (break_on_exit and is_exit)
+            match_condition = (opts.break_on_entry and is_entry) or \
+                (opts.break_on_exit and is_exit)
             ignore_condition = syscall is not None and \
-                not (self._process_all and ignore_callback(syscall))
+                not (self._process_all and opts.ignore_callback(syscall))
             should_process = ignore_condition and match_condition
 
             processed = False
             try:
                 if should_process:
                     processed = await self.process_syscall(event.process, syscall,
-                        syscall_callback, is_entry, **kwargs)
+                        opts.syscall_callback, is_entry, **kwargs)
             except Exception as ex:
                 if self.on_syscall_exception:
                     self.on_syscall_exception(event, syscall, ex)
@@ -252,18 +269,18 @@ class PtraceChannel(AbstractChannel):
             process.syscall(signum)
 
     async def push_observe(self,
-            callback: Callable[[ProcessEvent, Exception], Any]) \
-            -> PtraceProcess:
-        if not self.root:
+            callback: Callable[[ProcessEvent, Exception], Any],
+            opts: EventOptions=DefaultOptions) -> Optional[PtraceProcess]:
+        if not (root := self.root):
             return
+        self.observed[root] = callback, opts
         for proc in self._debugger:
-            if proc.root == self.root:
+            if proc.root == root:
                 # we ignore all syscalls for existing observed processes
-                proc.syscall_state.ignore_callback = lambda x: True
-        self.observed[self.root] = callback
-        rv = self.root
+                self.prepare_process(proc,
+                    mask=opts.ignore_callback, resume=False)
         self.root = None
-        return rv
+        return root
 
     async def pop_observe(self, root: PtraceProcess, kill: bool=True):
         if self.observed.pop(root, None) and kill:
@@ -284,6 +301,10 @@ class PtraceChannel(AbstractChannel):
             break_on_entry: bool = False, break_on_exit: bool = True,
             process: PtraceProcess = None,
             **kwargs):
+        monitor_opts = EventOptions(
+            ignore_callback, syscall_callback,
+            break_on_entry, break_on_exit)
+
         last_process = None
         monitoring = True
         while monitoring:
@@ -298,32 +319,22 @@ class PtraceChannel(AbstractChannel):
                 if not event:
                     continue
 
-                cur_break_on_entry = break_on_entry
-                cur_break_on_exit = break_on_exit
-                cur_syscall_callback = syscall_callback
-                cur_ignore_callback = ignore_callback
-
-                if (observe_cb := self.observed.get(event.process.root)):
+                if (observe_opts := self.observed.get(event.process.root)):
                     debug(f"Masking event for {event.process} with root={event.process.root}")
-                    cur_break_on_entry = cur_break_on_exit = False
-                    cur_syscall_callback = lambda *args, **kwargs: None
-                    # we also ensure that, if an observed process forks, its child's
-                    # syscalls are also ignored
-                    cur_ignore_callback = lambda s: True
+                    observe_cb, opts = observe_opts
                 elif event.process.root not in self._debugger and \
                         event.process.root != self.root:
                     debug(f"Received rogue event ({event}) for {event.process}")
                     continue
+                else:
+                    opts = monitor_opts
 
                 try:
-                    rv = await self.process_event(
-                        event, cur_ignore_callback, cur_syscall_callback,
-                        break_on_entry=cur_break_on_entry,
-                        break_on_exit=cur_break_on_exit, **kwargs)
-                    if rv and not observe_cb and event.is_syscall_stop():
+                    rv = await self.process_event(event, opts, **kwargs)
+                    if rv and not observe_opts and event.is_syscall_stop():
                         last_process = event.process
                 except Exception as ex:
-                    if observe_cb:
+                    if observe_opts:
                         observe_cb(event, ex)
                     else:
                         raise
@@ -350,7 +361,8 @@ class PtraceChannel(AbstractChannel):
         procs = (process,) if process else self._debugger
         for proc in procs:
             # update the ignore_callback of processes in the debugger
-            proc.syscall_state.ignore_callback = ignore_callback
+            self.prepare_process(
+                proc, ignore_callback=ignore_callback, resume=False)
 
         ## Prepare coroutine
         tasks = [self._monitor_syscalls_internal_loop(
@@ -402,7 +414,6 @@ class PtraceForkChannel(PtraceChannel):
         self._proc_trapped = False
         self._proc_untrap = False
         self._wait_for_proc = False
-        self._event_queue = []
         self._forked_child = None
 
     async def setup(self):
@@ -477,29 +488,23 @@ class PtraceForkChannel(PtraceChannel):
         except Exception as event:
             await super().process_auxiliary_event(event, ignore_callback)
 
-    async def push_observe(self,
-            callback: Callable[[ProcessEvent, Exception], Any]) \
-            -> PtraceProcess:
+    async def push_observe(self, *args, **kwargs) -> Optional[PtraceProcess]:
         if self._forked_child:
             await self._wakeup_forkserver()
-        return await super().push_observe(callback)
+        return await super().push_observe(*args, **kwargs)
 
     async def _wait_for_syscall(self, process: PtraceProcess=None, **kwargs):
-        # this next block ensures that a forked child does not exit before
-        # the forkserver traps. in that scenario, the wake-up call is sent
-        # before the forkserver traps, and then it traps forever
         event = None
-        if not self._wait_for_proc and self._event_queue:
-            event = self._event_queue.pop(0)
-        else:
-            if process:
-                event = await self._debugger.waitProcessEvent(pid=process.pid, **kwargs)
+        while not event:
+            if self._wait_for_proc and process is not self._proc:
+                event = await super()._wait_for_syscall(self._proc, **kwargs)
             else:
-                event = await self._debugger.waitProcessEvent(**kwargs)
+                event = await super()._wait_for_syscall(process, **kwargs)
 
-            if self._wait_for_proc and event.process != self._proc:
-                self._event_queue.append(event)
-                debug("Received event while waiting for forkserver; enqueued!")
+            if process and event.process is not process:
+                # we process the event out-of-order
+                opts = DefaultOptions
+                await self.process_event(event, opts)
                 event = None
         return event
 
