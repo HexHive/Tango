@@ -55,7 +55,8 @@ if HAS_SECCOMP_FILTER:
     from tango.ptrace.binding import (BPF_LD, BPF_W, BPF_ABS, BPF_JMP, BPF_JEQ,
         BPF_K, BPF_RET, BPF_STMT, BPF_JUMP, BPF_PROG, BPF_FILTER,
         SECCOMP_RET_ALLOW, SECCOMP_RET_TRACE, SECCOMP_RET_DATA,
-        SECCOMP_FILTER_FLAG_TSYNC, SECCOMP_SET_MODE_FILTER)
+        SECCOMP_FILTER_FLAG_TSYNC, SECCOMP_SET_MODE_FILTER,
+        prctl, PR_SET_NO_NEW_PRIVS, PR_SET_PDEATHSIG)
     from tango.ptrace.binding.linux_struct import seccomp_data
     from tango.ptrace.syscall import SYSCALL_NUMBERS as NR
 
@@ -724,58 +725,6 @@ class ProcessDriver(BaseDriver,
     def __del__(self):
         netns.remove(self._netns_name)
 
-    def _prepare_process(self):
-        os.setsid()
-        signal.pthread_sigmask(signal.SIG_SETMASK, {})
-        netns.setns(self._netns_name, flags=os.O_CREAT)
-        with IPRoute() as ipr:
-            ipr.link('set', index=1, state='up')
-        ptrace_traceme()
-        if self._factory.use_seccomp:
-            self._install_seccomp_filter()
-
-    @staticmethod
-    def _install_seccomp_filter():
-        if not HAS_SECCOMP_FILTER:
-            raise NotImplementedError
-        filt = BPF_FILTER(
-            BPF_STMT(BPF_LD | BPF_W | BPF_ABS, seccomp_data.nr.offset),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['accept'], 16, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['accept4'], 15, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['bind'], 14, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['close'], 13, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['dup'], 12, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['dup2'], 11, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['dup3'], 10, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['listen'], 9, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['poll'], 8, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['ppoll'], 7, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['read'], 6, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['recvfrom'], 5, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['recvmsg'], 4, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['select'], 3, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['shutdown'], 2, 0),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['socket'], 1, 0),
-            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE | SECCOMP_RET_DATA),
-        )
-        prog = BPF_PROG(filt)
-        prctl = ctypes.pythonapi.prctl
-        prctl.restype = ctypes.c_int
-        prctl.argtypes = (ctypes.c_int,
-            ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong
-        )
-        PR_SET_NO_NEW_PRIVS = 38
-        if prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0):
-            raise RuntimeError("Failed to set no_new_privs")
-
-        syscall = ctypes.pythonapi.syscall
-        syscall.restype = ctypes.c_int
-        syscall.argtypes = (ctypes.c_uint64,)*4
-        if (res := syscall(NR['seccomp'], SECCOMP_SET_MODE_FILTER,
-                SECCOMP_FILTER_FLAG_TSYNC, ctypes.addressof(prog))):
-            raise RuntimeError("Failed to install seccomp bpf")
-
     async def relaunch(self):
         ## Kill current process, if any
         observed = None
@@ -828,9 +777,55 @@ class ProcessDriver(BaseDriver,
             cwd = self._exec_env.cwd,
             restore_signals = True, # TODO check if this should be false
             env = self._exec_env.env,
-            preexec_fn = self._prepare_process
+            preexec_fn = self._preexec_fn
         )
         return pobj
+
+    def _preexec_fn(self):
+        os.setsid()
+        signal.pthread_sigmask(signal.SIG_SETMASK, {})
+        netns.setns(self._netns_name, flags=os.O_CREAT)
+        with IPRoute() as ipr:
+            ipr.link('set', index=1, state='up')
+        ptrace_traceme()
+        if self._factory.use_seccomp:
+            self._install_seccomp_filter()
+
+    @staticmethod
+    def _install_seccomp_filter():
+        if not HAS_SECCOMP_FILTER:
+            raise NotImplementedError
+        filt = BPF_FILTER(
+            BPF_STMT(BPF_LD | BPF_W | BPF_ABS, seccomp_data.nr.offset),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['accept'], 16, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['accept4'], 15, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['bind'], 14, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['close'], 13, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['dup'], 12, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['dup2'], 11, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['dup3'], 10, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['listen'], 9, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['poll'], 8, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['ppoll'], 7, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['read'], 6, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['recvfrom'], 5, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['recvmsg'], 4, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['select'], 3, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['shutdown'], 2, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['socket'], 1, 0),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE | SECCOMP_RET_DATA),
+        )
+        prog = BPF_PROG(filt)
+        if prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0):
+            raise RuntimeError("Failed to set no_new_privs")
+
+        syscall = ctypes.pythonapi.syscall
+        syscall.restype = ctypes.c_int
+        syscall.argtypes = (ctypes.c_uint64,)*4
+        if (res := syscall(NR['seccomp'], SECCOMP_SET_MODE_FILTER,
+                SECCOMP_FILTER_FLAG_TSYNC, ctypes.addressof(prog))):
+            raise RuntimeError("Failed to install seccomp bpf")
 
 class ProcessForkDriver(ProcessDriver):
     @classmethod

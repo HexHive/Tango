@@ -268,7 +268,6 @@ except ImportError:
     _ptrace.argtypes = (c_ulong, c_ulong, c_ulong, c_ulong)
     _ptrace.restype = c_ulong
 
-
 def ptrace(command, pid=0, arg1=0, arg2=0, check_errno=False):
     if HAS_CPTRACE:
         set_errno(0)
@@ -455,6 +454,13 @@ if RUNNING_LINUX:
     from tango.ptrace.binding.linux_struct import sigset, signalfd_siginfo
     from tango.ptrace.ctypes_libc import libc
     from signal import Signals
+
+    prctl = libc.prctl
+    prctl.restype = c_int
+    prctl.argtypes = (c_int, c_ulong, c_ulong, c_ulong, c_ulong)
+
+    PR_SET_PDEATHSIG = 1
+    PR_SET_NO_NEW_PRIVS = 38
 
     signalfd = libc.signalfd
     signalfd.argtypes = (

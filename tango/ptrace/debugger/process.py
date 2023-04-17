@@ -402,7 +402,7 @@ class PtraceProcess(object):
                     # Event different than a signal? Raise an exception
                     raise event
             except PtraceError as ex:
-                warning(f"{event.process} received {event} while waiting for exit,"
+                debug(f"{event.process} received {event} while waiting for exit,"
                     f" but the signal could not be delivered {ex=}.")
 
     async def processStatus(self, status):
@@ -456,8 +456,8 @@ class PtraceProcess(object):
         if self.syscall_state.next_event == 'exit':
             # tracer is aware of syscall-entry, so we must not double-notify it.
             # instead, we'll resume the process until syscall-exit occurs
-            debug(f"seccomp_trace event received while expecting"
-                f" syscall-exit-stop; retrying")
+            debug("seccomp_trace event received while expecting"
+                  " syscall-exit-stop; retrying")
             self.syscall()
             return await self.waitEvent()
         else:
