@@ -78,9 +78,14 @@ class Fuzzer:
             d[key] = value
         return overrides
 
+    def _loop_exception_handler(self, loop, context):
+        import ipdb; ipdb.set_trace()
+        pass
+
     async def _bootstrap(self):
         # use session-local task contexts
         loop = asyncio.get_running_loop()
+        loop.set_exception_handler(self._loop_exception_handler)
 
         self._stream_cache = {}
         # we use an empty tuple for `streams` to prevent it being seen as None,
