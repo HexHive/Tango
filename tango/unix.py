@@ -30,6 +30,7 @@ from subprocess import Popen, TimeoutExpired, DEVNULL, PIPE
 from elftools.elf.elffile import ELFFile
 from uuid import uuid4
 from string import ascii_letters, digits
+from functools import partial
 import os
 import sys
 import ctypes
@@ -844,15 +845,12 @@ class FileDescriptorChannel(PtraceChannel):
             timeout: float = None,
             process: PtraceProcess = None,
             **kwargs):
-        new_ignore_callback = lambda s: all((ignore_callback(s),
-            self._dup_ignore_callback(s),
-            self._close_ignore_callback(s),
-            self._select_ignore_callback(s)
-        ))
         orig_kwargs = kwargs | {'orig_syscall_callback': syscall_callback,
             'orig_ignore_callback': ignore_callback}
         kwargs['break_on_entry'] = True
         kwargs['break_on_exit'] = True
+        new_ignore_callback = partial(
+            self._tracer_ignore_callback, ignore_callback)
         new_syscall_callback = self._tracer_syscall_callback
         return await super().monitor_syscalls(
             monitor_target, new_ignore_callback,
@@ -952,6 +950,13 @@ class FileDescriptorChannel(PtraceChannel):
     def _select_ignore_callback(self, syscall: PtraceSyscall) -> bool:
         return syscall.name not in ('read', 'poll', 'ppoll', 'select',
             'pselect6')
+
+    def _tracer_ignore_callback(self, orig_ignore_callback, syscall):
+        return all((orig_ignore_callback(syscall),
+            self._dup_ignore_callback(syscall),
+            self._close_ignore_callback(syscall),
+            self._select_ignore_callback(syscall)
+        ))
 
     async def _tracer_syscall_callback(self,
             process: PtraceProcess, syscall: PtraceSyscall, *, kw, **kwargs):
