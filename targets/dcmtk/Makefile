@@ -9,6 +9,7 @@ dcmtk:
 	rm -rf dcmtk_repo
 	git clone https://github.com/DCMTK/dcmtk dcmtk_repo
 	cd dcmtk_repo && \
+	patch -p1 < ../fix_uaf.patch && \
 	mkdir build && cd build && \
 	cmake .. && \
 	$(MAKE) dcmqrscp && \

@@ -1,0 +1,84 @@
+commit e189b13e04dce850774bdda97fd0916bdf7c87db
+Author: Ahmad Hazimeh <ahmad.hazimeh@epfl.ch>
+Date:   Mon Apr 17 19:04:06 2023 +0200
+
+    Fixed use-after-free bug in dcmqrsrv
+    
+    The storage (**) for the pointer (*) to the association object is
+    located on the stack of waitForAssociation. When it calls
+    handleAssociation(*), the latter eventually calls
+    destroyAssociation(**), which frees the resources and NULLs out the
+    storage pointer passed to it, so as to prevent it from being reused.
+    However, handleAssociation never receives the original storage pointer
+    (**). Instead, it uses the storage of its call arguments as they appear
+    on the stack. destroyAssociation then overwrites handleAssociation's
+    arguments, which are then discarded once it returns. Finally,
+    waitForAssociation is not aware of the changes, since they did not
+    modify its local storage pointer (which remains non-NULL), and it
+    proceeds to call ASC_dropAssociation in clean-up, resulting in the UaF.
+
+diff --git a/dcmqrdb/include/dcmtk/dcmqrdb/dcmqrsrv.h b/dcmqrdb/include/dcmtk/dcmqrdb/dcmqrsrv.h
+index 3c4a90998..a4273fa20 100644
+--- a/dcmqrdb/include/dcmtk/dcmqrdb/dcmqrsrv.h
++++ b/dcmqrdb/include/dcmtk/dcmqrdb/dcmqrsrv.h
+@@ -110,7 +110,7 @@ private:
+   OFCondition refuseAssociation(T_ASC_Association ** assoc, CTN_RefuseReason reason);
+ 
+   OFCondition handleAssociation(
+-    T_ASC_Association * assoc,
++    T_ASC_Association ** assoc,
+     OFBool correctUIDPadding);
+ 
+   OFCondition echoSCP(
+diff --git a/dcmqrdb/libsrc/dcmqrsrv.cc b/dcmqrdb/libsrc/dcmqrsrv.cc
+index f5f9df661..aac242d13 100644
+--- a/dcmqrdb/libsrc/dcmqrsrv.cc
++++ b/dcmqrdb/libsrc/dcmqrsrv.cc
+@@ -205,13 +205,19 @@ OFCondition DcmQueryRetrieveSCP::dispatch(T_ASC_Association *assoc, OFBool corre
+ }
+ 
+ 
+-OFCondition DcmQueryRetrieveSCP::handleAssociation(T_ASC_Association * assoc, OFBool correctUIDPadding)
++OFCondition DcmQueryRetrieveSCP::handleAssociation(T_ASC_Association ** pAssoc, OFBool correctUIDPadding)
+ {
+     OFCondition         cond = EC_Normal;
+     DIC_NODENAME        peerHostName;
+     DIC_AE              peerAETitle;
+     DIC_AE              myAETitle;
+     OFString            temp_str;
++    T_ASC_Association * assoc;
++
++    if (pAssoc == NULL) {
++        return EC_IllegalParameter;
++    }
++    assoc = *pAssoc;
+ 
+     ASC_getPresentationAddresses(assoc->params, peerHostName, sizeof(peerHostName), NULL, 0);
+     ASC_getAPTitles(assoc->params, peerAETitle, sizeof(peerAETitle), myAETitle, sizeof(myAETitle), NULL, 0);
+@@ -236,7 +242,7 @@ OFCondition DcmQueryRetrieveSCP::handleAssociation(T_ASC_Association * assoc, OF
+     if (cond.bad()) {
+         DCMQRDB_ERROR("Cannot Drop Association: " << DimseCondition::dump(temp_str, cond));
+     }
+-    cond = ASC_destroyAssociation(&assoc);
++    cond = ASC_destroyAssociation(pAssoc);
+     if (cond.bad()) {
+         DCMQRDB_ERROR("Cannot Destroy Association: " << DimseCondition::dump(temp_str, cond));
+     }
+@@ -1096,7 +1102,7 @@ OFCondition DcmQueryRetrieveSCP::waitForAssociation(T_ASC_Network * theNet)
+         if (options_.singleProcess_)
+         {
+             /* don't spawn a sub-process to handle the association */
+-            cond = handleAssociation(assoc, options_.correctUIDPadding_);
++            cond = handleAssociation(&assoc, options_.correctUIDPadding_);
+         }
+ #ifdef HAVE_FORK
+         else
+@@ -1118,7 +1124,7 @@ OFCondition DcmQueryRetrieveSCP::waitForAssociation(T_ASC_Network * theNet)
+             else
+             {
+                 /* child process, handle the association */
+-                cond = handleAssociation(assoc, options_.correctUIDPadding_);
++                cond = handleAssociation(&assoc, options_.correctUIDPadding_);
+                 /* the child process is done so exit */
+                 exit(0);
+             }
