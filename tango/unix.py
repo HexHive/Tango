@@ -375,12 +375,11 @@ class PtraceChannel(AbstractChannel):
             raise ChannelTimeoutException("Channel timeout when waiting for syscall")
         return results
 
-    async def close(self, *, terminate: bool=True):
-        if terminate:
-            if self.root:
-                await self.root.terminateTree()
-            self._debugger.unsubscribe(self._dbgsub)
-            await self._debugger.quit()
+    async def close(self):
+        if self.root:
+            await self.root.terminateTree()
+        self._debugger.unsubscribe(self._dbgsub)
+        await self._debugger.quit()
 
     def _del_observed(self):
         """
@@ -578,11 +577,10 @@ class PtraceForkChannel(PtraceChannel):
 
             self._proc_trapped = False
 
-    async def close(self, *, terminate: bool=True):
-        # we skip shutting down the executor
+    async def close(self):
         if self._forked_child:
-            if terminate:
-                await self._forked_child.terminateTree()
+            await self._forked_child.terminateTree()
+        if self._proc_trapped:
             # when we kill the forked_child, we wake up the forkserver from trap
             await self._wakeup_forkserver()
 
@@ -747,7 +745,7 @@ class ProcessDriver(BaseDriver,
         if self._pobj:
             observed = self._channel.observed
             # ensure that the channel is closed and the debugger detached
-            await self._channel.close(terminate=True)
+            await self._channel.close()
 
             # close pipes, if any
             for f in ('in', 'out', 'err'):
@@ -810,7 +808,7 @@ class ProcessForkDriver(ProcessDriver):
         elif self._channel:
             ## Kill current process, if any
             try:
-                await self._channel.close(terminate=True)
+                await self._channel.close()
             except ProcessLookupError:
                 pass
 

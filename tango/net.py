@@ -292,11 +292,11 @@ class TCPChannel(NetworkChannel):
     async def write_bytes(self, data: ByteString) -> int:
         return self._socket.send(data)
 
-    async def close(self, **kwargs):
+    async def close(self):
         if self._socket is not None:
             self._socket.close()
             self._socket = None
-        await super().close(**kwargs)
+        await super().close()
 
     @classmethod
     def _select_match_fds(cls, process: PtraceProcess, syscall: PtraceSyscall,
@@ -547,11 +547,11 @@ class UDPChannel(NetworkChannel):
     async def write_bytes(self, data: ByteString) -> int:
         return self._socket.send(data)
 
-    async def close(self, **kwargs):
+    async def close(self):
         if self._socket is not None:
             self._socket.close()
             self._socket = None
-        await super().close(**kwargs)
+        await super().close()
 
     ### Callbacks ###
     async def _setup_syscall_callback(self, process, syscall, fds, binds, address):
