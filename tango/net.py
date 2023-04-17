@@ -4,9 +4,9 @@ from tango.core import (AbstractChannel, FormatDescriptor, AbstractInstruction,
     TransmitInstruction, ReceiveInstruction, DelayInstruction,
     SerializedInputMeta)
 from tango.ptrace.syscall import PtraceSyscall, SYSCALL_REGISTER
-from tango.ptrace.debugger import PtraceProcess
+from tango.ptrace.debugger import PtraceProcess, ProcessEvent
 from tango.unix import (PtraceChannel, PtraceForkChannel, PtraceChannelFactory,
-    FileDescriptorChannel, FileDescriptorChannelFactory)
+    FileDescriptorChannel, FileDescriptorChannelFactory, EventOptions)
 from tango.exceptions import ChannelBrokenException
 
 from asyncstdlib.functools import cache as async_cache
@@ -14,7 +14,8 @@ from subprocess  import Popen
 from dataclasses import dataclass
 from pyroute2.netns import setns
 from os import getpid
-from typing import ByteString, Tuple, Iterable, Mapping, Any, Optional
+from typing import (
+    ByteString, Tuple, Iterable, Mapping, Any, Optional, Callable, Awaitable)
 from functools import cache
 import errno
 import struct
@@ -219,6 +220,11 @@ class TCPChannel(NetworkChannel):
         self._connect_timeout = connect_timeout * self._timescale if connect_timeout else None
         self._accept_process = None
         self._sockfd = -1
+        self._default_event_opts = EventOptions(
+            ignore_callback=self._observe_ignore_callback,
+            syscall_callback=self._observe_syscall_callback,
+            break_on_entry=True, break_on_exit=False
+        )
 
     def cb_socket_listening(self, process, syscall):
         pass
@@ -298,6 +304,12 @@ class TCPChannel(NetworkChannel):
             self._socket = None
         await super().close()
 
+    async def push_observe(self,
+            callback: Callable[[ProcessEvent, Exception], Any],
+            opts: EventOptions=None) -> Optional[PtraceProcess]:
+        opts = opts or self._default_event_opts
+        return await super().push_observe(callback, opts)
+
     @classmethod
     def _select_match_fds(cls, process: PtraceProcess, syscall: PtraceSyscall,
             fds: Iterable[int]) -> Optional[int]:
@@ -375,6 +387,20 @@ class TCPChannel(NetworkChannel):
 
     async def _connect_monitor_target(self):
         return self._socket.connect(self._connect_address)
+
+    def _observe_ignore_callback(self, syscall):
+        return self._connect_ignore_callback(syscall)
+
+    async def _observe_syscall_callback(self, process, syscall, **kwargs):
+        if syscall.name in ('accept', 'accept4') \
+                and syscall.arguments[0].value == self._listenfd:
+            debug(f"Cancelled {syscall} for {process}")
+            # we "cancel" the accept so as not to starve other sockets
+            process.setreg(SYSCALL_REGISTER, -1)
+            # we also change the name so that it is ignored by any unintended
+            # listener
+            syscall.name = "CANCELLED"
+            syscall.syscall = -1
 
 class ListenerSocketState:
     SOCKET_UNBOUND = 1
