@@ -374,11 +374,12 @@ class PtraceChannel(AbstractChannel):
         if terminate:
             if self.root:
                 await self.root.terminateTree()
+            await self._debugger.quit()
 
     def _del_observed(self):
         """
         This ensures that observed processes do not get terminated by
-        debugger.quit().
+        debugger.kill_all().
         Responsibility then falls on the caller to transfer the observed to
         another debugger or ultimately terminate them.
         """
@@ -387,7 +388,7 @@ class PtraceChannel(AbstractChannel):
 
     def __del__(self):
         self._del_observed()
-        self._debugger.quit()
+        self._debugger.kill_all()
 
 class PtraceForkChannel(PtraceChannel):
     def __init__(self, **kwargs):

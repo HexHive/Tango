@@ -168,7 +168,7 @@ class PtraceDebugger(object):
             process.setoptions(self.options)
         return process
 
-    def quit(self):
+    async def quit(self):
         """
         Quit the debugger: terminate all processes in reverse order.
         """
@@ -184,7 +184,7 @@ class PtraceDebugger(object):
         # to kill children before parents
         processes = list(self.list)
         for process in reversed(processes):
-            process.terminate()
+            await process.terminate()
             process.detach()
 
     if HAS_SIGNALFD:
@@ -203,6 +203,11 @@ class PtraceDebugger(object):
                 ready = True
             if ready:
                 self._sigfd_event.set()
+
+    def kill_all(self):
+        processes = list(self.list)
+        for process in reversed(processes):
+            process.kill(SIGKILL)
 
     def _waitpid(self, wanted_pid, blocking=True):
         """
