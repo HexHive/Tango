@@ -62,7 +62,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
         await super().initialize()
         # needed for accessing session-specific variables while debugging
         self._context = get_session_context()
-        current_session.set(self)
+        self._clear = current_session.set(self)
 
     async def finalize(self, owner: ComponentOwner):
         self._explorer.register_state_reload_callback(self._state_reload_cb)
@@ -187,5 +187,9 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
             **kwargs)
 
     async def run(self):
-        # launch fuzzing loop
-        await self._loop_forever()
+        try:
+            # launch fuzzing loop
+            await self._loop_forever()
+        finally:
+            # remove the persistent reference in the session Context
+            get_session_context().run(current_session.reset, self._clear)
