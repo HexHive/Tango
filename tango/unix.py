@@ -191,10 +191,7 @@ class PtraceChannel(AbstractChannel):
         elif event.signum == signal.SIGSEGV:
             raise ProcessCrashedException(f"Process with {event.process.pid=} terminated abnormally with {event.signum=}", exitcode=event.signum)
         debug(f"Target process with {event.process.pid=} received signal with {event.signum=}")
-        event.display(log=warning)
-        signum = event.signum
-        self.resume_process(event.process, signum)
-        exitcode = signal_to_exitcode(event.signum)
+        self.resume_process(event.process, event.signum)
 
     async def process_new(self, event, ignore_callback):
         # monitor child for syscalls as well. may be needed for multi-thread or multi-process targets
