@@ -499,7 +499,7 @@ if RUNNING_LINUX:
         rv = read(fd, byref(sinfo), sizeof(sinfo))
         if rv < 0:
             error = strerror(get_errno())
-            raise RuntimeError(f"Failed to read from signalfd {fd}: {error}")
+            raise BlockingIOError(f"Failed to read from signalfd {fd}: {error}")
         elif rv == 0:
             raise EOFError(f"End-of-file on signalfd {fd}")
         return sinfo

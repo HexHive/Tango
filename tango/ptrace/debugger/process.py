@@ -157,13 +157,19 @@ class PtraceProcess(object):
     make sure that the process is stopped.
     """
 
-    def __init__(self, debugger, pid, is_attached, parent=None, is_thread=False):
+    def __init__(self, debugger, pid, is_attached, parent=None, is_thread=False,
+            subscription=None, owns_subscription=False):
         self.debugger = debugger
         self.breakpoints = {}
         self.pid = pid
         self.running = True
         self.exited = False
         self.parent = parent
+        self.subscription = subscription
+        self.owns_subscription = owns_subscription
+        if not subscription and parent:
+            self.subscription = parent.subscription
+            self.owns_subscription = False
         if parent and parent.root:
             self.root = parent.root
         else:
@@ -299,9 +305,17 @@ class PtraceProcess(object):
         if not self.is_attached:
             return
         self.is_attached = False
-        if self.running:
-            debug("Detach %s" % self)
-            ptrace_detach(self.pid)
+        try:
+            if self.running:
+                debug("Detach %s" % self)
+                ptrace_detach(self.pid)
+        finally:
+            self.deleteFromDebugger()
+
+    def deleteFromDebugger(self):
+        if self.subscription and self.owns_subscription:
+            self.debugger.unsubscribe(self.subscription)
+            self.subscription = None
         self.debugger.deleteProcess(process=self)
 
     def _notRunning(self):
@@ -360,7 +374,7 @@ class PtraceProcess(object):
                     continue
         finally:
             if self in self.debugger:
-                self.debugger.deleteProcess(self)
+                self.deleteFromDebugger()
         for p in self.children:
             await p.terminateTree(**kwargs)
 
@@ -416,7 +430,7 @@ class PtraceProcess(object):
             event = await self.processSignal(signum)
         return event
 
-    def processTerminated(self):
+    async def processTerminated(self):
         self._notRunning()
         return ProcessExit(self)
 
@@ -822,13 +836,16 @@ class PtraceProcess(object):
         ptrace_setoptions(self.pid, options)
 
     async def waitEvent(self, blocking=True):
-        return await self.debugger.waitProcessEvent(pid=self.pid, blocking=blocking)
+        return await self.debugger.waitProcessEvent(
+            pid=self.pid, blocking=blocking, subscription=self.subscription)
 
     async def waitSignals(self, *signals, blocking=True):
-        return await self.debugger.waitSignals(*signals, blocking=blocking, pid=self.pid)
+        return await self.debugger.waitSignals(*signals,
+            pid=self.pid, blocking=blocking, subscription=self.subscription)
 
     async def waitSyscall(self, blocking=True):
-        return await self.debugger.waitSyscall(self, blocking=blocking)
+        return await self.debugger.waitSyscall(self,
+            blocking=blocking, subscription=self.subscription)
 
     def findBreakpoint(self, address):
         for bp in self.breakpoints.values():
@@ -849,6 +866,16 @@ class PtraceProcess(object):
 
     def removeBreakpoint(self, breakpoint):
         del self.breakpoints[breakpoint.address]
+
+    def setSubscription(self, subscription, owned=False):
+        self.subscription = subscription
+        self.owns_subscription = owned
+
+    def forkSubscription(self):
+        if not self.subscription:
+            raise RuntimeError("No subscription specified")
+        self.subscription = self.subscription.fork(wanted_pid=self.pid)
+        self.owns_subscription = True
 
     def __del__(self):
         try:

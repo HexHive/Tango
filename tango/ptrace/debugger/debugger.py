@@ -1,4 +1,6 @@
-from tango.ptrace import debug, info, warning, error
+from __future__ import annotations
+
+from tango.ptrace import debug, info, warning, critical, error
 from tango.ptrace import PtraceError
 from tango.ptrace.debugger import (PtraceProcess, ProcessSignal, ProcessExit,
                             ForkChildKilledEvent)
@@ -17,17 +19,77 @@ if HAS_SIGNALFD:
         create_signalfd, read_signalfd, SFD_CLOEXEC, SFD_NONBLOCK)
     import asyncio
 
-from os import waitpid, WNOHANG, WUNTRACED
+from typing import Optional, Iterator, Sequence
+from os import waitpid, close, WNOHANG, WUNTRACED
 from signal import (
     SIGTRAP, SIGSTOP, SIGCHLD, SIGKILL, pthread_sigmask, SIG_BLOCK)
 from errno import ECHILD
 from time import sleep
-from collections import defaultdict
+from collections import deque
 from lru import LRU
+from contextlib import contextmanager
+from dataclasses import dataclass, InitVar, replace
 
 class DebuggerError(PtraceError):
     pass
 
+WaitPidEvent = tuple[int, int, int]  # (eid, pid, status)
+
+@dataclass(unsafe_hash=True)
+class PtraceSubscription:
+    wanted_pid: Optional[int]
+    debugger: PtraceDebugger
+
+    next_event: InitVar[int] = 0
+
+    def __post_init__(self, next_event):
+        self._ready = asyncio.Event()
+        self.next_event = next_event
+
+    def subscribed(self, pid):
+        return self.catch_all or self.wanted_pid == pid
+
+    def notify(self):
+        self._ready.set()
+
+    def fork(self, wanted_pid: Optional[int]=None):
+        changes = {'next_event': self.next_event}
+        if wanted_pid:
+            changes['wanted_pid'] = wanted_pid
+        forked = replace(self, **changes)
+        forked.debugger.add_subscription(forked)
+        return forked
+
+    async def get(self) -> WaitPidEvent:
+        while True:
+            try:
+                item = self.get_nowait()
+                break
+            except StopIteration:
+                self._ready.clear()
+                await self._ready.wait()
+                continue
+        return item
+
+    def get_nowait(self) -> WaitPidEvent:
+        idx, item = next(self.events)
+        self.next_event = item[0] + 1
+        return item
+
+    @property
+    def events(self) -> Iterator[tuple[int, WaitPidEvent]]:
+        indexed = enumerate(self.debugger.event_history)
+        by_eid = filter(lambda e: e[1][0] >= self.next_event, indexed)
+        by_pid = filter(lambda e: self.subscribed(e[1][1]), by_eid)
+        return by_pid
+
+    @property
+    def catch_all(self) -> bool:
+        return not self.wanted_pid
+
+    @property
+    def ready(self) -> bool:
+        return self._ready.is_set()
 
 class PtraceDebugger(object):
     """
@@ -83,6 +145,7 @@ class PtraceDebugger(object):
         self.trace_clone = False
         self.trace_seccomp = False
         self.use_sysgood = False
+        self._loop = loop or asyncio.get_running_loop()
 
         # WARN sometimes, when a traced process forks, the SIGSTOP from the
         # child arrives before the PTRACE_EVENT_CLONE, and this brings the
@@ -92,13 +155,12 @@ class PtraceDebugger(object):
         # WebDataLoader, create_svg launches a process). If we enqueue these
         # signals and deliver them later to traced processes, there will be
         # undefined behavior.
-        self.sig_queue = LRU(10)
-        self.sig_queue.set_callback(self._sig_queue_evict)
-        self.sig_evicted = list()
+        self.event_history = deque()
+        self._event_counter = 0
+        self.subscribers = {}
         self.enableSysgood()
 
         if HAS_SIGNALFD:
-            loop = loop or asyncio.get_running_loop()
             # FIXME should block SIGCHLD? this may interfere with the asyncio
             # child process monitor
             pthread_sigmask(SIG_BLOCK, {SIGCHLD})
@@ -108,23 +170,32 @@ class PtraceDebugger(object):
             self._sigfd_event = asyncio.Event()
             # we'll use this as a placeholder for siginfo instead of reallocing
             self._sigfd_siginfo = None
-            loop.add_reader(self._sigfd, self._signalfd_ready_cb)
-            # we flush waitpid once initially to fetch queued signals
-            self._flush_and_enqueue()
+            self._loop.add_reader(self._sigfd, self._signalfd_ready_cb)
+            # we flush waitpid once initially to fetch waiting signals
+            self._flush_and_publish()
 
-    def _sig_queue_evict(self, pid, queue, always_expand=True):
-        if pid not in self.dict:
-            # hard luck; we could not find an owner in time
-            return
+    if HAS_SIGNALFD:
+        def _signalfd_ready_cb(self):
+            try:
+                self._sigfd_siginfo = read_signalfd(
+                    self._sigfd, self._sigfd_siginfo)
+                assert self._sigfd_siginfo.ssi_signo == SIGCHLD
+                self._flush_and_publish()
+            except BlockingIOError as ex:
+                # this first occured when the signalfd reader was not removed
+                # from the running loop
+                error("signalfd reader called without queued signals.")
+                raise
 
-        if always_expand or all(p in self.dict for p in self.sig_queue.keys()):
-            # the LRU is full, but all PIDs belong to the debugger;
-            # we expand the LRU so as not to lose signals for known PIDs
-            self.sig_queue.set_size(self.sig_queue.get_size() * 2)
-            warning("Expanded LRU cache due to necessary eviction")
-
-        # we keep track of known evicted PIDs to be re-used later
-        self.sig_evicted.append((pid, queue))
+        def _flush_and_publish(self):
+            ready = False
+            while True:
+                pid, status = self._waitpid_and_publish(None, blocking=False)
+                if not pid:
+                    break
+                ready = True
+            if ready:
+                self._sigfd_event.set()
 
     def traceProcess(self, process):
         if process.pid in self.dict:
@@ -132,14 +203,15 @@ class PtraceDebugger(object):
         self.dict[process.pid] = process
         self.list.append(process)
 
-    async def addProcess(self, pid, is_attached, parent=None, is_thread=False):
+    async def addProcess(self, pid, is_attached, parent=None, is_thread=False,
+            **kwargs):
         """
         Add a new process using its identifier. Use is_attached=False to
         attach an existing (running) process, and is_attached=True to trace
         a new (stopped) process.
         """
         process = PtraceProcess(self, pid, is_attached,
-                                parent=parent, is_thread=is_thread)
+                                parent=parent, is_thread=is_thread, **kwargs)
         debug("Attach %s to debugger" % process)
         self.traceProcess(process)
         try:
@@ -187,29 +259,12 @@ class PtraceDebugger(object):
             await process.terminate()
             process.detach()
 
-    if HAS_SIGNALFD:
-        def _signalfd_ready_cb(self):
-            self._sigfd_siginfo = read_signalfd(self._sigfd, self._sigfd_siginfo)
-            assert self._sigfd_siginfo.ssi_signo == SIGCHLD
-            self._flush_and_enqueue()
-
-        def _flush_and_enqueue(self):
-            ready = False
-            while True:
-                pid, status = self._waitpid(None, blocking=False)
-                if pid <= 0:
-                    break
-                self._push_status(pid, status)
-                ready = True
-            if ready:
-                self._sigfd_event.set()
-
     def kill_all(self):
         processes = list(self.list)
         for process in reversed(processes):
             process.kill(SIGKILL)
 
-    def _waitpid(self, wanted_pid, blocking=True):
+    def _waitpid(self, wanted_pid, *, blocking):
         """
         Wait for a process event from a specific process (if wanted_pid is
         set) or any process (wanted_pid=None). The call is blocking is
@@ -231,129 +286,201 @@ class PtraceDebugger(object):
                     flags |= THREAD_TRACE_FLAGS
                     break
 
-        if wanted_pid and (flags & THREAD_TRACE_FLAGS) == 0:
-            pid, status = waitpid(wanted_pid, flags)
+        try:
+            if wanted_pid and (flags & THREAD_TRACE_FLAGS) == 0:
+                pid, status = waitpid(wanted_pid, flags)
+            else:
+                pid, status = waitpid(-1, flags)
+        except ChildProcessError:
+            pid = status = None
         else:
-            pid, status = waitpid(-1, flags)
-
-        if (blocking or pid) and wanted_pid and (pid != wanted_pid) and \
-                (pid not in map(lambda p: p.pid, filter(lambda p: p.is_thread,
-                    process.children))):
-            raise DebuggerError("Unwanted PID: %r (instead of %s)"
+            if (blocking or pid) and wanted_pid and (pid != wanted_pid) and \
+                    (pid not in map(lambda p: p.pid, filter(lambda p: p.is_thread,
+                        process.children))):
+                raise DebuggerError("Unwanted PID: %r (instead of %s)"
                                 % (pid, wanted_pid), pid=pid)
         return pid, status
 
-    def _dequeue(self, pid=None):
-        if pid:
-            if queue := self.sig_queue.get(pid):
-                return pid, queue
-            for p, queue in self.sig_evicted:
-                if p == pid:
-                    return pid, queue
+    def _waitpid_and_publish(self, *args, **kwargs):
+        result = self._waitpid(*args, **kwargs)
+        if result[0]:
+            pid, status = result
+            pidevent = self._publish_status(pid, status)
+            self.event_history.append(pidevent)
+        return result
+
+    def _publish_status(self, pid, status) -> WaitPidEvent:
+        assert pid
+        eid = self._event_counter
+        self._event_counter += 1
+
+        published = False
+        for sub in (pid, None):  # we check both specific and catch-all subs
+            if subs := self.subscribers.get(sub):
+                for subscription in subs:
+                    subscription.notify()
+                    published = True
+                # if a more specific subscription (than catch-all) is available,
+                # we only publish to that subscription
+                break
+
+        # otherwise, we enqueue it and hope someone picks it up in time
+        if not published:
+            warning(f"No subscribers for {pid=}")
+        return (eid, pid, status)
+
+    def add_subscription(self, subscription: PtraceSubscription):
+        if not (others := self.subscribers.get(subscription.wanted_pid)):
+            self.subscribers[subscription.wanted_pid] = {subscription}
         else:
-            if self.sig_evicted:
-                rv = self.sig_evicted.pop(0)
-            else:
-                rv = self.sig_queue.peek_last_item()
-            return rv
-        return None
+            others.add(subscription)
 
-    async def _fetch_status(self, wanted_pid, blocking=True):
-        queue = None
-        if HAS_SIGNALFD and blocking:
-            while True:
-                rv = self._dequeue(wanted_pid)
-                if rv:
-                    wanted_pid, queue = rv
-                    break
-                await self._sigfd_event.wait()
-                self._sigfd_event.clear()
-            # at this point, we must only fetch from a queue
-            assert queue
+    def subscribe(self, wanted_pid: Optional[int]=None, /,
+            *, start_at=0, **kwargs) -> PtraceSubscription:
+        subscription = PtraceSubscription(wanted_pid, self, next_event=start_at)
+        self.add_subscription(subscription)
+        return subscription
 
-        if not queue:
-            if not (rv := self._dequeue(wanted_pid)):
-                return self._waitpid(wanted_pid, blocking=blocking)
-            else:
-                debug(f"waitpid(): Fetching signal for PID {wanted_pid} from queue")
-                wanted_pid, queue = rv
+    def unsubscribe(self, subscription: PtraceSubscription):
+        # others may have subscribed in the meantime, so we remove ourselves
+        # and check again
+        others = self.subscribers[subscription.wanted_pid]
+        others.discard(subscription)
+        if not others:
+            self.subscribers.pop(subscription.wanted_pid)
 
-        status = queue.pop(0)
-        if queue and not wanted_pid in self.sig_queue:
-            # must have been popped from the eviction list
-            self.sig_queue[wanted_pid] = queue
-        elif not queue:
-            self.sig_queue.pop(wanted_pid, None)
-        return wanted_pid, status
+    @contextmanager
+    def subscription(self, wanted_pid, subscription=None, **kwargs):
+        should_unsub = not subscription
+        if should_unsub:
+            subscription = self.subscribe(wanted_pid, **kwargs)
+        else:
+            assert not subscription.wanted_pid or \
+                subscription.wanted_pid == wanted_pid
 
-    def _push_status(self, pid, status):
-        if not (queue := self.sig_queue.get(pid)):
-            queue = self.sig_queue[pid] = list()
-        queue.append(status)
+        try:
+            yield subscription
+        finally:
+            if should_unsub:
+                self.unsubscribe(subscription)
 
-    async def _wait_event(self, wanted_pid, blocking=True):
+    async def _wait_status(self, wanted_pid, subscription,
+            *, blocking) -> WaitPidEvent:
+        while True:
+            match (HAS_SIGNALFD, blocking, subscription.ready):
+                case (True, True, _) | (_, _, True):
+                    item = await subscription.get()
+                case (True, False, False):
+                    # yield to the event loop, let it poll signalfd
+                    await asyncio.sleep(0)
+                    try:
+                        item = subscription.get_nowait()
+                    except StopIteration:
+                        item = (None, None)
+                case (False, _, False):
+                    _ = self._waitpid_and_publish(wanted_pid, blocking=blocking)
+                    # we fetch it from the queue as well to keep it in sync
+                    item = await subscription.get()
+                case _:
+                    raise ValueError("Unexpected match parameters")
+
+            eid, pid, status = item
+            if wanted_pid and wanted_pid != pid:
+                # subscription is catch-all but wait_status was called with a
+                # specific pid
+                debug(f"Re-ordering event {item}")
+                # FIXME maybe use del arr[idx], must get idx from subscription
+                self.event_history.remove(item)
+                if HAS_SIGNALFD:
+                    # yield control to the event loop to populate sigqueue
+                    await asyncio.sleep(0)
+                pidevent = self._publish_status(pid, status)
+                self.event_history.append(pidevent)
+                # the event is now at the tail of the event history
+                continue
+            break
+        return item
+
+    async def _wait_event(self, wanted_pid, *, blocking=True, subscription=None):
         """
         Wait for a process event from the specified process identifier. If
         blocking=False, return None if there is no new event, otherwise return
         an object based on ProcessEvent.
         """
         process = None
-        while not process:
-            try:
-                pid, status = await self._fetch_status(wanted_pid)
-            except OSError as err:
-                if wanted_pid and err.errno == ECHILD:
-                    process = self.dict[wanted_pid]
-                    return process.processTerminated()
-                else:
-                    raise err
-            if not blocking and not pid:
-                return None
-            try:
-                process = self.dict[pid]
-            except KeyError:
-                enq = True
-                if HAS_PROC:
-                    try:
-                        stat = readProcessStat(pid)
-                        if parent := self.dict.get(stat.ppid):
-                            debug(f"Received premature signal for"
-                                  f" a child ({pid=}) of"
-                                  f" a traced process ({parent=})")
-                        else:
-                            enq = False
-                            debug(f"Ignoring signal for unknown {pid=}")
-                    except ProcError:
-                        enq = False
-                        warning(f"Process ({pid=}) died before"
-                                 " its signal could be processed")
-                else:
-                    debug(f"Received signal for unknown {pid=},"
-                           " placing event in queue")
-                if enq:
-                    self._push_status(pid, status)
+        with self.subscription(wanted_pid, subscription) as subscription:
+            while not process:
+                republish = False
+                try:
+                    eid, pid, status = await self._wait_status(
+                        wanted_pid, subscription, blocking=blocking)
+                    debug(f"wait_event({wanted_pid}): "
+                          f"subscriber to {subscription.wanted_pid} "
+                          f"received event {eid}")
+                except OSError as err:
+                    if wanted_pid and err.errno == ECHILD:
+                        process = self.dict[wanted_pid]
+                        return await process.processTerminated()
+                    else:
+                        raise err
+                if not blocking and not pid:
+                    return None
+                try:
+                    process = self.dict[pid]
+                except KeyError:
+                    if HAS_PROC:
+                        try:
+                            stat = readProcessStat(pid)
+                            if parent := self.dict.get(stat.ppid):
+                                republish = True
+                                debug(f"Received premature signal for"
+                                      f" a child ({pid=}) of"
+                                      f" a traced process ({parent=})")
+                            else:
+                                debug(f"Ignoring signal for unknown {pid=}")
+                        except ProcError:
+                            warning(f"Process ({pid=}) died before"
+                                     " its signal could be processed")
+                    else:
+                        republish = True
+                        debug(f"Received signal for unknown {pid=},"
+                               " placing event back in queue")
+
+                if republish:
+                    # FIXME this may result in duplicate events for some subs?
+                    self._publish_status(pid, status)
                     if HAS_SIGNALFD:
-                        # yield control to the event loop to populate sigqueue
+                        # yield control to the event loop to populate
+                        # sigqueue
                         await asyncio.sleep(0)
-                continue
+
+        # flush early event history if too long
+        if (l := len(self.event_history)) & ~(0x100 - 1):
+            min_eid = min(sub.next_event
+                for _, subs in self.subscribers.items()
+                    for sub in subs)
+            while self.event_history and self.event_history[0][0] < min_eid:
+                del self.event_history[0]
+            debug(f"Event history too long (len={l});"
+                    f" purged {l - len(self.event_history)} items.")
 
         return await process.processStatus(status)
 
-    async def waitProcessEvent(self, pid=None, blocking=True):
+    async def waitProcessEvent(self, pid=None, **kwargs):
         """
         Wait for a process event from a specific process (if pid option is
         set) or any process (default). If blocking=False, return None if there
         is no new event, otherwise return an object based on ProcessEvent.
         """
-        return await self._wait_event(pid, blocking=blocking)
+        return await self._wait_event(pid, **kwargs)
 
-    async def waitSignals(self, *signals, pid=None, blocking=True):
+    async def waitSignals(self, *signals, pid=None, **kwargs):
         """
         Wait for any signal or some specific signals (if specified) from a
         specific process (if pid keyword is set) or any process (default).
         Return a ProcessSignal object or raise an unexpected ProcessEvent.
         """
-        event = await self._wait_event(pid, blocking=blocking)
+        event = await self._wait_event(pid, **kwargs)
         if event is None:
             return
         if event.__class__ != ProcessSignal:
@@ -363,16 +490,16 @@ class PtraceDebugger(object):
             return event
         raise event
 
-    async def waitSyscall(self, process=None, blocking=True):
+    async def waitSyscall(self, process=None, **kwargs):
         """
         Wait for the next syscall event (enter or exit) for a specific process
         (if specified) or any process (default). Return a ProcessSignal object
         or raise an unexpected ProcessEvent.
         """
         if process:
-            event = await self.waitProcessEvent(pid=process.pid, blocking=blocking)
+            event = await self.waitProcessEvent(pid=process.pid, **kwargs)
         else:
-            event = await self.waitProcessEvent(blocking=blocking)
+            event = await self.waitProcessEvent(**kwargs)
         if event is None:
             return
         if event.is_syscall_stop():
@@ -393,7 +520,8 @@ class PtraceDebugger(object):
         try:
             self.list.remove(process)
         except ValueError:
-            pass
+            return
+        debug(f"Deleted {process} from debugger")
 
     def updateProcessOptions(self):
         for process in self:
@@ -471,3 +599,6 @@ class PtraceDebugger(object):
 
     def __len__(self):
         return len(self.list)
+
+    def __del__(self):
+        self.kill_all()

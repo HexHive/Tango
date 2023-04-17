@@ -98,7 +98,11 @@ class PtraceChannel(AbstractChannel):
         self.on_syscall_exception = on_syscall_exception
 
     async def setup(self):
-        self._proc = await self._debugger.addProcess(self._pobj.pid, is_attached=True)
+        # we setup a catch-all subscription
+        self._dbgsub = self._debugger.subscribe()
+
+        self._proc = await self._debugger.addProcess(self._pobj.pid,
+            is_attached=True, subscription=self._dbgsub)
         self.prepare_process(self._proc, resume=True)
 
     @property
@@ -267,8 +271,9 @@ class PtraceChannel(AbstractChannel):
             await root.terminateTree(wait_exit=True, signum=signal.SIGTERM)
 
     async def _wait_for_syscall(self, process: PtraceProcess=None, **kwargs):
+        kwargs['subscription'] = self._dbgsub
         if process:
-            return await self._debugger.waitProcessEvent(pid=process.pid, **kwargs)
+            return await self._debugger.waitProcessEvent(process.pid, **kwargs)
         else:
             return await self._debugger.waitProcessEvent(**kwargs)
 
@@ -374,6 +379,7 @@ class PtraceChannel(AbstractChannel):
         if terminate:
             if self.root:
                 await self.root.terminateTree()
+            self._debugger.unsubscribe(self._dbgsub)
             await self._debugger.quit()
 
     def _del_observed(self):
