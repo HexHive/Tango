@@ -16,28 +16,36 @@ space:=$(subst ,, )
 comma:=,
 SANCOV_FLAGS := $(subst $(space),$(comma),$(SANCOV_FLAGS))
 
-CFLAGS := -O3 -fPIC
-CFLAGS += -fsanitize-coverage=$(SANCOV_FLAGS)
+CFLAGS := -fPIC
 ifdef USE_ASAN
 	CFLAGS += -fsanitize=address
 endif
-
-export CFLAGS
-export CXXFLAGS=$(CFLAGS)
 
 LDFLAGS := -fPIE -pie -L$(TANGO_LIBDIR)/tango
 ifdef USE_ASAN
 	LDFLAGS += -fsanitize=address
 endif
-LDFLAGS += -Wl,-wrap,bind -Wl,-wrap,fork -Wl,-wrap,random
 
+ifndef BUILD_ORIGINAL
+	CFLAGS += -fsanitize-coverage=$(SANCOV_FLAGS)
+	LDFLAGS += -Wl,-wrap,bind -Wl,-wrap,fork -Wl,-wrap,random
+	# LDLIBS=-Wl,-whole-archive -l:libtangofuzz.a -Wl,-no-whole-archive -lrt -lc++
+	LDLIBS= \
+		$(TANGO_LIBDIR)/tango/tracer.o \
+		$(TANGO_LIBDIR)/tango/frksrv.o \
+		$(TANGO_LIBDIR)/tango/wrappers.o \
+		-lrt -lc++
+endif
+ifdef DEBUG
+	CFLAGS += -O0 -g -fno-inline
+else
+	CFLAGS += -O3
+endif
+
+export CFLAGS
+export CXXFLAGS=$(CFLAGS)
 export LDFLAGS
-# export LDLIBS=-Wl,-whole-archive -l:libtangofuzz.a -Wl,-no-whole-archive -lrt -lc++
-export LDLIBS= \
-	$(TANGO_LIBDIR)/tango/tracer.o \
-	$(TANGO_LIBDIR)/tango/frksrv.o \
-	$(TANGO_LIBDIR)/tango/wrappers.o \
-	-lrt -lc++
+export LDLIBS
 
 ###
 
