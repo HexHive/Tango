@@ -159,13 +159,24 @@ class PtraceChannel(AbstractChannel):
     async def process_exit(self, event):
         debug(f"Process with {event.process.pid=} exited, deleting from debugger")
         debug(f"Reason: {event}")
-        self._debugger.deleteProcess(event.process)
-        if event.exitcode == 0:
-            raise ProcessTerminatedException(f"Process with {event.process.pid=} exited normally", exitcode=0)
-        elif event.signum is not None:
-            raise ProcessCrashedException(f"Process with {event.process.pid=} crashed with {event.signum=}", signum=event.signum)
-        else:
-            raise ProcessTerminatedException(f"Process with {event.process.pid=} terminated abnormally with {event.exitcode=}", exitcode=event.exitcode)
+        event.process.deleteFromDebugger()
+        try:
+            if event.exitcode == 0:
+                raise ProcessTerminatedException(
+                    f"Process with {event.process.pid=} exited normally",
+                    exitcode=0)
+            elif event.signum is not None and \
+                    event.signum not in (signal.SIGTERM, signal.SIGKILL):
+                raise ProcessCrashedException(
+                    f"Process with {event.process.pid=} crashed"
+                    f" with {event.signum=}", signum=event.signum)
+            else:
+                raise ProcessTerminatedException(
+                    f"Process with {event.process.pid=} terminated abnormally"
+                    f" with {event.exitcode=}", exitcode=event.exitcode)
+        finally:
+            if event.process.root in self.observed:
+                await self.pop_observe(event.process.root, wait_exit=False)
 
     async def process_signal(self, event):
         if event.signum in (signal.SIGINT, signal.SIGWINCH):
@@ -283,10 +294,34 @@ class PtraceChannel(AbstractChannel):
         self.root = None
         return root
 
-    async def pop_observe(self, root: PtraceProcess, kill: bool=True):
-        if self.observed.pop(root, None) and kill:
-            debug(f"{root} timed out under observation; terminating!")
-            await root.terminateTree(wait_exit=True, signum=signal.SIGTERM)
+    async def pop_observe(self, root: PtraceProcess, kill: bool=True,
+            wait_exit: bool=True, timeout: Optional[int]=None) -> Optional[
+            tuple[Callable[[ProcessEvent, Exception], Any], EventOptions]]:
+        if (rv := self.observed.get(root, None)):
+            try:
+                if kill:
+                    if wait_exit:
+                        for proc in self._debugger:
+                            if proc.root is root:
+                                proc.forkSubscription()
+                    coro = root.terminateTree(
+                        wait_exit=wait_exit, signum=signal.SIGKILL)
+                    if timeout:
+                        coro = asyncio.wait_for(coro, timeout)
+                    await coro
+            except asyncio.TimeoutError:
+                pass
+            finally:
+                # We only pop it from observed after it is terminated;
+                # otherwise, during the `await terminate`, another task might be
+                # scheduled, and it may be running `monitor_process`, in which
+                # `root` would not be observed, but it may still be in the
+                # debugger. It is then considered a normal process, and it may
+                # try to `ptrace` it, but it would failed because the process
+                # is SIGKILLed
+                debug(f"{root} is no longer under observation")
+                self.observed.pop(root, None)
+        return rv
 
     async def _wait_for_syscall(self, process: PtraceProcess=None, **kwargs):
         kwargs['subscription'] = self._dbgsub
