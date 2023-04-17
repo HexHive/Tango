@@ -148,10 +148,20 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
             state: AbstractState, /, *, breadcrumbs: LoadableTarget,
             input: AbstractInput, orig_input: AbstractInput,
             exc: Optional[Exception]=None, **kwargs):
+        if exc:
+            if isinstance(exc, StatePrecisionException):
+                label = 'unstable'
+            elif isinstance(exc, ProcessCrashedException):
+                label = 'crash'
+                error(f"Process crashed: {exc = }")
+            else:
+                label = None
+            if label:
+                self._generator.save_input(input, breadcrumbs, label, repr(state))
 
-        if exc and isinstance(exc, StatePrecisionException):
-            # we save the portion of the input that resulted in a fault
-            self._generator.save_input(input, breadcrumbs, 'unstable', repr(state))
+            if isinstance(exc, ProcessCrashedException):
+                # FIXME kinda ugly
+                return
 
         self._generator.update_state(state, breadcrumbs=breadcrumbs,
             input=input, orig_input=orig_input, exc=exc, **kwargs)

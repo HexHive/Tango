@@ -10,7 +10,8 @@ from tango.unix import (
     ProcessDriver, ProcessForkDriver, SharedMemoryObject, resolve_symbol)
 from tango.ptrace.debugger import PtraceProcess
 from tango.webui import WebRenderer, WebDataLoader
-from tango.common import ComponentType, ComponentOwner
+from tango.common import (
+    ComponentType, ComponentOwner, get_session_task_group, delayed)
 from tango.exceptions import (
     LoadedException, StabilityException, ChannelBrokenException)
 
@@ -592,7 +593,8 @@ class CoverageReplayLoader(ReplayLoader,
 class CoverageExplorer(BaseExplorer,
         capture_components={'tracker', 'driver'},
         capture_paths=('explorer.exclude_uncolored', 'explorer.cmplog_samples',
-                       'explorer.cmplog_goal')):
+                       'explorer.cmplog_goal', 'explorer.observe_postmortem',
+                       'explorer.observe_timeout')):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
@@ -600,11 +602,15 @@ class CoverageExplorer(BaseExplorer,
 
     def __init__(self, *, tracker: CoverageTracker, driver: CoverageDriver,
             exclude_uncolored: bool=False,
-            cmplog_samples: int=100, cmplog_goal: int=10, **kwargs):
+            cmplog_samples: int=100, cmplog_goal: int=10,
+            observe_postmortem: bool=True,
+            observe_timeout: float=1.0, **kwargs):
         super().__init__(tracker=tracker, driver=driver, **kwargs)
         self._exclude_uncolored = exclude_uncolored
         self._cmplog_samples = cmplog_samples
         self._cmplog_goal = cmplog_goal
+        self._observe_postmortem = observe_postmortem
+        self._observe_timeout = observe_timeout
 
     def get_context_input(self, input: BaseInput, **kwargs) -> BaseExplorerContext:
         return CoverageExplorerContext(input, explorer=self, **kwargs)
@@ -613,8 +619,25 @@ class CoverageExplorer(BaseExplorer,
         context_input = self.get_context_input(input, **kwargs)
         try:
             await self._driver.execute_input(context_input)
-        except ChannelBrokenException as ex:
-            pass
+        except LoadedException as ex:
+            if not self._observe_postmortem or \
+                    not isinstance(ex._ex, ChannelBrokenException):
+                raise
+            tg = get_session_task_group()
+            breadcrumbs = self._current_path.copy()
+            observe_cb = partial(self.observe_callback,
+                state=self._last_state, tg=tg,
+                input=context_input.input_gen(), orig_input=input,
+                breadcrumbs=breadcrumbs)
+            root = await self._driver.channel.push_observe(observe_cb)
+            if not root:
+                raise
+            timeout_fn = delayed(
+                self._driver.channel.pop_observe, delay=self._observe_timeout)
+            tg.create_task(timeout_fn(root, timeout=self._observe_timeout))
+
+    def observe_callback(self, event, exc, *, state, tg, **kwargs):
+        tg.create_task(self._state_update_cb(state, exc=exc, **kwargs))
 
     async def _minimize_transition(self, state_or_path: LoadableTarget,
             dst: FeatureSnapshot, input: BaseInput) -> BaseInput:

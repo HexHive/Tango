@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from . import info, warning, critical, error
+from functools import partial, wraps, cache
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum, EnumType, auto
@@ -623,6 +624,14 @@ async def async_enumerate(asequence: AsyncIterable[T], start: int=0) \
     async for elem in asequence:
         yield n, elem
         n += 1
+
+def delayed(func: Callable[P, Awaitable[R]], *, delay: float) \
+        -> Callable[P, Awaitable[R]]:
+    @wraps(func)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        await asyncio.sleep(delay)
+        return await func(*args, **kwargs)
+    return wrapper
 
 def timeit(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
     """
