@@ -172,6 +172,13 @@ class PtraceDebugger(object):
         """
         Quit the debugger: terminate all processes in reverse order.
         """
+        if HAS_SIGNALFD and self._sigfd:
+            self._loop.remove_reader(self._sigfd)
+            close(self._sigfd)
+            self._sigfd = None
+
+        if not self.list:
+            return
         debug("Quit debugger")
         # Terminate processes in reverse order
         # to kill children before parents
