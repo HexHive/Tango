@@ -25,7 +25,9 @@ import random
 import time
 import asyncio
 
-from scapy.all import Ether, IP, TCP, UDP, Packet, PcapReader, PcapWriter, Raw
+from scapy.all import (
+    Ether, IP, TCP, UDP, Packet, PcapReader, PcapWriter, Raw, resolve_iface,
+    conf)
 
 __all__ = [
     'NetworkFormatDescriptor', 'TransportFormatDescriptor', 'NetworkChannel',
@@ -146,6 +148,7 @@ class _TransportFormatDescriptor(FormatDescriptor):
     after the non-default `fmt`, satisfying the requirements for a dataclass.
     """
     protocol: str
+    endpoint: str
     port: int
 
 @dataclass(frozen=True)
@@ -158,7 +161,7 @@ class TransportFormatDescriptor(NetworkFormatDescriptor, _TransportFormatDescrip
     def __set__(self, obj, value):
         if not value:
             return
-        fmt = type(self)(protocol=value[0], port=value[1])
+        fmt = type(self)(protocol=value[0], endpoint=value[1], port=value[2])
         object.__setattr__(obj, '_fmt', fmt)
 
 @dataclass(kw_only=True, frozen=True)
@@ -182,11 +185,13 @@ class TransportChannelFactory(NetworkChannelFactory,
         capture_paths=['channel.port']):
     protocol: str
     port: PortDescriptor = PortDescriptor()
-    fmt: FormatDescriptor = TransportFormatDescriptor(protocol=None, port=None)
+    fmt: FormatDescriptor = TransportFormatDescriptor(
+        protocol=None, endpoint=None, port=None)
 
     def __post_init__(self):
         # implicit casting through the descriptor
-        object.__setattr__(self, 'fmt', (self.protocol, self.port))
+        object.__setattr__(self, 'fmt',
+            (self.protocol, self.endpoint, self.port))
 
     @property
     def fields(self) -> Mapping[str, Any]:
@@ -805,17 +810,31 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
             yield instruction
 
     def dumpi(self, itr: Iterable[AbstractInstruction], /):
-        if self._fmt.protocol == "tcp":
-            layer = TCP
-            cli = random.randint(40000, 65534)
-            srv = self._fmt.port
-        elif self._fmt.protocol == "udp":
-            layer = UDP
-            cli = random.randint(40000, 65534)
-            srv = self._fmt.port
-        else:
+        def tcp_flow_gen(**kwargs):
+            src, dst, data = yield TCP
+            seq = {peer: 1 for peer in (src, dst)}
+            while True:
+                nsrc, ndst, ndata = yield TCP(**kwargs, sport=src, dport=dst,
+                    flags='PA', seq=seq[src], ack=seq[dst]) / Raw(load=data)
+                seq[src] += len(data)
+                src, dst, data = nsrc, ndst, ndata
+        def udp_datagram_gen(**kwargs):
+            src, dst, data = yield UDP
+            while True:
+                src, dst, data = yield UDP(**kwargs,
+                    sport=src, dport=dst) / Raw(load=data)
+
+        layermap = {'tcp': tcp_flow_gen, 'udp': udp_datagram_gen}
+        gen_fn = layermap.get(self._fmt.protocol)
+        if not gen_fn:
             raise NotImplementedError
 
+        cli = random.randint(40000, 65534)
+        srv = self._fmt.port
+        iface = resolve_iface(conf.route.route(self._fmt.endpoint)[0])
+
+        gen = gen_fn()
+        layer = gen.send(None)
         cur_time = time.time()
         writer = PcapWriter(self._file)
         client_sent = False
@@ -831,9 +850,9 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
                 if not client_sent:
                     continue
                 src, dst = srv, cli
-            p = Ether(src='aa:aa:aa:aa:aa:aa', dst='aa:aa:aa:aa:aa:aa') / IP() / \
-                    layer(**{self.LAYER_SOURCE[layer]: src, self.LAYER_DESTINATION[layer]: dst}) / \
-                        Raw(load=instruction._data)
+
+            p = Ether(src=iface.mac, dst=iface.mac) / IP() / \
+                    gen.send((src, dst, instruction._data))
             p.time = cur_time
             writer.write(p)
 
