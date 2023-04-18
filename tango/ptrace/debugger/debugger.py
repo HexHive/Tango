@@ -415,7 +415,7 @@ class PtraceDebugger(object):
                         wanted_pid, subscription, blocking=blocking)
                     debug(f"wait_event({wanted_pid}): "
                           f"subscriber to {subscription.wanted_pid} "
-                          f"received event {eid}")
+                          f"received event {(eid, pid, status)}")
                 except OSError as err:
                     if wanted_pid and err.errno == ECHILD:
                         process = self.dict[wanted_pid]
