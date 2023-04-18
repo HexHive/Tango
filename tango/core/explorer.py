@@ -61,12 +61,12 @@ class BaseExplorer(AbstractExplorer,
         capture_paths=['explorer.reload_attempts']):
     def __init__(self, *,
             loader: AbstractLoader, tracker: AbstractTracker,
-            driver: AbstractDriver, reload_attempts: str='50', **kwargs):
+            driver: AbstractDriver, reload_attempts: int=10, **kwargs):
         super().__init__(**kwargs)
         self._loader = loader
         self._tracker = tracker
         self._driver = driver
-        self._reload_attempts = int(reload_attempts)
+        self._reload_attempts = reload_attempts
 
         # these are generally persistent until a reload_state
         self._current_path = []
