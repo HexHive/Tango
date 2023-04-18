@@ -333,7 +333,12 @@ class PtraceProcess(object):
             self.parent.children.remove(self)
 
     def kill(self, signum):
-        kill(self.pid, signum)
+        try:
+            kill(self.pid, signum)
+        except ProcessLookupError as ex:
+            warning(f"kill({self.pid}): Process doesn't exist")
+            return False
+        return True
 
     async def terminate(self, wait_exit=True, signum=SIGTERM):
         if not self.running or not self.was_attached:
@@ -344,7 +349,9 @@ class PtraceProcess(object):
             if self.is_stopped:
                 self.cont(signum)
             else:
-                self.kill(signum)
+                if not self.kill(signum):
+                    raise PtraceError("No such process",
+                        errno=ESRCH, pid=self.pid)
         except PtraceError as event:
             if event.errno == ESRCH:
                 done = True
