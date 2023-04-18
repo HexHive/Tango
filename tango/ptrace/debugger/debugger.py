@@ -306,7 +306,6 @@ class PtraceDebugger(object):
         if result[0]:
             pid, status = result
             pidevent = self._publish_status(pid, status)
-            self.event_history.append(pidevent)
         return result
 
     def _publish_status(self, pid, status) -> WaitPidEvent:
@@ -327,7 +326,10 @@ class PtraceDebugger(object):
         # otherwise, we enqueue it and hope someone picks it up in time
         if not published:
             warning(f"No subscribers for {pid=}")
-        return (eid, pid, status)
+
+        pidevent = (eid, pid, status)
+        self.event_history.append(pidevent)
+        return pidevent
 
     def add_subscription(self, subscription: PtraceSubscription):
         if not (others := self.subscribers.get(subscription.wanted_pid)):
@@ -394,8 +396,7 @@ class PtraceDebugger(object):
                 if HAS_SIGNALFD:
                     # yield control to the event loop to populate sigqueue
                     await asyncio.sleep(0)
-                pidevent = self._publish_status(pid, status)
-                self.event_history.append(pidevent)
+                self._publish_status(pid, status)
                 # the event is now at the tail of the event history
                 continue
             break
@@ -448,7 +449,8 @@ class PtraceDebugger(object):
 
                 if republish:
                     # FIXME this may result in duplicate events for some subs?
-                    self._publish_status(pid, status)
+                    reordered = self._publish_status(pid, status)
+                    debug(f"Republished {eid} as {reordered[0]}")
                     if HAS_SIGNALFD:
                         # yield control to the event loop to populate
                         # sigqueue
