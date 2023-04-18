@@ -63,8 +63,8 @@ class PtraceSyscall(FunctionCall):
     def enter(self, regs=None):
         if not regs:
             regs = self.process.getregs()
-        argument_values = self.readArgumentValues(regs)
-        self.readArguments(argument_values)
+        self.argument_values = self.readArgumentValues(regs)
+        self.readArguments(self.argument_values)
 
         if self.name == "socketcall" and self.options.replace_socketcall:
             setupSocketCall(self, self.process, self[0], self[1].value)

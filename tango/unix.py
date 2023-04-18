@@ -1048,13 +1048,14 @@ class FileDescriptorChannel(PtraceChannel):
                         pollfds + i * size, size))
                     if fd in fds and (events & select.POLLIN) != 0:
                         matched_fd = fd
-                        args = list(syscall.readArgumentValues(
-                            process.getregs()))
+                        args = syscall.argument_values
                         # convert call to blocking
-                        if syscall.name == 'poll':
-                            args[2] = -1
-                        else:
+                        if syscall.name == 'poll' and args[2] == 0:
+                            args[2] = -1  # infinite timeout
+                        elif syscall.name == 'ppoll' and args[2] != 0:
                             args[2] = 0  # nullptr
+                        else:
+                            break
                         syscall.writeArgumentValues(*args)
                         break
                 else:
@@ -1073,10 +1074,12 @@ class FileDescriptorChannel(PtraceChannel):
                         readfds + l_idx * size, size))
                     if fd_set & (1 << b_idx) != 0:
                         matched_fd = fd
-                        args = list(syscall.readArgumentValues(
-                            process.getregs()))
+                        args = syscall.argument_values
                         # convert call to blocking
-                        args[4] = 0  # nullptr
+                        if args[4]:
+                            args[4] = 0  # nullptr
+                        else:
+                            break
                         syscall.writeArgumentValues(*args)
                         break
                 else:
