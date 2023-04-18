@@ -388,7 +388,7 @@ class PtraceDebugger(object):
             if wanted_pid and wanted_pid != pid:
                 # subscription is catch-all but wait_status was called with a
                 # specific pid
-                debug(f"Re-ordering event {item}")
+                debug(f"Re-ordering event {item}, listening for {wanted_pid}")
                 # FIXME maybe use del arr[idx], must get idx from subscription
                 self.event_history.remove(item)
                 if HAS_SIGNALFD:
