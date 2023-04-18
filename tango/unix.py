@@ -1051,7 +1051,10 @@ class FileDescriptorChannel(PtraceChannel):
                         args = list(syscall.readArgumentValues(
                             process.getregs()))
                         # convert call to blocking
-                        args[2] = -1
+                        if syscall.name == 'poll':
+                            args[2] = -1
+                        else:
+                            args[2] = 0  # nullptr
                         syscall.writeArgumentValues(*args)
                         break
                 else:
@@ -1073,7 +1076,7 @@ class FileDescriptorChannel(PtraceChannel):
                         args = list(syscall.readArgumentValues(
                             process.getregs()))
                         # convert call to blocking
-                        args[4] = 0
+                        args[4] = 0  # nullptr
                         syscall.writeArgumentValues(*args)
                         break
                 else:
