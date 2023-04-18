@@ -136,6 +136,9 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
                         exc=exc)
                 except StopIteration:
                     pass
+        elif isinstance(exc, StabilityException):
+            faulty_state = exc.expected_state
+            self._strategy.update_state(faulty_state, input=None, exc=exc)
         else:
             # In this case, we need to force the strategy to yield a new
             # target, because we're not entirely sure what went wrong. We

@@ -31,7 +31,7 @@ class ReplayLoader(BaseLoader,
         if source != current_state:
             raise StabilityException(
                 f"source state ({source}) did not match current state ({current_state})",
-                current_state
+                current_state, source
             )
         # execute the input
         await self._driver.execute_input(input)
@@ -41,7 +41,7 @@ class ReplayLoader(BaseLoader,
         if destination != current_state:
             raise StabilityException(
                 f"destination state ({destination}) did not match current state ({current_state})",
-                current_state
+                current_state, destination
             )
         return current_state
 

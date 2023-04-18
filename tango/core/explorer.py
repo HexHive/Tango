@@ -112,6 +112,7 @@ class BaseExplorer(AbstractExplorer,
                         f" (reason = {ex.args[0]})!"
                         f" Retrying... ({i+1}/{self._reload_attempts})")
                     CountProfiler('unstable')(1)
+                    await self._state_reload_cb(ex.expected_state, exc=ex)
             raise StateNotReproducibleException("destination state not reproducible",
                 state)
         else:
@@ -422,7 +423,7 @@ class BaseExplorerContext(BaseDecorator):
         if new_state != current_state:
             raise StabilityException(
                 "Failed to obtain consistent behavior",
-                current_state)
+                current_state, new_state)
         exp._last_state = current_state
 
         breadcrumbs = exp._current_path.copy()
