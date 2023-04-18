@@ -405,6 +405,8 @@ class PtraceProcess(object):
                         event.process.cont(event.signum)
                     else:
                         event.process.cont()
+                elif event_cls is ProcessExecution:
+                    warning(f"{event.process} called exec() while terminating")
                 else:
                     # Event different than a signal? Raise an exception
                     raise event
