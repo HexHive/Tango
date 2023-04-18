@@ -316,6 +316,12 @@ class PtraceProcess(object):
         if self.subscription and self.owns_subscription:
             self.debugger.unsubscribe(self.subscription)
             self.subscription = None
+
+        # remove self from parent
+        if self.parent is not None and self in self.parent.children:
+            self.parent.children.remove(self)
+            self.parent = None
+
         self.debugger.deleteProcess(process=self)
 
     def _notRunning(self):
@@ -327,10 +333,6 @@ class PtraceProcess(object):
         # FIXME the order of these may need to be flipped
         self.running = False
         self.detach()
-
-        # remove self from parent
-        if self.parent is not None and self in self.parent.children:
-            self.parent.children.remove(self)
 
     def kill(self, signum):
         try:
