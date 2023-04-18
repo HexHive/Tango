@@ -17,7 +17,6 @@ if HAS_PROC:
 if HAS_SIGNALFD:
     from tango.ptrace.binding import (
         create_signalfd, read_signalfd, SFD_CLOEXEC, SFD_NONBLOCK)
-    import asyncio
 
 from typing import Optional, Iterator, Sequence
 from os import waitpid, close, WNOHANG, WUNTRACED
@@ -29,6 +28,7 @@ from collections import deque
 from lru import LRU
 from contextlib import contextmanager
 from dataclasses import dataclass, InitVar, replace
+import asyncio
 
 class DebuggerError(PtraceError):
     pass
