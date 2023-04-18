@@ -203,15 +203,13 @@ class PtraceDebugger(object):
         self.dict[process.pid] = process
         self.list.append(process)
 
-    async def addProcess(self, pid, is_attached, parent=None, is_thread=False,
-            **kwargs):
+    async def addProcess(self, pid, is_attached, **kwargs):
         """
         Add a new process using its identifier. Use is_attached=False to
         attach an existing (running) process, and is_attached=True to trace
         a new (stopped) process.
         """
-        process = PtraceProcess(self, pid, is_attached,
-                                parent=parent, is_thread=is_thread, **kwargs)
+        process = PtraceProcess(self, pid, is_attached, **kwargs)
         debug("Attach %s to debugger" % process)
         self.traceProcess(process)
         try:
