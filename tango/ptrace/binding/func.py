@@ -5,10 +5,11 @@ from tango.ptrace.os_tools import (RUNNING_LINUX, RUNNING_BSD, RUNNING_OPENBSD,
 from tango.ptrace.cpu_info import CPU_64BITS, CPU_WORD_SIZE, CPU_POWERPC, CPU_AARCH64
 
 from os import strerror
+from functools import reduce
 from ctypes import (addressof, get_errno, set_errno, sizeof, Structure,
     Array, POINTER, byref)
 from ctypes import (
-    c_int, c_void_p, c_size_t, c_ssize_t,
+    c_int, c_void_p, c_size_t, c_ssize_t, c_char_p, c_ulong
 )
 
 if RUNNING_OPENBSD:
@@ -460,6 +461,8 @@ if RUNNING_LINUX:
     prctl.argtypes = (c_int, c_ulong, c_ulong, c_ulong, c_ulong)
 
     PR_SET_PDEATHSIG = 1
+    PR_CAPBSET_READ = 23
+    PR_CAPBSET_DROP = 24
     PR_SET_NO_NEW_PRIVS = 38
 
     signalfd = libc.signalfd
@@ -510,5 +513,173 @@ if RUNNING_LINUX:
             raise EOFError(f"End-of-file on signalfd {fd}")
         return sinfo
 
+    HAS_NAMESPACES = True
+    _mount = libc.mount
+    _mount.restype = c_int
+    _mount.argtypes = (
+        c_char_p,  # source
+        c_char_p,  # target
+        c_char_p,  # filesystemtype
+        c_ulong,   # mountflags
+        c_void_p   # data
+    )
+    _umount = libc.umount2
+    _umount.restype = c_int
+    _umount.argtypes = (
+        c_char_p,  # target
+        c_int      # flags
+    )
+
+    MS_RDONLY =       1        # Mount read-only
+    MS_NOSUID =       2        # Ignore suid and sgid bits
+    MS_NODEV =        4        # Disallow access to device special files
+    MS_NOEXEC =       8        # Disallow program execution
+    MS_SYNCHRONOUS =  16       # Writes are synced at once
+    MS_REMOUNT =      32       # Alter flags of a mounted FS
+    MS_MANDLOCK =     64       # Allow mandatory locks on an FS
+    MS_DIRSYNC =      128      # Directory modifications are synchronous
+    MS_NOSYMFOLLOW =  256      # Do not follow symlinks
+    MS_NOATIME =      1024     # Do not update access times.
+    MS_NODIRATIME =   2048     # Do not update directory access times
+    MS_BIND =         4096
+    MS_MOVE =         8192
+    MS_REC =          16384
+    MS_SILENT =       32768
+    MS_POSIXACL =     (1<<16)  # VFS does not apply the umask
+    MS_UNBINDABLE =   (1<<17)  # change to unbindable
+    MS_PRIVATE =      (1<<18)  # change to private
+    MS_SLAVE =        (1<<19)  # change to slave
+    MS_SHARED =       (1<<20)  # change to shared
+    MS_RELATIME =     (1<<21)  # Update atime relative to mtime/ctime.
+    MS_KERNMOUNT =    (1<<22)  # this is a kern_mount call
+    MS_I_VERSION =    (1<<23)  # Update inode I_version field
+    MS_STRICTATIME =  (1<<24)  # Always perform atime updates
+    MS_LAZYTIME =     (1<<25)  # Update the on-disk [acm]times lazily
+
+    ## Umount options
+    MNT_FORCE =       0x00000001  # Attempt to forcibily umount
+    MNT_DETACH =      0x00000002  # Just detach from the tree
+    MNT_EXPIRE =      0x00000004  # Mark for expiry
+    UMOUNT_NOFOLLOW = 0x00000008  # Don't follow symlink on umount
+    UMOUNT_UNUSED =   0x80000000  # Flag guaranteed to be unused
+
+    _unshare = libc.unshare
+    _unshare.restype = c_int
+    _unshare.argtypes = (c_int,)  # flags
+
+    CLONE_FILES =     0x00000400  # set if open files shared between processes
+    CLONE_FS =        0x00000200  # set if fs info shared between processes
+    CLONE_NEWCGROUP = 0x02000000  # New cgroup namespace
+    CLONE_NEWIPC =    0x08000000  # New ipc namespace
+    CLONE_NEWNET =    0x40000000  # New network namespace
+    CLONE_NEWNS =     0x00020000  # New mount namespace group
+    CLONE_NEWPID =    0x20000000  # New pid namespace
+    CLONE_NEWUSER =   0x10000000  # New user namespace
+    CLONE_NEWUTS =    0x04000000  # New utsname namespace
+    CLONE_SYSVSEM =   0x00040000  # share system V SEM_UNDO semantics
+
+    _pivot_root = libc.pivot_root
+    _pivot_root.restype = c_int
+    _pivot_root.argtypes = (
+        c_char_p,  # new_root
+        c_char_p,  # old_root
+    )
+
+    CAP_CHOWN            = 0
+    CAP_DAC_OVERRIDE     = 1
+    CAP_DAC_READ_SEARCH  = 2
+    CAP_FOWNER           = 3
+    CAP_FSETID           = 4
+    CAP_KILL             = 5
+    CAP_SETGID           = 6
+    CAP_SETUID           = 7
+    CAP_SETPCAP          = 8
+    CAP_LINUX_IMMUTABLE  = 9
+    CAP_NET_BIND_SERVICE = 10
+    CAP_NET_BROADCAST    = 11
+    CAP_NET_ADMIN        = 12
+    CAP_NET_RAW          = 13
+    CAP_IPC_LOCK         = 14
+    CAP_IPC_OWNER        = 15
+    CAP_SYS_MODULE       = 16
+    CAP_SYS_RAWIO        = 17
+    CAP_SYS_CHROOT       = 18
+    CAP_SYS_PTRACE       = 19
+    CAP_SYS_PACCT        = 20
+    CAP_SYS_ADMIN        = 21
+    CAP_SYS_BOOT         = 22
+    CAP_SYS_NICE         = 23
+    CAP_SYS_RESOURCE     = 24
+    CAP_SYS_TIME         = 25
+    CAP_SYS_TTY_CONFIG   = 26
+    CAP_MKNOD            = 27
+    CAP_LEASE            = 28
+    CAP_AUDIT_WRITE      = 29
+    CAP_AUDIT_CONTROL    = 30
+    CAP_SETFCAP          = 31
+    CAP_MAC_OVERRIDE     = 32
+    CAP_MAC_ADMIN        = 33
+    CAP_SYSLOG           = 34
+    CAP_WAKE_ALARM       = 35
+    CAP_BLOCK_SUSPEND    = 36
+    CAP_AUDIT_READ       = 37
+
+    def _ensure_bytes(x, /):
+        match x:
+            case bytes(_):
+                return x
+            case str(_):
+                return x.encode()
+            case _:
+                if not x:
+                    return None
+                else:
+                    return str(x).encode()
+
+    def mount(source, target, fstype, flags, data):
+        source = _ensure_bytes(source)
+        target = _ensure_bytes(target)
+        fstype = _ensure_bytes(fstype)
+        data = _ensure_bytes(data)
+        if _mount(source, target, fstype, flags, data) < 0:
+            error = strerror(get_errno())
+            raise RuntimeError(error)
+
+    def umount(target, flags=0):
+        target = _ensure_bytes(target)
+        if _umount(target, flags) < 0:
+            error = strerror(get_errno())
+            raise RuntimeError(error)
+
+    def unshare(flags):
+        if _unshare(flags) < 0:
+            error = strerror(get_errno())
+            raise RuntimeError(error)
+
+    def pivot_root(new_root, old_root):
+        new_root = _ensure_bytes(new_root)
+        old_root = _ensure_bytes(old_root)
+        if _pivot_root(new_root, old_root) < 0:
+            error = strerror(get_errno())
+            raise RuntimeError(error)
+
+    def has_caps(*caps):
+        for cap in caps:
+            has_cap = bool(prctl(PR_CAPBSET_READ, cap, 0, 0, 0))
+            if (errno := get_errno()):
+                error = strerror(errno)
+                raise RuntimeError(error)
+            if not has_cap:
+                return False
+        return True
+
+    def drop_caps(*caps):
+        for cap in caps:
+            rv = prctl(PR_CAPBSET_DROP, cap, 0, 0, 0)
+            if rv < 0:
+                error = strerror(get_errno())
+                raise RuntimeError(error)
+
 else:
     HAS_SIGNALFD = False
+    HAS_NAMESPACES = False

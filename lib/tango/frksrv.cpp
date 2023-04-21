@@ -1,6 +1,7 @@
 #if !__has_feature(coverage_sanitizer)
 #error Incompatible compiler! Please use Clang 13.0 or higher
 #endif
+#define _XOPEN_SOURCE 500
 
 #include "common.h"
 #include "tracer.h"
@@ -11,6 +12,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <string.h>
+#include <ftw.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -21,6 +23,37 @@ extern "C" {
 extern pid_t __wrap_fork() __attribute__((weak));
 extern pid_t __real_fork() __attribute__((weak));
 
+ATTRIBUTE_NO_SANITIZE_ALL
+static int rm_helper(
+        const char *fpath, const struct stat *sb,
+        int typeflag, struct FTW *ftwbuf) {
+    if (ftwbuf->level == 0) return 0;
+    int r = remove(fpath);
+    if (r) perror(fpath);
+    return r;
+}
+
+ATTRIBUTE_NO_SANITIZE_ALL
+static int cleanup_directory(const char *dir) {
+    int r = nftw(dir, rm_helper, 64, FTW_DEPTH | FTW_PHYS);
+    if (r) perror(dir);
+    return r;
+}
+
+
+ATTRIBUTE_NO_SANITIZE_ALL
+static void cleanup_fs() {
+    static bool done = false;
+    static const char *upperdir = NULL;
+    if (!done) {
+        upperdir = getenv("TANGO_UPPERDIR");
+        done = true;
+    }
+    if (!upperdir) return;
+    int r = cleanup_directory(upperdir);
+    if (r) perror("Failed to clean up tmpfs");
+}
+
 __attribute__((used))
 ATTRIBUTE_NO_SANITIZE_ALL
 static void _forkserver() {
@@ -30,12 +63,9 @@ static void _forkserver() {
     snprintf(fifopath, PATH_MAX, "%s/%s", wd, "input.pipe");
 
     while(1) {
+        cleanup_fs();
         CoverageTracer.ClearMaps();
-        int child_pid;
-        if (__wrap_fork)
-            child_pid = __real_fork();
-        else
-            child_pid = fork();
+        int child_pid = fork();
         if (child_pid) {
             asm("int $3"); // trap and wait until fuzzer wakes us up
             int status, ret;

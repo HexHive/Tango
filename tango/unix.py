@@ -5,7 +5,8 @@ from . import debug, info, warning, critical, error
 from tango.core import (BaseDriver, AbstractState, Transition,
     LoadableTarget, ValueProfiler, CountProfiler, AbstractChannel,
     AbstractChannelFactory)
-from tango.ptrace.binding import ptrace_traceme, HAS_SECCOMP_FILTER
+from tango.ptrace.binding import (HAS_SECCOMP_FILTER, HAS_NAMESPACES,
+    ptrace_traceme, prctl)
 from tango.ptrace.cpu_info import CPU_WORD_SIZE
 from tango.ptrace.binding.cpu import CPU_INSTR_POINTER, CPU_STACK_POINTER
 from tango.ptrace.debugger import   (PtraceDebugger, PtraceProcess,
@@ -20,6 +21,23 @@ from tango.common import ComponentType
 from tango.exceptions import (ChannelTimeoutException, StabilityException,
     ProcessCrashedException, ProcessTerminatedException, ChannelBrokenException)
 
+if HAS_SECCOMP_FILTER:
+    from tango.ptrace.binding import (BPF_LD, BPF_W, BPF_ABS, BPF_JMP, BPF_JEQ,
+        BPF_K, BPF_RET, BPF_STMT, BPF_JUMP, BPF_PROG, BPF_FILTER,
+        SECCOMP_RET_ALLOW, SECCOMP_RET_TRACE, SECCOMP_RET_DATA,
+        SECCOMP_FILTER_FLAG_TSYNC, SECCOMP_SET_MODE_FILTER,
+        PR_SET_NO_NEW_PRIVS, PR_SET_PDEATHSIG)
+    from tango.ptrace.binding.linux_struct import seccomp_data
+    from tango.ptrace.syscall import SYSCALL_NUMBERS as NR
+
+if HAS_NAMESPACES:
+    from tango.ptrace.binding import (mount, umount, unshare, pivot_root,
+        has_caps, drop_caps,
+        MS_BIND, MS_REMOUNT, MS_RDONLY, MS_NOATIME, MS_NODEV, MS_NOSUID, MS_REC,
+        MS_PRIVATE, CLONE_NEWNS, CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_FOWNER,
+        CAP_SETPCAP, CAP_NET_ADMIN, CAP_SYS_ADMIN)
+
+from pathlib import Path
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from typing import (
@@ -50,15 +68,6 @@ __all__ = [
 ]
 
 SOCKET_SYSCALL_NAMES = SOCKET_SYSCALL_NAMES.union(('read', 'write'))
-
-if HAS_SECCOMP_FILTER:
-    from tango.ptrace.binding import (BPF_LD, BPF_W, BPF_ABS, BPF_JMP, BPF_JEQ,
-        BPF_K, BPF_RET, BPF_STMT, BPF_JUMP, BPF_PROG, BPF_FILTER,
-        SECCOMP_RET_ALLOW, SECCOMP_RET_TRACE, SECCOMP_RET_DATA,
-        SECCOMP_FILTER_FLAG_TSYNC, SECCOMP_SET_MODE_FILTER,
-        prctl, PR_SET_NO_NEW_PRIVS, PR_SET_PDEATHSIG)
-    from tango.ptrace.binding.linux_struct import seccomp_data
-    from tango.ptrace.syscall import SYSCALL_NUMBERS as NR
 
 @dataclass
 class EventOptions:
@@ -674,14 +683,19 @@ class Environment:
 
 class ProcessDriver(BaseDriver,
         capture_components={ComponentType.channel_factory},
-        capture_paths=['driver.exec', 'driver.disable_aslr', 'fuzzer.work_dir']):
+        capture_paths=(
+            'driver.exec', 'driver.disable_aslr', 'fuzzer.work_dir',
+            'driver.isolate_fs', 'driver.isolate_net'
+            )):
     PROC_TERMINATE_RETRIES = 5
     PROC_TERMINATE_WAIT = 0.1 # seconds
 
     def __init__(self, *, exec: dict, disable_aslr: bool, work_dir:str,
-            channel_factory: PtraceChannelFactory, **kwargs):
+            isolate_fs: bool=True, isolate_net: bool=True,
+            channel_factory: PtraceChannelFactory,
+            **kwargs):
         super().__init__(channel_factory=channel_factory, **kwargs)
-        self._work_dir = work_dir
+        self._work_dir = Path(work_dir)
         self._exec_env = self.setup_execution_environment(exec)
         self._pobj = None # Popen object of child process
         self._netns_name = f'ns:{uuid4()}'
@@ -693,6 +707,30 @@ class ProcessDriver(BaseDriver,
             personality.restype = ctypes.c_int
             personality.argtypes = [ctypes.c_ulong]
             personality(ADDR_NO_RANDOMIZE)
+
+        self._isolate_fs = isolate_fs
+        if isolate_fs:
+            if not HAS_NAMESPACES:
+                raise RuntimeError("Namespace isolation is not available")
+            self._mount_caps = {
+                CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_FOWNER, CAP_SETPCAP,
+                CAP_SYS_ADMIN}
+            if not has_caps(*self._mount_caps):
+                warning("Python does not have the required capabilities for"
+                        " mounting an isolated fs. Make sure to provide it with"
+                        " sufficient capabilities, or disable isolation.")
+                self._isolate_fs = False
+
+        self._isolate_net = isolate_net
+        if isolate_net:
+            if not HAS_NAMESPACES:
+                raise RuntimeError("Namespace isolation is not available")
+            self._net_caps = {CAP_NET_ADMIN, CAP_SYS_ADMIN, CAP_DAC_OVERRIDE}
+            if not has_caps(*self._net_caps):
+                warning("Python does not have the required capabilities for a"
+                        " network namespace. Make sure to provide it with"
+                        " sufficient capabilities, or disable isolation.")
+                self._isolate_net = False
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -712,7 +750,7 @@ class ProcessDriver(BaseDriver,
                 config[stdf] = DEVNULL
         if not config.get("env"):
             config["env"] = dict(os.environ)
-        config["env"]["TANGO_WORKDIR"] = self._work_dir
+        config["env"]["TANGO_WORKDIR"] = str(self._work_dir)
         config["args"][0] = os.path.realpath(config["args"][0])
         if not (path := config.get("path")):
             config["path"] = config["args"][0]
@@ -782,14 +820,29 @@ class ProcessDriver(BaseDriver,
         return pobj
 
     def _preexec_fn(self):
-        os.setsid()
-        signal.pthread_sigmask(signal.SIG_SETMASK, {})
-        netns.setns(self._netns_name, flags=os.O_CREAT)
-        with IPRoute() as ipr:
-            ipr.link('set', index=1, state='up')
+        try:
+            os.setsid()
+            signal.pthread_sigmask(signal.SIG_SETMASK, {})
+            caps = set()
+            if self._isolate_net:
+                caps |= self._net_caps
+                netns.setns(self._netns_name, flags=os.O_CREAT)
+                with IPRoute() as ipr:
+                    ipr.link('set', index=1, state='up')
+            if self._isolate_fs:
+                caps |= self._mount_caps
+                self._setup_volatile_filesystem(self._work_dir / "fs")
+            if self._factory.use_seccomp:
+                self._install_seccomp_filter()
+
+            # finally we drop all acquired caps
+            drop_caps(*caps)
+        except Exception as ex:
+            import traceback
+            error(ex)
+            error(traceback.format_exc())
+            raise SystemExit from ex
         ptrace_traceme()
-        if self._factory.use_seccomp:
-            self._install_seccomp_filter()
 
     @staticmethod
     def _install_seccomp_filter():
@@ -826,6 +879,88 @@ class ProcessDriver(BaseDriver,
         if (res := syscall(NR['seccomp'], SECCOMP_SET_MODE_FILTER,
                 SECCOMP_FILTER_FLAG_TSYNC, ctypes.addressof(prog))):
             raise RuntimeError("Failed to install seccomp bpf")
+
+    @staticmethod
+    def _switch_mount_namespace():
+        try:
+            unshare(CLONE_NEWNS)
+        except Exception as ex:
+            raise RuntimeError("Failed to detach mount namespace") \
+                from ex
+        try:
+            mount('rootfs', '/', None, MS_REC | MS_PRIVATE, None)
+        except Exception as ex:
+            raise RuntimeError("Failed to remount rootfs as private") from ex
+
+    @staticmethod
+    def _setup_overlay_tmpfs(path):
+        path = path.absolute()
+        # first, we setup a read-only rootfs as the base for the overlay
+        rootfs = path / 'rootfs'
+        if not rootfs.is_mount():
+            rootfs.mkdir(parents=True, exist_ok=True)
+            try:
+                mount('/', rootfs, None, MS_BIND, None)
+                mount(None, rootfs, None, MS_REMOUNT|MS_BIND|MS_RDONLY, None)
+            except Exception as ex:
+                raise RuntimeError("Failed to mount r/o rootfs") from ex
+
+        # next, we setup a tmpfs as the volatile storage for overlayfs
+        tmpfs = path / 'tmpfs'
+        overlayfs = path / 'overlayfs'
+        if tmpfs.is_mount():
+            # it could still be used by an existing overlayfs mount
+            if overlayfs.is_mount():
+                umount(overlayfs)
+            umount(tmpfs)
+        tmpfs.mkdir(parents=True, exist_ok=True)
+        try:
+            mount('tmpfs', tmpfs, 'tmpfs', 0, None)
+        except Exception as ex:
+            raise RuntimeError("Failed to mount tmpfs") from ex
+        upperdir = tmpfs / 'upper'
+        workdir = tmpfs / 'work'
+        upperdir.mkdir(parents=True, exist_ok=True)
+        workdir.mkdir(parents=True, exist_ok=True)
+
+        # finally, we mount the overlayfs and return a path to it
+        if overlayfs.is_mount():
+            umount(overlayfs)
+        overlayfs.mkdir(parents=True, exist_ok=True)
+        options = f'lowerdir={rootfs},upperdir={upperdir},workdir={workdir}'
+        try:
+            mount('overlayfs', overlayfs, 'overlay',
+                (MS_NOATIME | MS_NODEV | MS_NOSUID) and 0, options)
+        except Exception as ex:
+            raise RuntimeError("Failed to mount overlayfs") from ex
+        return overlayfs, upperdir
+
+    @classmethod
+    def _setup_volatile_filesystem(cls, path):
+        cls._switch_mount_namespace()
+        # we obtain the cwd before pivoting root
+        cwd = Path.cwd()
+
+        new_root, upperdir = cls._setup_overlay_tmpfs(path)
+        old_root = new_root / "rootfs"
+        old_root.mkdir(exist_ok=True)
+        try:
+            pivot_root(new_root, old_root)
+        except Exception as ex:
+            raise RuntimeError("Failed to pivot root in isolated namespace") \
+                from ex
+
+        # clean up
+        # (path / "rootfs").rmdir()
+        # path.rmdir()
+
+        # we fix up procfs in case it is needed
+        mount('proc', '/proc', 'proc', 0, None)
+
+        # finally we chdir into the cwd within the new fs
+        os.chdir(cwd)
+        # could be used by the forkserver to clean up instead of remounting
+        os.environ['TANGO_UPPERDIR'] = str(Path("/rootfs", upperdir))
 
 class ProcessForkDriver(ProcessDriver):
     @classmethod
