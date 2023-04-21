@@ -1183,9 +1183,9 @@ class FileDescriptorChannel(PtraceChannel):
                         args = syscall.argument_values
                         # convert call to blocking
                         if syscall.name == 'poll' and args[2] == 0:
-                            args[2] = -1  # infinite timeout
+                            args = args[:2] + (-1,) + args[3:]  # inf timeout
                         elif syscall.name == 'ppoll' and args[2] != 0:
-                            args[2] = 0  # nullptr
+                            args = args[:2] + (0,) + args[3:]  # nullptr
                         else:
                             break
                         syscall.writeArgumentValues(*args)
@@ -1209,7 +1209,7 @@ class FileDescriptorChannel(PtraceChannel):
                         args = syscall.argument_values
                         # convert call to blocking
                         if args[4]:
-                            args[4] = 0  # nullptr
+                            args = args[:4] + (0,) + args[5:]  # nullptr
                         else:
                             break
                         syscall.writeArgumentValues(*args)
