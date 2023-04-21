@@ -1,0 +1,16 @@
+diff --git a/ofstd/libsrc/ofstd.cc b/ofstd/libsrc/ofstd.cc
+index 037e92fa3..0f409d590 100644
+--- a/ofstd/libsrc/ofstd.cc
++++ b/ofstd/libsrc/ofstd.cc
+@@ -2785,10 +2785,7 @@ const unsigned int OFrandr_max = 0x7fffffff;
+ 
+ int OFrand_r(unsigned int &seed)
+ {
+-  unsigned long val = OFstatic_cast(unsigned long, seed);
+-  val = val * 1103515245 + 12345;
+-  seed = OFstatic_cast(unsigned int, val %(OFstatic_cast(unsigned long, 0x80000000)));
+-  return OFstatic_cast(int, seed);
++  return 4;
+ }
+ 
+ void OFStandard::trimString(const char*& pBegin, const char*& pEnd)
