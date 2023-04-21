@@ -136,7 +136,7 @@ class PtraceDebugger(object):
      - use_sysgood (bool): sysgood option is enabled?
     """
 
-    def __init__(self, *, loop=None):
+    def __init__(self, *, loop=None, verbose=False):
         self.dict = {}   # pid -> PtraceProcess object
         self.list = []
         self.options = 0
@@ -146,6 +146,7 @@ class PtraceDebugger(object):
         self.trace_seccomp = False
         self.use_sysgood = False
         self._loop = loop or asyncio.get_running_loop()
+        self._verbose = verbose
 
         # WARN sometimes, when a traced process forks, the SIGSTOP from the
         # child arrives before the PTRACE_EVENT_CLONE, and this brings the
@@ -322,7 +323,7 @@ class PtraceDebugger(object):
                 break
 
         # otherwise, we enqueue it and hope someone picks it up in time
-        if not published:
+        if not published and self._verbose:
             warning(f"No subscribers for {pid=}")
 
         pidevent = (eid, pid, status)
@@ -417,9 +418,10 @@ class PtraceDebugger(object):
                 try:
                     eid, pid, status = await self._wait_status(
                         wanted_pid, subscription, blocking=blocking)
-                    debug(f"wait_event({wanted_pid}): "
-                          f"subscriber to {subscription.wanted_pid} "
-                          f"received event {(eid, pid, status)}")
+                    if self._verbose:
+                        debug(f"wait_event({wanted_pid}): "
+                              f"subscriber to {subscription.wanted_pid} "
+                              f"received event {(eid, pid, status)}")
                 except OSError as err:
                     if wanted_pid and err.errno == ECHILD:
                         process = self.dict[wanted_pid]
@@ -445,7 +447,7 @@ class PtraceDebugger(object):
                                 else:
                                     debug(f"Ignoring signal for unknown {pid=}")
                             except ProcError:
-                                warning(f"Process ({pid=}) died before"
+                                debug(f"Process ({pid=}) died before"
                                          " its signal could be processed")
                         else:
                             republish = True
