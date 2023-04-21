@@ -400,15 +400,19 @@ class PtraceDebugger(object):
             break
         return item
 
-    async def _wait_event(self, wanted_pid, *, blocking=True, subscription=None):
+    async def _wait_event(self, process, *, blocking=True, subscription=None):
         """
         Wait for a process event from the specified process identifier. If
         blocking=False, return None if there is no new event, otherwise return
         an object based on ProcessEvent.
         """
-        process = None
+        if process:
+            wanted_pid = process.pid
+        else:
+            wanted_pid = None
+        recipient = None
         with self.subscription(wanted_pid, subscription) as subscription:
-            while not process:
+            while not recipient:
                 republish = False
                 try:
                     eid, pid, status = await self._wait_status(
@@ -424,26 +428,29 @@ class PtraceDebugger(object):
                         raise err
                 if not blocking and not pid:
                     return None
-                try:
-                    process = self.dict[pid]
-                except KeyError:
-                    if HAS_PROC:
-                        try:
-                            stat = readProcessStat(pid)
-                            if parent := self.dict.get(stat.ppid):
-                                republish = True
-                                debug(f"Received premature signal for"
-                                      f" a child ({pid=}) of"
-                                      f" a traced process ({parent=})")
-                            else:
-                                debug(f"Ignoring signal for unknown {pid=}")
-                        except ProcError:
-                            warning(f"Process ({pid=}) died before"
-                                     " its signal could be processed")
-                    else:
-                        republish = True
-                        debug(f"Received signal for unknown {pid=},"
-                               " placing event back in queue")
+                if process and pid == process.pid:
+                    recipient = process
+                else:
+                    try:
+                        recipient = self.dict[pid]
+                    except KeyError:
+                        if HAS_PROC:
+                            try:
+                                stat = readProcessStat(pid)
+                                if parent := self.dict.get(stat.ppid):
+                                    republish = True
+                                    debug(f"Received premature signal for"
+                                          f" a child ({pid=}) of"
+                                          f" a traced process ({parent=})")
+                                else:
+                                    debug(f"Ignoring signal for unknown {pid=}")
+                            except ProcError:
+                                warning(f"Process ({pid=}) died before"
+                                         " its signal could be processed")
+                        else:
+                            republish = True
+                            debug(f"Received signal for unknown {pid=},"
+                                   " placing event back in queue")
 
                 if republish:
                     # FIXME this may result in duplicate events for some subs?
@@ -464,23 +471,23 @@ class PtraceDebugger(object):
             debug(f"Event history too long (len={l});"
                     f" purged {l - len(self.event_history)} items.")
 
-        return await process.processStatus(status)
+        return await recipient.processStatus(status)
 
-    async def waitProcessEvent(self, pid=None, **kwargs):
+    async def waitProcessEvent(self, process=None, **kwargs):
         """
         Wait for a process event from a specific process (if pid option is
         set) or any process (default). If blocking=False, return None if there
         is no new event, otherwise return an object based on ProcessEvent.
         """
-        return await self._wait_event(pid, **kwargs)
+        return await self._wait_event(process, **kwargs)
 
-    async def waitSignals(self, *signals, pid=None, **kwargs):
+    async def waitSignals(self, *signals, process=None, **kwargs):
         """
         Wait for any signal or some specific signals (if specified) from a
         specific process (if pid keyword is set) or any process (default).
         Return a ProcessSignal object or raise an unexpected ProcessEvent.
         """
-        event = await self._wait_event(pid, **kwargs)
+        event = await self._wait_event(process, **kwargs)
         if event is None:
             return
         if event.__class__ != ProcessSignal:
@@ -497,7 +504,7 @@ class PtraceDebugger(object):
         or raise an unexpected ProcessEvent.
         """
         if process:
-            event = await self.waitProcessEvent(pid=process.pid, **kwargs)
+            event = await self.waitProcessEvent(process, **kwargs)
         else:
             event = await self.waitProcessEvent(**kwargs)
         if event is None:

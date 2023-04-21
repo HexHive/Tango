@@ -332,10 +332,7 @@ class PtraceChannel(AbstractChannel):
 
     async def _wait_for_syscall(self, process: PtraceProcess=None, **kwargs):
         kwargs['subscription'] = self._dbgsub
-        if process:
-            return await self._debugger.waitProcessEvent(process.pid, **kwargs)
-        else:
-            return await self._debugger.waitProcessEvent(**kwargs)
+        return await self._debugger.waitProcessEvent(process, **kwargs)
 
     async def _monitor_syscalls_internal_loop(self,
             ignore_callback: Callable[[PtraceSyscall], bool],

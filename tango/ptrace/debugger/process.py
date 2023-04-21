@@ -848,11 +848,11 @@ class PtraceProcess(object):
 
     async def waitEvent(self, blocking=True):
         return await self.debugger.waitProcessEvent(
-            pid=self.pid, blocking=blocking, subscription=self.subscription)
+            process=self, blocking=blocking, subscription=self.subscription)
 
     async def waitSignals(self, *signals, blocking=True):
         return await self.debugger.waitSignals(*signals,
-            pid=self.pid, blocking=blocking, subscription=self.subscription)
+            process=self, blocking=blocking, subscription=self.subscription)
 
     async def waitSyscall(self, blocking=True):
         return await self.debugger.waitSyscall(self,
