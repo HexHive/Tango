@@ -675,7 +675,7 @@ class UDPForkChannelFactory(UDPChannelFactory,
         return super().match_config(config) and \
             config['driver'].get('forkserver')
 
-    async def create(self, pobj: Popen, netns: str) -> AbstractChannel:
+    async def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
         ch = await self._create_once(
             pobj=pobj, netns=netns, **self.fields, **kwargs)
         await ch.connect((self.endpoint, self.port))
