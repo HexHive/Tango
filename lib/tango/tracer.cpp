@@ -163,6 +163,7 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
 
 ATTRIBUTE_NO_SANITIZE_ALL
 void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
+    if (!*guard) return; // in case cov_trace is called before init
     uintptr_t PC = reinterpret_cast<uintptr_t>(GET_CALLER_PC());
     CoverageTracer.HandleTracePCGuard(PC, guard);
 }
