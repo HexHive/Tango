@@ -58,6 +58,7 @@ private:
 
 ATTRIBUTE_NO_SANITIZE_ALL
 Tracer::Tracer() {
+    if (initialized) return;
     initialized = false;
     disabled = false;
     num_guards = 0;
