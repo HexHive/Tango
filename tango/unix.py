@@ -928,6 +928,7 @@ class ProcessDriver(BaseDriver,
         try:
             mount('overlayfs', overlayfs, 'overlay',
                 (MS_NOATIME | MS_NODEV | MS_NOSUID) and 0, options)
+            mount('/dev/shm', overlayfs / 'dev/shm', None, MS_BIND, None)
         except Exception as ex:
             raise RuntimeError("Failed to mount overlayfs") from ex
         return overlayfs, upperdir
