@@ -41,6 +41,10 @@ class AbstractChannel(ABC):
         pass
 
     @abstractmethod
+    async def shutdown(self):
+        pass
+
+    @abstractmethod
     async def close(self):
         pass
 

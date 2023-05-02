@@ -303,8 +303,17 @@ class TCPChannel(NetworkChannel):
     async def write_bytes(self, data: ByteString) -> int:
         return self._socket.send(data)
 
+    async def shutdown(self):
+        if not self._socket:
+            return
+        try:
+            self._socket.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
+
     async def close(self):
         if self._socket is not None:
+            await self._socket.shutdown()
             self._socket.close()
             self._socket = None
         await super().close()
@@ -577,6 +586,9 @@ class UDPChannel(NetworkChannel):
 
     async def write_bytes(self, data: ByteString) -> int:
         return self._socket.send(data)
+
+    async def shutdown(self):
+        pass
 
     async def close(self):
         if self._socket is not None:

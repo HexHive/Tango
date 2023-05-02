@@ -76,10 +76,15 @@ class StdIOChannel(FileDescriptorChannel):
         self._stdinfd = 0
         self._refcounter[0] = 1
 
-    async def close(self):
+    async def shutdown(self):
         if self._file is not None and not self._file.closed:
             # FIXME should close self._file here?
             self._file.flush()
+            self._file.close()
+            self._file = None
+
+    async def close(self):
+        await self.shutdown()
         await super().close()
 
 @dataclass(kw_only=True, frozen=True)
@@ -128,12 +133,6 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
             self._awaited = True
             await self.sync()
             assert self.synced
-
-    async def close(self):
-        if self._file is not None and not self._file.closed:
-            self._file.close()
-            self._file = None
-        await super().close()
 
     def cb_stdin_polled(self, process, syscall):
         if not self._injected:
