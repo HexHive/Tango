@@ -931,6 +931,15 @@ class ProcessDriver(BaseDriver,
             mount('/dev/shm', overlayfs / 'dev/shm', None, MS_BIND, None)
         except Exception as ex:
             raise RuntimeError("Failed to mount overlayfs") from ex
+
+        sharedfs = overlayfs / 'shared'
+        sharedfs.mkdir(parents=True, exist_ok=True)
+        shared_dir = path / 'shared'
+        shared_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            mount(shared_dir, sharedfs, None, MS_BIND, None)
+        except Exception as ex:
+            raise RuntimeError("Failed to mount shared dir") from ex
         return overlayfs, upperdir
 
     @classmethod
