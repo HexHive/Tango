@@ -7,6 +7,8 @@ COVERAGE ?= edge
 TRACEPCGUARD_FLAG := $(COVERAGE),trace-pc-guard
 TRACECMP_FLAG := trace-cmp
 
+CFLAGS := -fPIC
+LDFLAGS := -fPIE -pie -L$(TANGO_LIBDIR)/tango
 SANCOV_FLAGS := $(TRACEPCGUARD_FLAG)
 ifdef USE_CMPLOG
 	SANCOV_FLAGS += $(TRACECMP_FLAG)
@@ -16,18 +18,11 @@ space:=$(subst ,, )
 comma:=,
 SANCOV_FLAGS := $(subst $(space),$(comma),$(SANCOV_FLAGS))
 
-CFLAGS := -fPIC
-ifdef USE_ASAN
-	CFLAGS += -fsanitize=address
-endif
-
-LDFLAGS := -fPIE -pie -L$(TANGO_LIBDIR)/tango
-ifdef USE_ASAN
-	LDFLAGS += -fsanitize=address
-endif
-
-ifndef BUILD_ORIGINAL
+ifndef DISABLE_COV
 	CFLAGS += -fsanitize-coverage=$(SANCOV_FLAGS)
+endif
+
+ifndef DISABLE_TANGOLIB
 	LDFLAGS += -Wl,-wrap,bind -Wl,-wrap,fork -Wl,-wrap,random
 	# LDLIBS=-Wl,-whole-archive -l:libtangofuzz.a -Wl,-no-whole-archive -lrt -lc++
 	LDLIBS= \
@@ -36,6 +31,12 @@ ifndef BUILD_ORIGINAL
 		$(TANGO_LIBDIR)/tango/wrappers.o \
 		-lrt -lc++
 endif
+
+ifdef USE_ASAN
+	CFLAGS += -fsanitize=address
+	LDFLAGS += -fsanitize=address
+endif
+
 ifdef DEBUG
 	CFLAGS += -O0 -g -fno-inline
 else
