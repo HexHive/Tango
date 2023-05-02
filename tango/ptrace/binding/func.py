@@ -499,7 +499,7 @@ if RUNNING_LINUX:
                 raise ValueError(f"{sig} is not a valid signal identifier")
         fd = signalfd(-1, byref(sset), flags)
         if fd < 0:
-            error = strerror(get_errno())
+            error = strerror(set_errno(0))
             raise RuntimeError(f"Failed to create signalfd: {error}")
         return fd
 
@@ -507,7 +507,7 @@ if RUNNING_LINUX:
         sinfo = sinfo or signalfd_siginfo()
         rv = read(fd, byref(sinfo), sizeof(sinfo))
         if rv < 0:
-            error = strerror(get_errno())
+            error = strerror(set_errno(0))
             raise BlockingIOError(f"Failed to read from signalfd {fd}: {error}")
         elif rv == 0:
             raise EOFError(f"End-of-file on signalfd {fd}")
@@ -642,31 +642,31 @@ if RUNNING_LINUX:
         fstype = _ensure_bytes(fstype)
         data = _ensure_bytes(data)
         if _mount(source, target, fstype, flags, data) < 0:
-            error = strerror(get_errno())
+            error = strerror(set_errno(0))
             raise RuntimeError(error)
 
     def umount(target, flags=0):
         target = _ensure_bytes(target)
         if _umount(target, flags) < 0:
-            error = strerror(get_errno())
+            error = strerror(set_errno(0))
             raise RuntimeError(error)
 
     def unshare(flags):
         if _unshare(flags) < 0:
-            error = strerror(get_errno())
+            error = strerror(set_errno(0))
             raise RuntimeError(error)
 
     def pivot_root(new_root, old_root):
         new_root = _ensure_bytes(new_root)
         old_root = _ensure_bytes(old_root)
         if _pivot_root(new_root, old_root) < 0:
-            error = strerror(get_errno())
+            error = strerror(set_errno(0))
             raise RuntimeError(error)
 
     def has_caps(*caps):
         for cap in caps:
             has_cap = bool(prctl(PR_CAPBSET_READ, cap, 0, 0, 0))
-            if (errno := get_errno()):
+            if (errno := set_errno(0)):
                 error = strerror(errno)
                 raise RuntimeError(error)
             if not has_cap:
@@ -677,7 +677,7 @@ if RUNNING_LINUX:
         for cap in caps:
             rv = prctl(PR_CAPBSET_DROP, cap, 0, 0, 0)
             if rv < 0:
-                error = strerror(get_errno())
+                error = strerror(set_errno(0))
                 raise RuntimeError(error)
 
 else:
