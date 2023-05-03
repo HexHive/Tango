@@ -40,48 +40,57 @@ class PtraceSubscription:
     wanted_pid: Optional[int]
     debugger: PtraceDebugger
 
-    next_event: InitVar[int] = 0
+    at: InitVar[int] = 0
 
-    def __post_init__(self, next_event):
+    def __post_init__(self, at):
         self._ready = asyncio.Event()
-        self.next_event = next_event
+        self.at = at
 
-    def subscribed(self, pid):
+    def is_subscribed(self, pid):
         return self.catch_all or self.wanted_pid == pid
 
     def notify(self):
         self._ready.set()
 
     def fork(self, wanted_pid: Optional[int]=None):
-        changes = {'next_event': self.next_event}
+        changes = {'at': self.at}
         if wanted_pid:
             changes['wanted_pid'] = wanted_pid
         forked = replace(self, **changes)
         forked.debugger.add_subscription(forked)
         return forked
 
-    async def get(self) -> WaitPidEvent:
+    async def get(self, **kwargs) \
+            -> WaitPidEvent | tuple[WaitPidEvent, int]:
         while True:
             try:
-                item = self.get_nowait()
+                rv = self.get_nowait(**kwargs)
                 break
             except StopIteration:
                 self._ready.clear()
                 await self._ready.wait()
                 continue
-        return item
+        return rv
 
-    def get_nowait(self) -> WaitPidEvent:
-        idx, item = next(self.events)
-        self.next_event = item[0] + 1
-        return item
+    def get_nowait(self, *, return_index=False) \
+            -> WaitPidEvent | tuple[WaitPidEvent, int]:
+        idx, item = next(self)
+        if return_index:
+            return item, idx
+        else:
+            return item
 
-    @property
-    def events(self) -> Iterator[tuple[int, WaitPidEvent]]:
-        indexed = enumerate(self.debugger.event_history)
-        by_eid = filter(lambda e: e[1][0] >= self.next_event, indexed)
-        by_pid = filter(lambda e: self.subscribed(e[1][1]), by_eid)
-        return by_pid
+    def __next__(self) -> tuple[int, WaitPidEvent]:
+        history = self.debugger.event_history
+        slicer = range(self.at, len(history))
+        indexed = zip(slicer, map(lambda i: history[i], slicer))
+        by_pid = filter(lambda e: self.is_subscribed(e[1][1]), indexed)
+        idx, item = next(by_pid)
+        self.at = idx + 1
+        return idx, item
+
+    def __iter__(self) -> Iterator[tuple[int, WaitPidEvent]]:
+        return self
 
     @property
     def catch_all(self) -> bool:
@@ -339,7 +348,7 @@ class PtraceDebugger(object):
 
     def subscribe(self, wanted_pid: Optional[int]=None, /,
             *, start_at=0, **kwargs) -> PtraceSubscription:
-        subscription = PtraceSubscription(wanted_pid, self, next_event=start_at)
+        subscription = PtraceSubscription(wanted_pid, self, at=start_at)
         self.add_subscription(subscription)
         return subscription
 
@@ -371,18 +380,18 @@ class PtraceDebugger(object):
         while True:
             match (HAS_SIGNALFD, blocking, subscription.ready):
                 case (True, True, _) | (_, _, True):
-                    item = await subscription.get()
+                    item, idx = await subscription.get(return_index=True)
                 case (True, False, False):
                     # yield to the event loop, let it poll signalfd
                     await asyncio.sleep(0)
                     try:
-                        item = subscription.get_nowait()
+                        item, idx = subscription.get_nowait(return_index=True)
                     except StopIteration:
-                        item = (None, None)
+                        item, idx = (None, None, None), None
                 case (False, _, False):
                     _ = self._waitpid_and_publish(wanted_pid, blocking=blocking)
                     # we fetch it from the queue as well to keep it in sync
-                    item = await subscription.get()
+                    item, idx = await subscription.get(return_index=True)
                 case _:
                     raise ValueError("Unexpected match parameters")
 
@@ -392,8 +401,8 @@ class PtraceDebugger(object):
                 # specific pid
                 debug("Re-ordering event %s, listening for %i",
                     item, wanted_pid)
-                # FIXME maybe use del arr[idx], must get idx from subscription
-                self.event_history.remove(item)
+                del self.event_history[idx]
+                self._shift_subscriptions(idx, -1)
                 if HAS_SIGNALFD:
                     # yield control to the event loop to populate sigqueue
                     await asyncio.sleep(0)
@@ -467,15 +476,27 @@ class PtraceDebugger(object):
 
         # flush early event history if too long
         if (l := len(self.event_history)) & ~(0x100 - 1):
-            min_eid = min(sub.next_event
-                for _, subs in self.subscribers.items()
-                    for sub in subs)
-            while self.event_history and self.event_history[0][0] < min_eid:
-                del self.event_history[0]
+            min_at = min(sub.at
+                        for subs in self.subscribers.values()
+                            for sub in subs)
+            # del self.event_history[:min_at] does not work with deque
+            for i in range(min_at - 1, -1, -1):
+                del self.event_history[i]
+            self._shift_subscriptions(min_at - 1, -min_at)
             debug("Event history too long (len=%i);"
                   " purged %i items.", l, l - len(self.event_history))
 
         return await recipient.processStatus(status)
+
+    def _shift_subscriptions(self, at: int, offset: int):
+        if not offset:
+            return
+        for subs in self.subscribers.values():
+            for sub in subs:
+                if sub.at > at:
+                    sub.at += offset
+                    if sub.at < 0:
+                        sub.at = 0
 
     async def waitProcessEvent(self, process=None, **kwargs):
         """
