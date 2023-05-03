@@ -27,7 +27,7 @@ import asyncio
 
 from scapy.all import (
     Ether, IP, TCP, UDP, Packet, PcapReader, PcapWriter, Raw, resolve_iface,
-    conf)
+    conf, NoPayload)
 
 __all__ = [
     'NetworkFormatDescriptor', 'TransportFormatDescriptor', 'NetworkChannel',
@@ -781,10 +781,10 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
         return (tuple(sender), tuple(receiver))
 
     def loadi(self) -> Iterable[AbstractInstruction]:
-        if self._fmt.protocol in ("tcp", "udp"):
-            layer = Raw
-        else:
-            layer = None
+        layer = {"tcp": TCP, "udp": UDP}.get(self._fmt.protocol)
+        if not layer:
+            raise NotImplementedError
+
         plist = PcapReader(self._file).read_all()
         endpoints = []
         for p in plist:
@@ -797,18 +797,13 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
                 f"PCAP file has {len(endpoints)} endpoints (expected 2)"
             )
 
-        if layer:
-            plist = [p for p in plist if p.haslayer(layer)]
+        plist = [p for p in plist if not isinstance(p[layer].payload, NoPayload)]
 
         tlast = plist[0].time
         for p in plist:
             # FIXME this operation is done previously, optimize
             src, dst = self._try_identify_endpoints(p)
-
-            if layer:
-                payload = bytes(p.getlayer(layer))
-            else:
-                payload = bytes(p)
+            payload = bytes(p[layer].payload)
 
             delay = p.time - tlast
             tlast = p.time
