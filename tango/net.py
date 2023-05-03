@@ -313,7 +313,7 @@ class TCPChannel(NetworkChannel):
 
     async def close(self):
         if self._socket is not None:
-            await self._socket.shutdown()
+            await self.shutdown()
             self._socket.close()
             self._socket = None
         await super().close()
