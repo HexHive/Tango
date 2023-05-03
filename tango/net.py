@@ -764,7 +764,7 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
         UDP: "dport"
     }
 
-    DELAY_THRESHOLD = 1.0
+    DELAY_THRESHOLD = None
 
     @classmethod
     def _try_identify_endpoints(cls, packet: Packet) -> Tuple:
@@ -807,7 +807,7 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
 
             delay = p.time - tlast
             tlast = p.time
-            if delay >= self.DELAY_THRESHOLD:
+            if self.DELAY_THRESHOLD and delay >= self.DELAY_THRESHOLD:
                 yield DelayInstruction(float(delay))
 
             if src == endpoints[0]:
