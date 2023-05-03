@@ -345,6 +345,7 @@ class PtraceDebugger(object):
             self.subscribers[subscription.wanted_pid] = {subscription}
         else:
             others.add(subscription)
+        subscription.debugger = self
 
     def subscribe(self, wanted_pid: Optional[int]=None, /,
             *, start_at=0, **kwargs) -> PtraceSubscription:
