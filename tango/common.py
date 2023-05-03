@@ -249,7 +249,7 @@ class Suspendable:
         if self._suspend_cb:
             self._suspend_cb()
         self._can_run.clear()
-        warning(f"Suspended all children {self._aw}")
+        warning("Suspended all children %s", self._aw)
 
     def resume(self):
         """
@@ -261,7 +261,7 @@ class Suspendable:
             self._resume_cb()
         for child in self.child_suspendables:
             child.resume()
-        warning(f"Resumed all children {self._aw}")
+        warning("Resumed all children %s", self._aw)
 
     async def as_coroutine(self) -> Coroutine:
         """
@@ -653,7 +653,7 @@ def timeit(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
             return await func(*args, **kwargs)
         finally:
             total_time = time.perf_counter() - start_time
-            info(f'Function `{func.__name__}` took {total_time:.4f} seconds')
+            info('Function `%s` took %.4f seconds', func.__name__, total_time)
     return wrapper
 
 ###
@@ -684,7 +684,7 @@ class ComponentTypeMeta(EnumType):
                 default = cls.FakeComponentType(value)
                 cached = cls._fake_component_cache.setdefault(value, default)
                 if cached is default:
-                    warning(f"Using non-standard component type `{value}`")
+                    warning("Using non-standard component type `%s`", value)
                 return cached
 
 class ComponentType(Enum, metaclass=ComponentTypeMeta):
@@ -729,7 +729,7 @@ class Component:
     """
     def __init__(self, **kwargs):
         if kwargs:
-            warning(f'{self} received but did not capture {kwargs=}')
+            warning('%s received but did not capture kwargs=%s', self, kwargs)
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -872,7 +872,7 @@ class ComponentOwner(dict, ABC):
         combination = combinations.pop(0)
         if combinations:
             warning("More than one valid configuration possible." \
-                f" Choosing: {list(combination.values())}")
+                " Choosing: %s", list(combination.values()))
         return combination
 
     async def instantiate(self, component_type: ComponentKey, *args,
@@ -1008,10 +1008,10 @@ class AsyncComponent(Component):
             reg = reg[cls]
 
     async def initialize(self):
-        info(f'Initializing {self}')
+        info('Initializing %s', self)
 
     async def finalize(self, owner: ComponentOwner):
-        info(f'Finalized {self}')
+        info('Finalized %s', self)
 
     @classmethod
     async def instantiate(cls, owner: ComponentOwner, config: dict, *args,
@@ -1046,7 +1046,7 @@ class AsyncComponent(Component):
         strargs = (str(a) for a in args)
         strkwargs = ('='.join(str(x) for x in item) for item in kwargs.items())
         _args = ', '.join((*strargs, *strkwargs))
-        info(f'Creating {typ.name} as {cls.__name__}({_args})')
+        info('Creating %s as %s(%s)', typ.name, cls.__name__, _args)
         new_component = cls(*args, **kwargs)
         owner[typ] = new_component
         if not deps:

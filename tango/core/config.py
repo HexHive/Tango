@@ -42,7 +42,7 @@ class FuzzerConfig(ComponentOwner):
 
         cwd = self._config["fuzzer"].get("cwd", ".")
         os.chdir(cwd)
-        info(f'Changed current working directory to {cwd}')
+        info("Changed current working directory to %s", cwd)
         self.setup_workdir()
 
     async def instantiate(self, component_type: ComponentKey, *args,

@@ -211,7 +211,7 @@ class PtraceDebugger(object):
         a new (stopped) process.
         """
         process = PtraceProcess(self, pid, is_attached, **kwargs)
-        debug("Attach %s to debugger" % process)
+        debug("Attach %s to debugger", process)
         self.traceProcess(process)
         try:
             await process.waitSignals(SIGTRAP, SIGSTOP)
@@ -225,7 +225,8 @@ class PtraceDebugger(object):
         except ProcessExit as event:
             # the process was killed on creation (OOM?)
             # we just detach it and proceed as usual
-            error(f"Process PID {process.pid} died on creation! Reason: {event}")
+            error("Process with pid=%i died on creation! Reason: %s",
+                process.pid, event)
             # This is probably not needed anymore after the fix to waitExit,
             # which was likely leaving SIGKILL signals in the process struct for
             # the same PID. <- Lol, no? Probably just a pending signal sent
@@ -324,7 +325,7 @@ class PtraceDebugger(object):
 
         # otherwise, we enqueue it and hope someone picks it up in time
         if not published and self._verbose:
-            warning(f"No subscribers for {pid=}")
+            warning("No subscribers for pid=%i", pid)
 
         pidevent = (eid, pid, status)
         self.event_history.append(pidevent)
@@ -389,7 +390,8 @@ class PtraceDebugger(object):
             if wanted_pid and wanted_pid != pid:
                 # subscription is catch-all but wait_status was called with a
                 # specific pid
-                debug(f"Re-ordering event {item}, listening for {wanted_pid}")
+                debug("Re-ordering event %s, listening for %i",
+                    item, wanted_pid)
                 # FIXME maybe use del arr[idx], must get idx from subscription
                 self.event_history.remove(item)
                 if HAS_SIGNALFD:
@@ -418,10 +420,8 @@ class PtraceDebugger(object):
                 try:
                     eid, pid, status = await self._wait_status(
                         wanted_pid, subscription, blocking=blocking)
-                    if self._verbose:
-                        debug(f"wait_event({wanted_pid}): "
-                              f"subscriber to {subscription.wanted_pid} "
-                              f"received event {(eid, pid, status)}")
+                    debug("wait_event(%s): subscriber to %s received event %s",
+                        wanted_pid, subscription.wanted_pid, (eid, pid, status))
                 except OSError as err:
                     if wanted_pid and err.errno == ECHILD:
                         process = self.dict[wanted_pid]
@@ -441,23 +441,25 @@ class PtraceDebugger(object):
                                 stat = readProcessStat(pid)
                                 if parent := self.dict.get(stat.ppid):
                                     republish = True
-                                    debug(f"Received premature signal for"
-                                          f" a child ({pid=}) of"
-                                          f" a traced process ({parent=})")
+                                    debug("Received premature signal for"
+                                          " a child with pid=%i of"
+                                          " a traced process (parent=%s)",
+                                          pid, parent)
                                 else:
-                                    debug(f"Ignoring signal for unknown {pid=}")
+                                    debug("Ignoring signal for unknown pid=%i",
+                                        pid)
                             except ProcError:
-                                debug(f"Process ({pid=}) died before"
-                                         " its signal could be processed")
+                                debug("Process with pid=%i died before"
+                                      " its signal could be processed", pid)
                         else:
                             republish = True
-                            debug(f"Received signal for unknown {pid=},"
-                                   " placing event back in queue")
+                            debug("Received signal for unknown pid=%i,"
+                                  " placing event back in queue", pid)
 
                 if republish:
                     # FIXME this may result in duplicate events for some subs?
                     reordered = self._publish_status(pid, status)
-                    debug(f"Republished {eid} as {reordered[0]}")
+                    debug("Republished %i as %i", eid, reordered[0])
                     if HAS_SIGNALFD:
                         # yield control to the event loop to populate
                         # sigqueue
@@ -470,8 +472,8 @@ class PtraceDebugger(object):
                     for sub in subs)
             while self.event_history and self.event_history[0][0] < min_eid:
                 del self.event_history[0]
-            debug(f"Event history too long (len={l});"
-                    f" purged {l - len(self.event_history)} items.")
+            debug("Event history too long (len=%i);"
+                  " purged %i items.", l, l - len(self.event_history))
 
         return await recipient.processStatus(status)
 
@@ -530,7 +532,7 @@ class PtraceDebugger(object):
             self.list.remove(process)
         except ValueError:
             return
-        debug(f"Deleted {process} from debugger")
+        debug("Deleted %s from debugger", process)
 
     def updateProcessOptions(self):
         for process in self:
@@ -546,7 +548,7 @@ class PtraceDebugger(object):
         self.options |= PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK
         self.trace_fork = True
         self.updateProcessOptions()
-        debug("Debugger trace forks (options=%s)" % self.options)
+        debug("Debugger trace forks (options=%i)", self.options)
 
     def traceExec(self):
         """
@@ -558,7 +560,7 @@ class PtraceDebugger(object):
         self.trace_exec = True
         self.options |= PTRACE_O_TRACEEXEC
         self.updateProcessOptions()
-        debug("Debugger trace execs (options=%s)" % self.options)
+        debug("Debugger trace execs (options=%i)", self.options)
 
     def traceClone(self):
         """
@@ -569,7 +571,7 @@ class PtraceDebugger(object):
             return
         self.trace_clone = True
         self.options |= PTRACE_O_TRACECLONE
-        debug("Debugger trace execs (options=%s)" % self.options)
+        debug("Debugger trace execs (options=%i)", self.options)
         self.updateProcessOptions()
 
     def traceSeccomp(self):
@@ -578,7 +580,7 @@ class PtraceDebugger(object):
             return
         self.trace_seccomp = True
         self.options |= PTRACE_O_TRACESECCOMP
-        debug("Debugger trace execs (options=%s)" % self.options)
+        debug("Debugger trace execs (options=%i)", self.options)
         self.updateProcessOptions()
 
     def enableSysgood(self):

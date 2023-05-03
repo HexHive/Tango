@@ -108,9 +108,9 @@ class BaseExplorer(AbstractExplorer,
                 try:
                     return await self._arbitrate_load_state(path)
                 except StabilityException as ex:
-                    warning("Failed to follow unstable path"
-                        f" (reason = {ex.args[0]})!"
-                        f" Retrying... ({i+1}/{self._reload_attempts})")
+                    warning("Failed to follow unstable path (reason = %s)!"
+                            " Retrying... (%i/%i)",
+                            ex.args[0], i + 1, self._reload_attempts)
                     CountProfiler('unstable')(1)
                     await self._state_reload_cb(ex.expected_state, exc=ex)
             raise StateNotReproducibleException("destination state not reproducible",
@@ -119,8 +119,8 @@ class BaseExplorer(AbstractExplorer,
             try:
                 return await self._arbitrate_load_state(loadable)
             except StabilityException as ex:
-                warning("Failed to follow unstable preselected path"
-                    f" (reason = {ex.args[0]})!")
+                warning("Failed to follow unstable preselected path (reason = %i)!",
+                    ex.args[0])
                 CountProfiler('unstable')(1)
                 raise StateNotReproducibleException("destination state not reproducible",
                     None) from ex
@@ -205,7 +205,7 @@ class BaseExplorer(AbstractExplorer,
         if current_state is None:
             return False, False, None, None
 
-        debug(f"Reached {current_state = }")
+        debug("Reached current_state=%s", current_state)
         current_input = input_gen()
 
         # FIXME this logic should be moved to the tracker; it is more suitable
@@ -214,7 +214,8 @@ class BaseExplorer(AbstractExplorer,
             return False, False, current_state, current_input
 
         unseen = current_state not in self._tracker.state_graph.successors(self._last_state)
-        debug(f"Possible transition from {self._last_state} to {current_state}")
+        debug("Possible transition from %s to %s",
+            self._last_state, current_state)
 
         if unseen:
             if minimize:
@@ -239,7 +240,7 @@ class BaseExplorer(AbstractExplorer,
                 except Exception as ex:
                     # Minimization failed, again probably due to an
                     # indeterministic target
-                    warning(f"Minimization failed {ex=}")
+                    warning("Minimization failed ex=%s", ex)
                     raise
                 current_input = current_input.flatten()
             elif validate:
@@ -259,7 +260,8 @@ class BaseExplorer(AbstractExplorer,
                     #   This occurs when the reload_state() encountered an error
                     #   trying to reproduce a state, most likely due to an
                     #   indeterministic target
-                    warning(f"Encountered indetermenistic state ({current_state})")
+                    warning("Encountered indetermenistic state (%s)",
+                        current_state)
                     raise
                 except (StabilityException, StatePrecisionException) as ex:
                     # * StatePrecisionException:
@@ -269,16 +271,16 @@ class BaseExplorer(AbstractExplorer,
                     #   the predecessor state may have built on top of internal
                     #   program state that was not reproduced by reload_state()
                     #   to arrive at the current successor state.
-                    warning(f"Validation failed {ex=}")
+                    warning("Validation failed ex=%s", ex)
                     raise StatePrecisionException(
                             f"The path to {current_state} is imprecise") \
                         from ex
                 except Exception as ex:
-                    warning(f'{ex}')
+                    warning("%s", ex)
                     raise
 
             if minimize or validate:
-                debug(f"{current_state} is reproducible!")
+                debug("%s is reproducible!", current_state)
 
         return True, unseen, current_state, current_input
 
@@ -301,7 +303,7 @@ class BaseExplorer(AbstractExplorer,
                 await self._loader.apply_transition((src, dst, exp_input), src,
                     update_cache=False)
             except Exception as ex:
-                debug(f'{ex=}')
+                debug("ex=%s", ex)
                 success = False
 
             if success:
@@ -333,7 +335,7 @@ class BaseExplorer(AbstractExplorer,
                         (src, dst, tmp_lin_input), src,
                         update_cache=False)
                 except Exception as ex:
-                    debug(f'{ex=}')
+                    debug("ex=%s", ex)
                     success = False
 
                 if success:
@@ -353,7 +355,7 @@ class BaseExplorer(AbstractExplorer,
             await self._loader.apply_transition((src, dst, lin_input), src,
                 update_cache=False)
         except Exception as ex:
-            debug(f'{ex=}')
+            debug("ex=%s", ex)
             success = False
             if reduced:
                 # finally, we fall back to validating the original input
@@ -428,7 +430,7 @@ class BaseExplorerContext(BaseDecorator):
 
         breadcrumbs = exp._current_path.copy()
         if updated:
-            info(f'Transitioned to {current_state}')
+            info("Transitioned to %s", current_state)
             exp._tracker.update_transition(
                 last_state, current_state, current_input,
                 state_changed=True)

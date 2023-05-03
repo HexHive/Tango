@@ -171,8 +171,11 @@ class PtraceSyscall(FunctionCall):
         self.result_text = text
         return text
 
-    def __str__(self):
+    def __repr__(self):
         return "<Syscall name=%r>" % self.name
+
+    def __str__(self):
+        return self.format()
 
     def format(self):
         s = super().format()

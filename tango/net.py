@@ -271,7 +271,7 @@ class TCPChannel(NetworkChannel):
             self._connect_monitor_target, self._connect_ignore_callback,
             self._connect_break_callback, self._connect_syscall_callback,
             listenfd=self._listenfd, timeout=self._connect_timeout)
-        debug(f"Socket is now connected ({self._sockfd = })!")
+        debug("Socket is now connected (sockfd=%i)!", self._sockfd)
 
         # wait for the next read, recv, select, or poll
         # or wait for the parent to fork, and trace child for these calls
@@ -284,7 +284,7 @@ class TCPChannel(NetworkChannel):
             if not self.is_file_readable():
                 data = b''.join(chunks)
                 if data:
-                    debug(f"Received data from server: {data}")
+                    debug("Received data from server: %s", data)
                 return data
 
             try:
@@ -296,7 +296,7 @@ class TCPChannel(NetworkChannel):
                 raise ChannelBrokenException("recv returned 0, socket shutdown")
             elif ret == b'':
                 data = b''.join(chunks)
-                debug(f"Received data from server: {data}")
+                debug("Received data from server: %s", data)
                 return data
             chunks.append(ret)
 
@@ -408,7 +408,7 @@ class TCPChannel(NetworkChannel):
     async def _observe_syscall_callback(self, process, syscall, **kwargs):
         if syscall.name in ('accept', 'accept4') \
                 and syscall.arguments[0].value == self._listenfd:
-            debug(f"Cancelled {syscall} for {process}")
+            debug("Cancelled %s for %s", syscall, process)
             # we "cancel" the accept so as not to starve other sockets
             process.setreg(SYSCALL_REGISTER, -1)
             # we also change the name so that it is ignored by any unintended
@@ -441,11 +441,11 @@ class ListenerSocketState:
                 self._sa_family = _sa_family
                 self._sin_port = _sin_port
                 self._sin_addr = _sin_addr
-                debug(f"Socket bound to port {self._sin_port}")
+                debug("Socket bound to port %i", self._sin_port)
         elif self._state == self.SOCKET_BOUND and syscall.name == 'listen':
             if not entry:
                 self._state = self.SOCKET_LISTENING
-                debug(f"Server listening on port {self._sin_port}")
+                debug("Server listening on port %i", self._sin_port)
             return (self._sa_family, self._sin_addr, self._sin_port)
 
 
@@ -567,7 +567,7 @@ class UDPChannel(NetworkChannel):
             self._connect_break_callback, self._connect_syscall_callback,
             timeout=self._connect_timeout)
 
-        debug(f"Socket is now connected ({self._sockfd = })!")
+        debug("Socket is now connected (sockfd=%i)!", self._sockfd)
 
         # wait for the next read, recv, select, or poll
         # or wait for the parent to fork, and trace child for these calls
@@ -581,7 +581,7 @@ class UDPChannel(NetworkChannel):
             raise ChannelBrokenException("recv failed, connection reset") \
                 from ex
         if data:
-            debug(f"Received data from server: {data}")
+            debug("Received data from server: %s", data)
         return data
 
     async def write_bytes(self, data: ByteString) -> int:
@@ -673,7 +673,7 @@ class UDPSocketState:
                 self._sa_family = _sa_family
                 self._sin_port = _sin_port
                 self._sin_addr = _sin_addr
-                debug(f"Socket bound to port {self._sin_port}")
+                debug("Socket bound to port %i", self._sin_port)
             return (_sa_family, _sin_addr, _sin_port)
 
 

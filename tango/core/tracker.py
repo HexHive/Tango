@@ -277,7 +277,8 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
             data = self.edges[source, destination]
             transition = data['transition']
         except KeyError:
-            debug(f'New transition discovered from {source} to {destination}')
+            debug("New transition discovered from %s to %s",
+                source, destination)
             transition = collections.deque(maxlen=self._queue_maxlen)
             self.add_edge(source, destination, transition=transition,
                 minimized=input)
@@ -503,7 +504,7 @@ class BaseTracker(AbstractTracker):
                 state, is_new = self._state_graph.update_state(state)
             elif state != self.entry_state:
                 if isinstance(exc, StateNotReproducibleException):
-                    debug(f"Dissolving irreproducible {state = }")
+                    debug("Dissolving irreproducible state=%s", state)
                 try:
                     # WARN if stitch==False, this may create disconnected
                     # subgraphs that the strategy is unaware of. Conversely,
@@ -512,7 +513,7 @@ class BaseTracker(AbstractTracker):
                     self._state_graph.dissolve_state(state, stitch=True)
                     CountProfiler("dissolved_states")(1)
                 except KeyError as ex:
-                    warning(f"Faulty state was not even valid ({ex=})")
+                    warning("Faulty state was not even valid (ex=%s)", ex)
             return state
 
     def update_transition(self, source: AbstractState,
@@ -532,7 +533,7 @@ class BaseTracker(AbstractTracker):
             try:
                 self._state_graph.delete_transition(source, destination)
             except KeyError:
-                warning(f"Faulty transition was not even valid ({ex=})")
+                warning("Faulty transition was not even valid (ex=%s)", ex)
 
     def out_edges(self, state: AbstractState) -> Iterable[Transition]:
         if state in self.state_graph:

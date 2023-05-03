@@ -335,7 +335,7 @@ class CoverageDriver(ProcessDriver,
         try:
             root.writeBytes(disabled_p, disabled_v)
         except PtraceError as ex:
-            warning(f"Failed to disable coverage in {root}: {ex=}")
+            warning("Failed to disable coverage in %s: ex=%s", root, ex)
         for process in root.children:
             self.disable_coverage_tracer(process)
 
@@ -402,7 +402,7 @@ class CoverageTracker(BaseTracker,
 
         self._features = SharedMemoryObject(
             f'/tango_cov_{self._shm_uuid}', lambda s: b * (s // sizeof(b)))
-        info(f"Obtained coverage map {self._features._size=}")
+        info("Obtained coverage map size=%i", self._features._size)
         self._pc = SharedMemoryObject(
             f'/tango_pc_{self._shm_uuid}', lambda s: S * (s // sizeof(S)))
 
@@ -721,9 +721,10 @@ class CoverageExplorerContext(BaseExplorerContext):
                                         last_state, ex.current_state, candidate,
                                         state_changed=True)
                                     info("Discovered new state with cmplog:"
-                                        f" {ex.current_state}"
-                                        f" {orig._data[off:off + size]} ->"
-                                        f" {variant}")
+                                         " %s with (%s -> %s)",
+                                        ex.current_state,
+                                        orig._data[off:off + size],
+                                        variant)
                                     breadcrumbs = self._exp._current_path.copy()
                                     await self.update_transition(
                                         last_state, ex.current_state, candidate,
@@ -795,7 +796,8 @@ class CoverageExplorerContext(BaseExplorerContext):
         if not colored_pos1.size and not colored_pos2.size:
             return
 
-        debug(f"{colored_pos1.size=} and {colored_pos2.size=}")
+        debug("colored_pos1=%i and colored_pos2=%i",
+              colored_pos1.size, colored_pos2.size)
 
         idx1, colidx1 = self.intersectnd_nosort(orig_pos1, colored_pos1, axis=0)
         idx2, colidx2 = self.intersectnd_nosort(orig_pos2, colored_pos2, axis=0)
@@ -805,7 +807,7 @@ class CoverageExplorerContext(BaseExplorerContext):
         colpos1 = np.unique(colored_pos1[colidx1], axis=0)
         colpos2 = np.unique(colored_pos2[colidx2], axis=0)
 
-        debug(f"{pos1.size=} and {pos2.size=}")
+        debug("pos1=%i and pos2=%i", pos1.size, pos2.size)
 
         return pos1, pos2, colpos1, colpos2, colored
 

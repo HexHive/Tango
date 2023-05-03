@@ -482,7 +482,8 @@ class SerializedInput(PreparedInput):
 
     def load(self) -> SerializedInput:
         if self._file.closed:
-            warning(f"Attempted to load from already closed stream {self._file}.")
+            warning("Attempted to load from already closed stream %s.",
+                self._file)
             return
         if self._read_magic():
             name = self._read_long_name()
@@ -493,7 +494,8 @@ class SerializedInput(PreparedInput):
 
     def dump(self, itr: Iterable[AbstractInstruction]=None, /, *, name: str=None):
         if self._file.closed:
-            warning(f"Attempted to dump to already closed stream {self._file}.")
+            warning("Attempted to dump to already closed stream %s.",
+                self._file)
             return
         if itr:
             self.extend(itr)

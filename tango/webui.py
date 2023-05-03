@@ -96,7 +96,7 @@ class WebRenderer(AsyncComponent, component_type='webui',
                 break
             except OSError:
                 port += 1
-        info(f"WebUI listening on http://{host}:{port}")
+        info("WebUI listening on http://%s:%i", host, port)
 
     async def http_request_handler(self, request):
         if request.path == '/ws':
@@ -124,7 +124,7 @@ class WebRenderer(AsyncComponent, component_type='webui',
             try:
                 await gather_tasks
             except (RuntimeError, ConnectionResetError) as ex:
-                debug(f'Websocket handler terminated ({ex=})')
+                debug("Websocket handler terminated (ex=%s)", ex)
             finally:
                 gather_tasks.cancel()
         await get_session_task_group().create_task(_handler())

@@ -198,7 +198,7 @@ class PtraceProcess(object):
     def attach(self):
         if self.is_attached:
             return
-        debug("Attach process %s" % self.pid)
+        debug("Attach process with pid=%i", self.pid)
         ptrace_attach(self.pid)
         self.is_attached = True
 
@@ -307,7 +307,7 @@ class PtraceProcess(object):
         self.is_attached = False
         try:
             if self.running:
-                debug("Detach %s" % self)
+                debug("Detach %s", self)
                 ptrace_detach(self.pid)
         finally:
             self.deleteFromDebugger()
@@ -338,14 +338,14 @@ class PtraceProcess(object):
         try:
             kill(self.pid, signum)
         except ProcessLookupError as ex:
-            warning(f"kill({self.pid}): Process doesn't exist")
+            warning("kill(%i): Process doesn't exist", self.pid)
             return False
         return True
 
     async def terminate(self, wait_exit=True, signum=SIGTERM):
         if not self.running or not self.was_attached:
             return True
-        debug("Terminate %s" % self)
+        debug("Terminate %s", self)
         done = False
         try:
             if self.is_stopped:
@@ -376,10 +376,11 @@ class PtraceProcess(object):
                     await self.terminate(**kwargs)
                     break
                 except PtraceError as ex:
-                    critical(f"Attempted to terminate non-existent process ({ex})")
+                    critical("Attempted to terminate non-existent process (%s)",
+                        ex)
                     break
                 except ProcessExit as ex:
-                    debug(f"{ex.process} exited while terminating {self}")
+                    debug("%s exited while terminating %s", ex.process, self)
                     continue
         finally:
             if self in self.debugger:
@@ -408,13 +409,14 @@ class PtraceProcess(object):
                     else:
                         event.process.cont()
                 elif event_cls is ProcessExecution:
-                    warning(f"{event.process} called exec() while terminating")
+                    warning("%s called exec() while terminating", event.process)
                 else:
                     # Event different than a signal? Raise an exception
                     raise event
             except PtraceError as ex:
-                debug(f"{event.process} received {event} while waiting for exit,"
-                    f" but the signal could not be delivered {ex=}.")
+                debug("%s received %s while waiting for exit,"
+                      " but the signal could not be delivered ex=%s.",
+                      event.process, event, ex)
 
     async def processStatus(self, status):
         # Process exited?
@@ -843,7 +845,7 @@ class PtraceProcess(object):
     def setoptions(self, options):
         if not HAS_PTRACE_EVENTS:
             self.notImplementedError()
-        debug("Set %s options to %s" % (self, options))
+        debug("Set %s options to %i", self, options)
         ptrace_setoptions(self.pid, options)
 
     async def waitEvent(self, blocking=True):

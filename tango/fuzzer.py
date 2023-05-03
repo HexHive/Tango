@@ -110,11 +110,10 @@ class Fuzzer:
         except asyncio.CancelledError:
             pass
         except ExceptionGroup as exg:
-            warning("Exceptions encountered while terminating sessions:\n"
-                f"{chr(10).join(repr(x) for x in exg.exceptions)}"
-            )
+            warning("Exceptions encountered while terminating sessions:\n%s",
+                    chr(10).join(repr(x) for x in exg.exceptions))
         except Exception as ex:
-            warning(f"Exception raised while attempting to terminate: {ex}")
+            warning("Exception raised while attempting to terminate: %s", ex)
         info("Goodbye!")
 
     async def run_all_sessions(self):

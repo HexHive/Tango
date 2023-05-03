@@ -155,20 +155,15 @@ class PtraceChannel(AbstractChannel):
     async def process_syscall(self, process, syscall, syscall_callback, is_entry, **kwargs) -> bool:
         # ensure that the syscall has finished successfully before callback
         if is_entry or syscall.result >= 0:
-            # calling syscall.format() takes a lot of time and should be
-            # avoided in production, even if logging is disabled
-            if self._verbose:
-                debug(f"syscall requested: [{process.pid}] {syscall.format()}")
-            else:
-                debug(f"syscall requested: [{process.pid}] {syscall.name}")
+            debug("syscall requested: [%i] %s", process.pid, syscall)
             processed = await syscall_callback(process, syscall, **kwargs)
         else:
             processed = False
         return processed
 
     async def process_exit(self, event):
-        debug(f"Process with {event.process.pid=} exited, deleting from debugger")
-        debug(f"Reason: {event}")
+        debug("Process with pid=%i exited, deleting from debugger", event.process.pid)
+        debug("Reason: %s", event)
         event.process.deleteFromDebugger()
         try:
             if event.exitcode == 0:
@@ -190,22 +185,26 @@ class PtraceChannel(AbstractChannel):
 
     async def process_signal(self, event):
         if event.signum in (signal.SIGINT, signal.SIGWINCH):
-            debug(f"Process with {event.process.pid=} received SIGINT or SIGWINCH {event.signum=}")
+            debug("Process with pid=%i received SIGINT or SIGWINCH signum=%i",
+                event.process.pid, event.signum)
             # Ctrl-C or resizing the window should not be passed to child
             self.resume_process(event.process)
             return
         elif event.signum == signal.SIGSTOP:
-            critical(f"{event.process.pid=} received rogue SIGSTOP, resuming for now")
+            critical("Process pid=%i received rogue SIGSTOP, resuming for now",
+                event.process.pid)
             self.resume_process(event.process)
             return
         elif event.signum == signal.SIGSEGV:
             raise ProcessCrashedException(f"Process with {event.process.pid=} terminated abnormally with {event.signum=}", exitcode=event.signum)
-        debug(f"Target process with {event.process.pid=} received signal with {event.signum=}")
+        debug("Target process with pid=%i received signal with signum=%i",
+            event.process.pid, event.signum)
         self.resume_process(event.process, event.signum)
 
     async def process_new(self, event, ignore_callback):
         # monitor child for syscalls as well. may be needed for multi-thread or multi-process targets
-        debug(f"Target process with {event.process.parent.pid=} forked, adding child process with {event.process.pid=} to debugger")
+        debug("Target process with pid=%i forked, adding child process with pid=%i to debugger",
+            event.process.parent.pid, event.process.pid)
         if event.process.is_attached:
             # sometimes, child process might have been killed at creation,
             # so the debugger detaches it; we check for that here
@@ -214,7 +213,8 @@ class PtraceChannel(AbstractChannel):
         self.resume_process(event.process.parent)
 
     async def process_exec(self, event):
-        debug(f"Target process with {event.process.pid=} called exec; removing from debugger")
+        debug("Target process with pid=%i called exec; removing from debugger",
+            event.process.pid)
         event.process.detach()
 
     async def process_auxiliary_event(self, event, ignore_callback):
@@ -239,12 +239,16 @@ class PtraceChannel(AbstractChannel):
             await self.process_auxiliary_event(event, opts.ignore_callback)
         else:
             # Process syscall enter or exit
-            # debug(f"Target process with {event.process.pid=} requested a syscall")
             state = event.process.syscall_state
 
             ### DEBUG ###
-            # sc = PtraceSyscall(event.process, self._syscall_options, event.process.getregs())
-            # debug(f"syscall traced: [{event.process.pid}] {sc.name=} with {state.name=} and {state.next_event=}")
+            if self._verbose:
+                debug("Target process with pid=%i encountered a syscall-stop",
+                    event.process.pid)
+                sc = PtraceSyscall(event.process, self._syscall_options,
+                                   event.process.getregs())
+                debug("syscall traced: [%i] sc.name=%s state.name=%s state.next_event=%s",
+                    event.process.pid, sc.name, state.name, state.next_event)
             #############
 
             syscall = await state.event(self._syscall_options)
@@ -326,7 +330,7 @@ class PtraceChannel(AbstractChannel):
                 # debugger. It is then considered a normal process, and it may
                 # try to `ptrace` it, but it would failed because the process
                 # is SIGKILLed
-                debug(f"{root} is no longer under observation")
+                debug("%s is no longer under observation", root)
                 self.observed.pop(root, None)
         return rv
 
@@ -360,11 +364,12 @@ class PtraceChannel(AbstractChannel):
                     continue
 
                 if (observe_opts := self.observed.get(event.process.root)):
-                    debug(f"Masking event for {event.process} with root={event.process.root}")
+                    debug("Masking event for %s with root=%s",
+                        event.process, event.process.root)
                     observe_cb, opts = observe_opts
                 elif event.process.root not in self._debugger and \
                         event.process.root != self.root:
-                    debug(f"Received rogue event ({event}) for {event.process}")
+                    debug("Received rogue event (%s) for %s", event, event.process)
                     continue
                 else:
                     opts = monitor_opts
@@ -1063,7 +1068,7 @@ class FileDescriptorChannel(PtraceChannel):
             assert self.synced
         else:
             sent = 0
-        debug(f"Sent data to target: {data[:sent]}")
+        debug("Sent data to target: %s", data[:sent])
         return sent
 
     async def receive(self) -> ByteString:
@@ -1095,7 +1100,7 @@ class FileDescriptorChannel(PtraceChannel):
 
     def dup_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
         self._refcounter[syscall.result] = 1
-        debug(f"File descriptor duplicated in dup_fd={syscall.result}")
+        debug("File descriptor duplicated in dup_fd=%i", syscall.result)
 
     def close_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
         if syscall.result != 0:
@@ -1255,7 +1260,8 @@ class FileDescriptorChannel(PtraceChannel):
             else:
                 self._send_barrier_passed = True
         assert self._send_client_sent > 0
-        debug(f"{self._send_client_sent=}; {self._send_server_received=}")
+        debug("client_sent=%i; server_received=%i",
+            self._send_client_sent, self._send_server_received)
         if self._send_server_received > self._send_client_sent:
             raise ChannelBrokenException("Target received too many bytes!")
         return self._send_server_received == self._send_client_sent
@@ -1372,7 +1378,7 @@ def resolve_dwarf_symbol(elf: ELFFile, symbol: str):
         raise ValueError("DWARF info is needed for resolving symbols")
     dwarf = elf.get_dwarf_info()
     try:
-        debug(f"Searching for {symbol=}")
+        debug("Searching for symbol=%s", symbol)
         die = next(die
             for cu in dwarf.iter_CUs()
                 for die in cu.iter_DIEs()
@@ -1429,5 +1435,5 @@ def resolve_symbol(process: PtraceProcess, symbol: str):
         else:
             raise RuntimeError(f"Entry `{elf.header['e_type']}` not supported")
 
-        debug(f"{symbol=} found at 0x{addr:016X}")
+        debug("symbol=%s found at 0x%016X", symbol, addr)
         return addr

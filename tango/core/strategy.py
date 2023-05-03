@@ -97,14 +97,16 @@ class BaseStrategy(AbstractStrategy,
             try:
                 return await self._reload_target_once()
             except StateNotReproducibleException as ex:
-                warning(f"Target state {ex.faulty_state} not reachable anymore!")
+                warning("Target state %s not reachable anymore!",
+                    ex.faulty_state)
             except (asyncio.CancelledError, LoadedException):
                 # LoadedExceptions can bubble up the exception handlers because
                 # they only concern the loader/channel
                 raise
             except Exception as ex:
                 import ipdb; ipdb.set_trace()
-                critical(f"Encountered exception while reloading target! {ex = }")
+                critical("Encountered exception while reloading target! ex=%s",
+                    ex)
 
 class SeedableStrategy(BaseStrategy,
         capture_paths=['strategy.minimize_seeds', 'strategy.validate_seeds']):
@@ -135,9 +137,9 @@ class SeedableStrategy(BaseStrategy,
                 # feed input to target and populate state machine
                 await self._explorer.follow(input,
                     minimize=self._minimize_seeds, validate=self._validate_seeds)
-                info(f"Loaded seed file: {input}")
+                info("Loaded seed file: %s", input)
             except LoadedException as ex:
-                warning(f"Failed to load {input}: {ex.exception}")
+                warning("Failed to load %s: %s", input, ex.exception)
         await self._explorer.reload_state()
         await super().finalize(owner)
 

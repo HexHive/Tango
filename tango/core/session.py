@@ -93,14 +93,14 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
                         self._explorer._current_path, 'crash',
                         repr(self._explorer._last_state))
                 except ProcessTerminatedException as pt:
-                    debug(f"Process terminated unexpectedtly? ({pt = })")
+                    debug("Process terminated unexpectedly? (pt=%s)", pt)
                 except ChannelTimeoutException:
                     # TODO save timeout input
                     warning("Received channel timeout exception")
                     CountProfiler('timeout')(1)
                 except ChannelBrokenException as ex:
                     # TODO save crashing/breaking input
-                    debug(f"Received channel broken exception ({ex = })")
+                    debug("Received channel broken exception (ex=%s)", ex)
                 except ChannelSetupException:
                     # TODO save broken setup input
                     warning("Received channel setup exception")
@@ -113,7 +113,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
                 return
             except Exception as ex:
                 # everything else, we probably need to debug
-                critical(f"Encountered weird exception {ex = }")
+                critical("Encountered weird exception ex=%s", ex)
                 import ipdb; ipdb.set_trace()
                 raise
 
@@ -143,7 +143,8 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
             # In this case, we need to force the strategy to yield a new
             # target, because we're not entirely sure what went wrong. We
             # invalidate the target state and hope for the best.
-            warning(f'Failed to follow path to state; invalidating it {exc=}')
+            warning("Failed to follow path to state; invalidating it exc=%s",
+                exc)
             self._strategy.update_state(self._strategy.target,
                 input=None, exc=exc)
 
@@ -156,7 +157,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
                 label = 'unstable'
             elif isinstance(exc, ProcessCrashedException):
                 label = 'crash'
-                error(f"Process crashed: {exc = }")
+                error("Process crashed: exc=%s", exc)
             else:
                 label = None
             if label:

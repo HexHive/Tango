@@ -60,7 +60,7 @@ class BaseInputGenerator(AbstractInputGenerator,
     async def initialize(self):
         self._input_kls = Serializer.get(self._fmt)
         if self._input_kls is None:
-            warning(f"No serializer available for `{self._fmt.typ}`!")
+            warning("No serializer available for `%s`!", self._fmt.typ)
             return
 
         if self._startup_path and os.path.isfile(self._startup_path):

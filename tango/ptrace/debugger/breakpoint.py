@@ -44,7 +44,7 @@ class Breakpoint(object):
         if not self._installed:
             return
         self._installed = False
-        info("Desinstall %s" % self)
+        info("Desinstall %s", self)
         process = self.process()
         if not process:
             return
