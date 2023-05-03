@@ -108,11 +108,14 @@ class BaseExplorer(AbstractExplorer,
                 try:
                     return await self._arbitrate_load_state(path)
                 except StabilityException as ex:
-                    warning("Failed to follow unstable path (reason = %s)!"
+                    warning("Failed to follow unstable path (reason: %s)!"
                             " Retrying... (%i/%i)",
                             ex.args[0], i + 1, self._reload_attempts)
                     CountProfiler('unstable')(1)
                     await self._state_reload_cb(ex.expected_state, exc=ex)
+                except Exception as ex:
+                    warning("Failed to load state %s (ex=%s)!", state, ex)
+                    break
             raise StateNotReproducibleException("destination state not reproducible",
                 state)
         else:
