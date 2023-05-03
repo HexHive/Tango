@@ -11,7 +11,7 @@ from tango.exceptions import LoadedException, StateNotReproducibleException
 
 from abc import ABC, abstractmethod
 from random import Random
-from typing import Optional
+from typing import Optional, Iterable
 from collections import defaultdict
 import asyncio
 
@@ -170,12 +170,15 @@ class SeedableStrategy(BaseStrategy,
             **kwargs)
 
 class RolloverCounterStrategy(AbstractStrategy,
-        capture_paths=['strategy.rollover']):
-    def __init__(self, *, rollover: int=100, **kwargs):
+        capture_paths=['strategy.rollover', 'strategy.invalidate']):
+    def __init__(self, *, rollover: int=100, invalidate: bool=False, **kwargs):
         super().__init__(**kwargs)
         self._rollover = rollover
+        self._invalidate = invalidate
         self._counter = 0
         self._target = None
+        if invalidate:
+            self._invalid_states = set()
         LambdaProfiler('strat_counter')(lambda: self._counter)
 
     async def step(self, input: Optional[AbstractInput]=None):
@@ -192,6 +195,19 @@ class RolloverCounterStrategy(AbstractStrategy,
             self._step_interrupted = False
         await super().step(input)
 
+    def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
+            **kwargs):
+        super().update_state(state, *args, exc=exc, **kwargs)
+        if not self._invalidate:
+            return
+        if exc:
+            self._invalid_states.add(state)
+            if self._target == state:
+                self._counter = 0
+                self._target = self.recalculate_target()
+        else:
+            self._invalid_states.discard(state)
+
     @abstractmethod
     def recalculate_target(self) -> LoadableTarget:
         pass
@@ -200,13 +216,25 @@ class RolloverCounterStrategy(AbstractStrategy,
     def target(self) -> LoadableTarget:
         return self._target
 
+    @property
+    def target_state(self) -> AbstractState:
+        return self._target
+
+    @property
+    def valid_targets(self) -> Iterable[LoadableTarget]:
+        if self._invalidate:
+            filtered = [x for x in self._explorer.tracker.state_graph.nodes
+                if x not in self._invalid_states]
+        else:
+            filtered = list(self._explorer.tracker.state_graph.nodes)
+        return filtered
+
 # FIXME these strategies are not strictly required to inherit SeedableStrategy;
 # a better approach may be to dynamically construct a strategy class/type that
 # inherits multiple strategies to acquire the desired features where needed
 class RandomStrategy(RolloverCounterStrategy, SeedableStrategy):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._invalid_states = set()
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -214,30 +242,10 @@ class RandomStrategy(RolloverCounterStrategy, SeedableStrategy):
             config['strategy'].get('type') == 'random'
 
     def recalculate_target(self) -> AbstractState:
-        self._counter = 0
-        filtered = [x for x in self._explorer.tracker.state_graph.nodes
-            if x not in self._invalid_states]
-        if not filtered:
-            return None
-        else:
-            return self._entropy.choice(filtered)
-
-    def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
-            **kwargs):
-        super().update_state(state, *args, exc=exc, **kwargs)
-        if exc:
-            self._invalid_states.add(state)
-            if self._target == state:
-                self._target = self.recalculate_target()
-        else:
-            self._invalid_states.discard(state)
+        return self._entropy.choice((*self.valid_targets, None))
 
     def update_transition(self, *args, **kwargs):
         pass
-
-    @property
-    def target_state(self) -> AbstractState:
-        return self._target
 
 class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
     @classmethod
@@ -247,7 +255,6 @@ class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._invalid_states = set()
         self._energy_map = defaultdict(lambda: 1)
 
     async def step(self, input: Optional[AbstractInput]=None):
@@ -257,31 +264,20 @@ class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
             self._energy_map[self._target] += 1
 
     def recalculate_target(self) -> AbstractState:
-        filtered = [x for x in self._explorer._tracker.state_graph.nodes
-            if x not in self._invalid_states]
+        filtered = self.valid_targets
         if not filtered:
             return None
         else:
             weights = [1 / self._energy_map[s] for s in filtered]
-            return self._entropy.choices(filtered,
-                        weights=weights, k=1)[0]
+            return self._entropy.choices(filtered, weights=weights, k=1)[0]
 
     def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
             **kwargs):
         super().update_state(state, *args, exc=exc, **kwargs)
-        if state is None:
-            return
         if exc:
-            self._invalid_states.add(state)
-            if self._target == state:
-                self._target = self.recalculate_target()
+            self._energy_map[state] = max(*self._energy_map.values(), 1)
         else:
-            self._invalid_states.discard(state)
             self._energy_map[state] += 1
 
     def update_transition(self, *args, **kwargs):
         pass
-
-    @property
-    def target_state(self) -> AbstractState:
-        return self._target
