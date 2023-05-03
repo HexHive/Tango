@@ -79,7 +79,7 @@ class EventOptions:
 DefaultOptions = EventOptions()
 
 class PtraceChannel(AbstractChannel):
-    def __init__(self, pobj: Popen, *, use_seccomp: bool, observed: dict=None,
+    def __init__(self, pobj: Popen, *, use_seccomp: bool,
             on_syscall_exception: Optional[Callable[
                 ProcessEvent, PtraceSyscall, Exception]]=None,
             loop=None, **kwargs):
@@ -111,17 +111,11 @@ class PtraceChannel(AbstractChannel):
             self._debugger.traceSeccomp()
 
         self.observed = {}
-        if observed:
-            self.observed.update(observed)
-            for process in observed:
-                self._debugger.traceProcess(process)
-
         self.on_syscall_exception = on_syscall_exception
 
     async def setup(self):
         # we setup a catch-all subscription
         self._dbgsub = self._debugger.subscribe()
-
         self._proc = await self._debugger.addProcess(self._pobj.pid,
             is_attached=True, subscription=self._dbgsub)
         self.prepare_process(self._proc, resume=True)
@@ -767,9 +761,7 @@ class ProcessDriver(BaseDriver,
 
     async def relaunch(self):
         ## Kill current process, if any
-        observed = None
         if self._pobj:
-            observed = self._channel.observed
             # ensure that the channel is closed and the debugger detached
             await self._channel.close()
 
@@ -796,7 +788,7 @@ class ProcessDriver(BaseDriver,
         self._pobj = self._popen()
 
         ## Establish a connection
-        await self.create_channel(observed=observed)
+        await self.create_channel()
 
     async def create_channel(self, **kwargs):
         self._channel = await self._factory.create(self._pobj, self._netns_name,

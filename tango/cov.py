@@ -610,6 +610,10 @@ class CoverageExplorer(BaseExplorer,
         self._cmplog_samples = cmplog_samples
         self._cmplog_goal = cmplog_goal
         self._observe_postmortem = observe_postmortem
+        if self._observe_postmortem and \
+                not isinstance(self._driver, ProcessForkDriver):
+            warning("observe_postmortem currently works only with forkserver.")
+            self._observe_postmortem = False
         self._observe_timeout = observe_timeout
 
     def get_context_input(self, input: BaseInput, **kwargs) -> BaseExplorerContext:
