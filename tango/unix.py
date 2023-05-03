@@ -1168,6 +1168,8 @@ class FileDescriptorChannel(PtraceChannel):
 
     def _select_syscall_entry_callback_internal(self,
             process: PtraceProcess, syscall: PtraceSyscall):
+        if not self._refcounter:
+            return
         matched_fd = self._select_match_fds(process, syscall, self._refcounter)
         if matched_fd is not None:
             self.sync_callback(process, syscall)
