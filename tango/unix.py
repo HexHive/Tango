@@ -847,6 +847,7 @@ class ProcessDriver(BaseDriver,
             raise NotImplementedError
         filt = BPF_FILTER(
             BPF_STMT(BPF_LD | BPF_W | BPF_ABS, seccomp_data.nr.offset),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['pselect6'], 17, 0),
             BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['accept'], 16, 0),
             BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['accept4'], 15, 0),
             BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, NR['bind'], 14, 0),
