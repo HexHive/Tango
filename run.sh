@@ -13,4 +13,9 @@ caps="${caps[*]}"=eip
 unset IFS
 
 sudo -E capsh --caps=$caps --user=$USER --addamb=$caps -- \
-	-c "$PYBIN $PYSCRIPT $ARGS"
+	-c "$PYBIN $PYSCRIPT $ARGS" &
+
+pid=$!
+trap "echo 'Saving progress...'; kill -sUSR1 $pid; wait" SIGUSR1
+trap "echo 'Terminating fuzzer!'; sudo kill -sTERM $pid; wait" SIGTERM
+wait

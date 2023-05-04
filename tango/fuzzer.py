@@ -106,6 +106,8 @@ class Fuzzer:
             # let the fuzzing begin
             self._runner = asyncio.create_task(self._suspendable.as_coroutine())
             self._bootstrap_sigint(loop, handle=True)
+            loop.add_signal_handler(
+                signal.SIGTERM, self._cleanup_and_exit, loop)
             await self._runner
         except asyncio.CancelledError:
             pass
@@ -190,7 +192,7 @@ class Fuzzer:
             self._timer()
             self._bootstrap_sigint(loop, handle=True)
 
-    def _cleanup_and_exit(self, loop, code, /):
+    def _cleanup_and_exit(self, loop, code=0):
         self._cleanup = True
         self._runner.cancel()
         sys.exit(code)
