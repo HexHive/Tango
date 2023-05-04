@@ -9,11 +9,13 @@ dcmtk:
 	rm -rf dcmtk_repo
 	git clone https://github.com/DCMTK/dcmtk dcmtk_repo
 	cd dcmtk_repo && \
-	git checkout 7f8564c && \
-	patch -p1 < ../fix_uaf.patch && \
+	git checkout 6e7112a && \
 	patch -p1 < ../rand.patch && \
 	mkdir build && cd build && \
-	cmake .. && \
+	cmake \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DDCMTK_WITH_THREADS=OFF \
+		.. && \
 	$(MAKE) dcmqrscp && \
 	cp bin/dcmqrscp ../../
 	mkdir -p ACME_STORE
