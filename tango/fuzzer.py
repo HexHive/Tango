@@ -1,4 +1,4 @@
-from . import info, warning
+from . import info, warning, error
 
 from tango.core import (FuzzerConfig, FuzzerSession,
     initialize as initialize_profiler, TimeElapsedProfiler, is_profiling_active)
@@ -79,6 +79,7 @@ class Fuzzer:
         return overrides
 
     def _loop_exception_handler(self, loop, context):
+        error(context)
         import ipdb; ipdb.set_trace()
         pass
 
