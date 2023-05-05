@@ -8,11 +8,13 @@ from tango.webui import WebRenderer
 
 from aioconsole import AsynchronousConsole, get_standard_streams
 from ast import literal_eval
+from pathlib import Path
 import asyncio
 import argparse
 import logging
 import signal
 import sys
+import os
 
 class Fuzzer:
     def __init__(self, args=None):
@@ -21,6 +23,8 @@ class Fuzzer:
         self._overrides = self.construct_overrides(self._argspace.override)
         self._sessions = []
         self._cleanup = False
+        if self._argspace.pid:
+            Path(self._argspace.pid).write_text(str(os.getpid()))
 
     @staticmethod
     def parse_args(args):
@@ -30,6 +34,8 @@ class Fuzzer:
         parser.add_argument("config",
             help="The path to the TangoFuzz fuzz.json file.")
         parser.add_argument('--override', '-o', action='append', nargs=2)
+        parser.add_argument('--pid', '-p',
+            help="Save the fuzzer's process PID at the specified path.")
         parser.add_argument('--sessions', '-s', type=int, default=1,
             help="The number of concurrent fuzzing sessions to run.")
         parser.add_argument('-v', '--verbose', action='count', default=0,
