@@ -201,13 +201,13 @@ class RolloverCounterStrategy(AbstractStrategy,
     def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
             **kwargs):
         super().update_state(state, *args, exc=exc, **kwargs)
+        if exc and self._target == state:
+            self._counter = 0
+            self._target = self.recalculate_target()
         if not self._invalidate:
             return
-        if exc:
+        elif exc:
             self._invalid_states.add(state)
-            if self._target == state:
-                self._counter = 0
-                self._target = self.recalculate_target()
         else:
             self._invalid_states.discard(state)
 
