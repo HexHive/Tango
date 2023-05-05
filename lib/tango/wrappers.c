@@ -27,7 +27,7 @@ int __wrap_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
     setsockopt(sockfd, SOL_SOCKET, SO_LINGER, &no_linger, sizeof(no_linger));
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
-    printf("Enable address-port reuse on socket: %d\n", sockfd);
+    fprintf(stderr, "Enable address-port reuse on socket: %d\n", sockfd);
 
     /* go to bind then */
     return __real_bind(sockfd, addr, addrlen);
