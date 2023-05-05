@@ -816,13 +816,13 @@ class ProcessDriver(BaseDriver,
             cwd = self._exec_env.cwd,
             restore_signals = True, # TODO check if this should be false
             env = self._exec_env.env,
-            preexec_fn = self._preexec_fn
+            preexec_fn = self._preexec_fn,
+            start_new_session = True
         )
         return pobj
 
     def _preexec_fn(self):
         try:
-            os.setsid()
             signal.pthread_sigmask(signal.SIG_SETMASK, {})
             caps = set()
             if self._isolate_net:
