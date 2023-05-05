@@ -104,9 +104,13 @@ class BaseExplorer(AbstractExplorer,
             paths = chain(self._tracker.state_graph.get_min_paths(state),
                           self._tracker.state_graph.get_paths(state))
             # Loop over possible paths until retry threshold
-            for i, path in zip(range(self._reload_attempts), paths):
+            ipaths = zip(range(self._reload_attempts), paths)
+            while True:
                 try:
+                    i, path = next(ipaths)
                     return await self._arbitrate_load_state(path)
+                except StopIteration:
+                    break
                 except StabilityException as ex:
                     warning("Failed to follow unstable path (reason: %s)!"
                             " Retrying... (%i/%i)",
