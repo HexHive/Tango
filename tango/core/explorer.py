@@ -114,7 +114,7 @@ class BaseExplorer(AbstractExplorer,
                     CountProfiler('unstable')(1)
                     await self._state_reload_cb(ex.expected_state, exc=ex)
                 except Exception as ex:
-                    warning("Failed to load state %s (ex=%s)!", state, ex)
+                    warning("Failed to load state %s (ex=%r)!", state, ex)
                     break
             raise StateNotReproducibleException("destination state not reproducible",
                 state)
@@ -243,7 +243,7 @@ class BaseExplorer(AbstractExplorer,
                 except Exception as ex:
                     # Minimization failed, again probably due to an
                     # indeterministic target
-                    warning("Minimization failed ex=%s", ex)
+                    warning("Minimization failed ex=%r", ex)
                     raise
                 current_input = current_input.flatten()
             elif validate:
@@ -274,7 +274,7 @@ class BaseExplorer(AbstractExplorer,
                     #   the predecessor state may have built on top of internal
                     #   program state that was not reproduced by reload_state()
                     #   to arrive at the current successor state.
-                    warning("Validation failed ex=%s", ex)
+                    warning("Validation failed ex=%r", ex)
                     raise StatePrecisionException(
                             f"The path to {current_state} is imprecise") \
                         from ex
@@ -306,7 +306,7 @@ class BaseExplorer(AbstractExplorer,
                 await self._loader.apply_transition((src, dst, exp_input), src,
                     update_cache=False)
             except Exception as ex:
-                debug("ex=%s", ex)
+                debug("ex=%r", ex)
                 success = False
 
             if success:
@@ -338,7 +338,7 @@ class BaseExplorer(AbstractExplorer,
                         (src, dst, tmp_lin_input), src,
                         update_cache=False)
                 except Exception as ex:
-                    debug("ex=%s", ex)
+                    debug("ex=%r", ex)
                     success = False
 
                 if success:
@@ -358,7 +358,7 @@ class BaseExplorer(AbstractExplorer,
             await self._loader.apply_transition((src, dst, lin_input), src,
                 update_cache=False)
         except Exception as ex:
-            debug("ex=%s", ex)
+            debug("ex=%r", ex)
             success = False
             if reduced:
                 # finally, we fall back to validating the original input

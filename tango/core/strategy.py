@@ -104,9 +104,10 @@ class BaseStrategy(AbstractStrategy,
                 # they only concern the loader/channel
                 raise
             except Exception as ex:
-                import ipdb; ipdb.set_trace()
-                critical("Encountered exception while reloading target! ex=%s",
+                critical("Encountered exception while reloading target! ex=%r",
                     ex)
+                import ipdb; ipdb.set_trace()
+                pass
 
 class SeedableStrategy(BaseStrategy,
         capture_paths=['strategy.minimize_seeds', 'strategy.validate_seeds']):

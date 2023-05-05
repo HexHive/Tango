@@ -100,7 +100,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
                     CountProfiler('timeout')(1)
                 except ChannelBrokenException as ex:
                     # TODO save crashing/breaking input
-                    debug("Received channel broken exception (ex=%s)", ex)
+                    debug("Received channel broken exception (ex=%r)", ex)
                 except ChannelSetupException:
                     # TODO save broken setup input
                     warning("Received channel setup exception")
@@ -113,7 +113,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
                 return
             except Exception as ex:
                 # everything else, we probably need to debug
-                critical("Encountered weird exception ex=%s", ex)
+                critical("Encountered weird exception ex=%r", ex)
                 import ipdb; ipdb.set_trace()
                 raise
 

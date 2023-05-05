@@ -415,7 +415,7 @@ class PtraceProcess(object):
                     raise event
             except PtraceError as ex:
                 debug("%s received %s while waiting for exit,"
-                      " but the signal could not be delivered ex=%s.",
+                      " but the signal could not be delivered ex=%r.",
                       event.process, event, ex)
 
     async def processStatus(self, status):

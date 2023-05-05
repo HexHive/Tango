@@ -335,7 +335,7 @@ class CoverageDriver(ProcessDriver,
         try:
             root.writeBytes(disabled_p, disabled_v)
         except PtraceError as ex:
-            warning("Failed to disable coverage in %s: ex=%s", root, ex)
+            warning("Failed to disable coverage in %s: ex=%r", root, ex)
         for process in root.children:
             self.disable_coverage_tracer(process)
 

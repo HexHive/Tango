@@ -124,7 +124,7 @@ class WebRenderer(AsyncComponent, component_type='webui',
             try:
                 await gather_tasks
             except (RuntimeError, ConnectionResetError) as ex:
-                debug("Websocket handler terminated (ex=%s)", ex)
+                debug("Websocket handler terminated (ex=%r)", ex)
             finally:
                 gather_tasks.cancel()
         await get_session_task_group().create_task(_handler())

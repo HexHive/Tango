@@ -513,7 +513,7 @@ class BaseTracker(AbstractTracker):
                     self._state_graph.dissolve_state(state, stitch=True)
                     CountProfiler("dissolved_states")(1)
                 except KeyError as ex:
-                    warning("Faulty state was not even valid (ex=%s)", ex)
+                    warning("Faulty state was not even valid (ex=%r)", ex)
             return state
 
     def update_transition(self, source: AbstractState,
@@ -533,7 +533,7 @@ class BaseTracker(AbstractTracker):
             try:
                 self._state_graph.delete_transition(source, destination)
             except KeyError:
-                warning("Faulty transition was not even valid (ex=%s)", ex)
+                warning("Faulty transition was not even valid (ex=%r)", ex)
 
     def out_edges(self, state: AbstractState) -> Iterable[Transition]:
         if state in self.state_graph:
