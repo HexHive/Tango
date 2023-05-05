@@ -23,14 +23,16 @@ extern "C" {
 extern pid_t __wrap_fork() __attribute__((weak));
 extern pid_t __real_fork() __attribute__((weak));
 
+static char upperdir[PATH_MAX];
+static size_t prefixlen;
+
 ATTRIBUTE_NO_SANITIZE_ALL
 static int rm_helper(
         const char *fpath, const struct stat *sb,
         int typeflag, struct FTW *ftwbuf) {
     if (ftwbuf->level == 0) return 0;
-    int r = remove(fpath);
-    if (r) perror(fpath);
-    return r;
+    int r = remove(&fpath[prefixlen]);
+    return 0; // ignore any errors (e.g. permission denied)
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
@@ -43,13 +45,21 @@ static int cleanup_directory(const char *dir) {
 
 ATTRIBUTE_NO_SANITIZE_ALL
 static void cleanup_fs() {
+    // we use a second variable so as not to repeat work when TANGO_UPPERDIR is
+    // not set
     static bool done = false;
-    static const char *upperdir = NULL;
     if (!done) {
-        upperdir = getenv("TANGO_UPPERDIR");
+        const char *env = getenv("TANGO_UPPERDIR");
+        if (env) {
+            const char *canonical = realpath(env, upperdir);
+            if (canonical)
+                prefixlen = strlen(canonical);
+            else
+                upperdir[0] = '\0';
+        }
         done = true;
     }
-    if (!upperdir) return;
+    if (!upperdir[0]) return;
     int r = cleanup_directory(upperdir);
     if (r) perror("Failed to clean up tmpfs");
 }

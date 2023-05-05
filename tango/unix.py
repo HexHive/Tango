@@ -692,18 +692,6 @@ class ProcessDriver(BaseDriver,
             **kwargs):
         super().__init__(channel_factory=channel_factory, **kwargs)
         self._work_dir = Path(work_dir)
-        self._exec_env = self.setup_execution_environment(exec)
-        self._pobj = None # Popen object of child process
-        self._netns_name = f'ns:{uuid4()}'
-        self._disable_aslr = disable_aslr
-
-        if disable_aslr:
-            ADDR_NO_RANDOMIZE = 0x0040000
-            personality = ctypes.pythonapi.personality
-            personality.restype = ctypes.c_int
-            personality.argtypes = [ctypes.c_ulong]
-            personality(ADDR_NO_RANDOMIZE)
-
         self._isolate_fs = isolate_fs
         if isolate_fs:
             if not HAS_NAMESPACES:
@@ -727,6 +715,17 @@ class ProcessDriver(BaseDriver,
                         " network namespace. Make sure to provide it with"
                         " sufficient capabilities, or disable isolation.")
                 self._isolate_net = False
+        self._exec_env = self.setup_execution_environment(exec)
+        self._pobj = None # Popen object of child process
+        self._netns_name = f'ns:{uuid4()}'
+        self._disable_aslr = disable_aslr
+
+        if disable_aslr:
+            ADDR_NO_RANDOMIZE = 0x0040000
+            personality = ctypes.pythonapi.personality
+            personality.restype = ctypes.c_int
+            personality.argtypes = [ctypes.c_ulong]
+            personality(ADDR_NO_RANDOMIZE)
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -747,6 +746,14 @@ class ProcessDriver(BaseDriver,
         if not config.get("env"):
             config["env"] = dict(os.environ)
         config["env"]["TANGO_WORKDIR"] = str(self._work_dir)
+        if self._isolate_fs:
+            # could be used by the forkserver to clean up instead of remounting
+            # FIXME path is re-evaluated here because of how Popen does not
+            # allow changing of env within preexec_fn
+            fspath = self._work_dir.resolve().relative_to('/') / 'fs'
+            upper = Path('/rootfs') / fspath / 'tmpfs/upper'
+            config["env"]["TANGO_UPPERDIR"] = str(upper)
+
         config["args"][0] = os.path.realpath(config["args"][0])
         if not (path := config.get("path")):
             config["path"] = config["args"][0]
@@ -966,8 +973,6 @@ class ProcessDriver(BaseDriver,
 
         # finally we chdir into the cwd within the new fs
         os.chdir(cwd)
-        # could be used by the forkserver to clean up instead of remounting
-        os.environ['TANGO_UPPERDIR'] = str(Path("/rootfs", upperdir))
 
 class ProcessForkDriver(ProcessDriver):
     @classmethod
