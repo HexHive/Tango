@@ -751,8 +751,15 @@ class ProcessDriver(BaseDriver,
             # FIXME path is re-evaluated here because of how Popen does not
             # allow changing of env within preexec_fn
             fspath = self._work_dir.resolve().relative_to('/') / 'fs'
-            upper = Path('/rootfs') / fspath / 'tmpfs/upper'
-            config["env"]["TANGO_UPPERDIR"] = str(upper)
+            tmpfs = Path('/rootfs') / fspath / 'tmpfs'
+            upper = tmpfs / 'upper'
+            work = tmpfs / 'work'
+            lower = Path('/rootfs') / fspath / 'rootfs'
+            overlay = Path('/rootfs') / fspath / 'overlayfs'
+            config["env"]["TANGO_FS_UPPERDIR"] = str(upper)
+            config["env"]["TANGO_FS_WORKDIR"] = str(work)
+            config["env"]["TANGO_FS_LOWERDIR"] = str(lower)
+            config["env"]["TANGO_FS_OVERLAY"] = str(overlay)
 
         config["args"][0] = os.path.realpath(config["args"][0])
         if not (path := config.get("path")):
@@ -824,20 +831,9 @@ class ProcessDriver(BaseDriver,
     def _preexec_fn(self):
         try:
             signal.pthread_sigmask(signal.SIG_SETMASK, {})
-            caps = set()
-            if self._isolate_net:
-                caps |= self._net_caps
-                netns.setns(self._netns_name, flags=os.O_CREAT)
-                with IPRoute() as ipr:
-                    ipr.link('set', index=1, state='up')
-            if self._isolate_fs:
-                caps |= self._mount_caps
-                self._setup_volatile_filesystem(self._work_dir / "fs")
+            self._setup_container()
             if self._factory.use_seccomp:
                 self._install_seccomp_filter()
-
-            # finally we drop all acquired caps
-            drop_caps(*caps)
         except Exception as ex:
             import traceback
             error(ex)
@@ -881,6 +877,21 @@ class ProcessDriver(BaseDriver,
         if (res := syscall(NR['seccomp'], SECCOMP_SET_MODE_FILTER,
                 SECCOMP_FILTER_FLAG_TSYNC, ctypes.addressof(prog))):
             raise RuntimeError("Failed to install seccomp bpf")
+
+    def _setup_container(self, drop_capabilities=True):
+        caps = set()
+        if self._isolate_net:
+            caps |= self._net_caps
+            netns.setns(self._netns_name, flags=os.O_CREAT)
+            with IPRoute() as ipr:
+                ipr.link('set', index=1, state='up')
+        if self._isolate_fs:
+            caps |= self._mount_caps
+            self._setup_volatile_filesystem(self._work_dir / "fs")
+
+        if drop_capabilities:
+            # finally we drop all acquired caps
+            drop_caps(*caps)
 
     @staticmethod
     def _switch_mount_namespace():

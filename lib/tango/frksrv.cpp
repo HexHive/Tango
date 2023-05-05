@@ -23,7 +23,7 @@ extern "C" {
 extern pid_t __wrap_fork() __attribute__((weak));
 extern pid_t __real_fork() __attribute__((weak));
 
-static char upperdir[PATH_MAX];
+static char *upperdir;
 static size_t prefixlen;
 
 ATTRIBUTE_NO_SANITIZE_ALL
@@ -31,7 +31,18 @@ static int rm_helper(
         const char *fpath, const struct stat *sb,
         int typeflag, struct FTW *ftwbuf) {
     if (ftwbuf->level == 0) return 0;
-    int r = remove(&fpath[prefixlen]);
+    /* silently ignore errors in removing paths in merged fs;
+     * even though we're doing DFS, we're only traversing the upperdir.
+     * an empty dir in the upper fs does not imply the dir is empty in merged.
+     * attempting to delete the dir in merged would fail if it's non-empty.
+     */
+    struct stat wh;
+    if (remove(&fpath[prefixlen]));
+    else if (lstat(fpath, &wh) == 0 && S_ISCHR(wh.st_mode) && wh.st_rdev == 0)
+        if (remove(fpath)) {
+            fprintf(stderr, "remove(%s): ", fpath);
+            perror("Failed to remove whiteout");
+        }
     return 0; // ignore any errors (e.g. permission denied)
 }
 
@@ -42,24 +53,19 @@ static int cleanup_directory(const char *dir) {
     return r;
 }
 
-
 ATTRIBUTE_NO_SANITIZE_ALL
 static void cleanup_fs() {
     // we use a second variable so as not to repeat work when TANGO_UPPERDIR is
     // not set
     static bool done = false;
     if (!done) {
-        const char *env = getenv("TANGO_UPPERDIR");
-        if (env) {
-            const char *canonical = realpath(env, upperdir);
-            if (canonical)
-                prefixlen = strlen(canonical);
-            else
-                upperdir[0] = '\0';
+        upperdir = getenv("TANGO_FS_UPPERDIR");
+        if (upperdir) {
+            prefixlen = strlen(upperdir);
         }
         done = true;
     }
-    if (!upperdir[0]) return;
+    if (!upperdir) return;
     int r = cleanup_directory(upperdir);
     if (r) perror("Failed to clean up tmpfs");
 }
