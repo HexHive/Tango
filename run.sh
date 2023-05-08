@@ -12,5 +12,5 @@ IFS=','
 caps="${caps[*]}"=eip
 unset IFS
 
-sudo -E capsh --caps=$caps --user=$USER --addamb=$caps -- \
-	-c "$PYBIN $PYSCRIPT $ARGS"
+exec sudo -E capsh --caps=$caps --user=$USER --addamb=$caps -- \
+	-c "exec $PYBIN $PYSCRIPT $ARGS"
