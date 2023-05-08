@@ -28,7 +28,7 @@ class WebRenderer(AsyncComponent, component_type='webui',
         capture_paths=['webui.*'], capture_components={'session'},
         catch_all=True):
     def __init__(self, session: FuzzerSession, *,
-            http_host: str='localhost', http_port: int=8080,
+            http_host: str='127.0.0.1', http_port: int=8080,
             www_path: str=WWW_PATH,
             draw_graph: bool=True,
             bubble_update_period: float=0.1, bubble_reload_period: float=1,
