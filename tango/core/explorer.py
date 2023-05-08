@@ -126,7 +126,7 @@ class BaseExplorer(AbstractExplorer,
             try:
                 return await self._arbitrate_load_state(loadable)
             except StabilityException as ex:
-                warning("Failed to follow unstable preselected path (reason = %i)!",
+                warning("Failed to follow unstable preselected path (reason = %s)!",
                     ex.args[0])
                 CountProfiler('unstable')(1)
                 raise StateNotReproducibleException("destination state not reproducible",
