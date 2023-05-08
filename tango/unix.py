@@ -944,10 +944,17 @@ class ProcessDriver(BaseDriver,
         try:
             mount('overlayfs', overlayfs, 'overlay',
                 (MS_NOATIME | MS_NODEV | MS_NOSUID) and 0, options)
+
+            # we fix up procfs and devtmpfs in case they are needed
+            mount('proc', overlayfs / 'proc', 'proc', 0, None)
+            mount('dev', overlayfs / 'dev', 'devtmpfs', 0, None)
+
+            # bind-mount /dev/shm and /run for shmem and netns
             mount('/dev/shm', overlayfs / 'dev/shm', None, MS_BIND, None)
             mount('/run', overlayfs / 'run', None, MS_BIND, None)
             mount(None, overlayfs / 'run', None, MS_REMOUNT|MS_BIND|MS_RDONLY, None)
         except Exception as ex:
+            error(ex)
             raise RuntimeError("Failed to mount overlayfs") from ex
 
         sharedfs = overlayfs / 'shared'
@@ -978,9 +985,6 @@ class ProcessDriver(BaseDriver,
         # clean up
         # (path / "rootfs").rmdir()
         # path.rmdir()
-
-        # we fix up procfs in case it is needed
-        mount('proc', '/proc', 'proc', 0, None)
 
         # finally we chdir into the cwd within the new fs
         os.chdir(cwd)
