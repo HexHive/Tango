@@ -13,6 +13,7 @@ from typing import ByteString, Iterable, Mapping, Any
 from subprocess import Popen
 from dataclasses import dataclass
 from asyncstdlib.functools import cache as async_cache
+from pathlib import Path
 import errno
 import struct
 import select
@@ -90,7 +91,7 @@ class StdIOChannel(FileDescriptorChannel):
 @dataclass(kw_only=True, frozen=True)
 class StdIOForkChannelFactory(StdIOChannelFactory,
         capture_paths=['fuzzer.work_dir']):
-    work_dir: str = None
+    work_dir: str
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -115,7 +116,8 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
         self._injected = False
         self._awaited = False
         self._reconnect = True
-        self._fifo = os.path.join(self._work_dir, 'input.pipe')
+
+        self._fifo = Path(self._work_dir) / 'shared/input.pipe'
         self._setup_fifo()
 
     async def connect(self):
@@ -140,11 +142,11 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
             self._injected = True
 
     def _setup_fifo(self):
-        if os.path.exists(self._fifo):
-            if stat.S_ISFIFO(os.stat(self._fifo).st_mode):
+        if self._fifo.exists():
+            if stat.S_ISFIFO(self._fifo.stat().st_mode):
                 return
             else:
-                os.unlink(self._fifo)
+                self._fifo.unlink()
         os.mkfifo(self._fifo, 0o600)
 
     def _invoke_forkserver_custom(self, process, syscall):

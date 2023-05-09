@@ -74,9 +74,9 @@ __attribute__((used))
 ATTRIBUTE_NO_SANITIZE_ALL
 static void _forkserver() {
     int fifofd = -1;
-    const char *wd = getenv("TANGO_WORKDIR");
-    char *fifopath = (char *)malloc(PATH_MAX);
-    snprintf(fifopath, PATH_MAX, "%s/%s", wd, "input.pipe");
+    const char *shared = getenv("TANGO_SHAREDDIR");
+    char fifopath[PATH_MAX];
+    snprintf(fifopath, PATH_MAX, "%s/%s", shared, "input.pipe");
 
     while(1) {
         cleanup_fs();
@@ -91,7 +91,6 @@ static void _forkserver() {
             } while (ret > 0);
         } else {
             fifofd = open(fifopath, O_RDONLY);
-            free(fifopath);
             if (fifofd >= 0) {
                 dup2(fifofd, STDIN_FILENO);
                 close(fifofd);

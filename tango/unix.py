@@ -692,6 +692,7 @@ class ProcessDriver(BaseDriver,
             **kwargs):
         super().__init__(channel_factory=channel_factory, **kwargs)
         self._work_dir = Path(work_dir)
+        self._shared_dir = self._work_dir / 'shared'
         self._isolate_fs = isolate_fs
         if isolate_fs:
             if not HAS_NAMESPACES:
@@ -746,6 +747,7 @@ class ProcessDriver(BaseDriver,
         if not config.get("env"):
             config["env"] = dict(os.environ)
         config["env"]["TANGO_WORKDIR"] = str(self._work_dir)
+        config["env"]["TANGO_SHAREDDIR"] = str(self._shared_dir)
         if self._isolate_fs:
             # could be used by the forkserver to clean up instead of remounting
             # FIXME path is re-evaluated here because of how Popen does not
@@ -887,7 +889,8 @@ class ProcessDriver(BaseDriver,
                 ipr.link('set', index=1, state='up')
         if self._isolate_fs:
             caps |= self._mount_caps
-            self._setup_volatile_filesystem(self._work_dir / "fs")
+            self._setup_volatile_filesystem(
+                self._work_dir / "fs", self._shared_dir)
 
         if drop_capabilities:
             # finally we drop all acquired caps
@@ -957,23 +960,24 @@ class ProcessDriver(BaseDriver,
             error(ex)
             raise RuntimeError("Failed to mount overlayfs") from ex
 
-        sharedfs = overlayfs / 'shared'
+        return overlayfs, upperdir
+
+    @classmethod
+    def _setup_volatile_filesystem(cls, fs_path, shared_dir):
+        cls._switch_mount_namespace()
+
+        # we obtain the cwd before pivoting root
+        cwd = Path.cwd()
+
+        new_root, upperdir = cls._setup_overlay_tmpfs(fs_path)
+
+        sharedfs = new_root / shared_dir.absolute().relative_to("/")
         sharedfs.mkdir(parents=True, exist_ok=True)
-        shared_dir = path / 'shared'
-        shared_dir.mkdir(parents=True, exist_ok=True)
         try:
             mount(shared_dir, sharedfs, None, MS_BIND, None)
         except Exception as ex:
             raise RuntimeError("Failed to mount shared dir") from ex
-        return overlayfs, upperdir
 
-    @classmethod
-    def _setup_volatile_filesystem(cls, path):
-        cls._switch_mount_namespace()
-        # we obtain the cwd before pivoting root
-        cwd = Path.cwd()
-
-        new_root, upperdir = cls._setup_overlay_tmpfs(path)
         old_root = new_root / "rootfs"
         old_root.mkdir(exist_ok=True)
         try:

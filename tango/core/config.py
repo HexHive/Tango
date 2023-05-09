@@ -87,7 +87,8 @@ class FuzzerConfig(ComponentOwner):
             "queue": {},
             "unstable": {},
             "crash": {},
-            "figs": {}
+            "figs": {},
+            "shared": {}
         }
         mktree(wd, tree)
 
