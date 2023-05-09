@@ -19,7 +19,8 @@
 		"type": "stdio"
 	},
 	"generator": {
-		"type": "reactive"
+		"type": "reactive",
+		"chunk_size": 4
 	},
 	"tracker": {
 		"type": "coverage"

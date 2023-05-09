@@ -67,16 +67,20 @@ class NetworkChannel(FileDescriptorChannel):
         return syscall.name != 'shutdown' and \
             super()._close_ignore_callback(syscall)
 
-    @classmethod
-    def _select_match_fds(cls, process: PtraceProcess, syscall: PtraceSyscall,
+    def _select_match_fds(self, process: PtraceProcess, syscall: PtraceSyscall,
             fds: Iterable[int]) -> Optional[int]:
         matched_fd = super()._select_match_fds(process, syscall, fds)
         if matched_fd is None:
+            argv = syscall.argument_values
             match syscall.name:
                 case 'recv' | 'recvfrom' | 'recvmsg':
-                    if syscall.arguments[0].value not in fds:
+                    if argv[0] not in fds:
                         return None
-                    matched_fd = syscall.arguments[0].value
+                    matched_fd = argv[0]
+                    if self._chunk and syscall.name != 'recvmsg':
+                        new_length = min(argv[2], self._chunk)
+                        argv = (*argv[:2], new_length)
+                        syscall.writeArgumentValues(*argv)
                 case _:
                     return None
         return matched_fd
@@ -324,8 +328,7 @@ class TCPChannel(NetworkChannel):
         opts = opts or self._default_event_opts
         return await super().push_observe(callback, opts)
 
-    @classmethod
-    def _select_match_fds(cls, process: PtraceProcess, syscall: PtraceSyscall,
+    def _select_match_fds(self, process: PtraceProcess, syscall: PtraceSyscall,
             fds: Iterable[int]) -> Optional[int]:
         matched_fd = super()._select_match_fds(process, syscall, fds)
         if matched_fd is None:

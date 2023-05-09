@@ -8,6 +8,7 @@ from random import Random
 from enum import Enum
 from copy import deepcopy
 from random import Random
+from itertools import pairwise
 
 __all__ = [
     'HavocMutator', 'RandomInputGenerator', 'MutatedTransmitInstruction',
@@ -477,11 +478,13 @@ class HavocMutator(BaseMutator):
             weights: Optional[Sequence[float]]=None,
             k: Optional[int]=None,
             havoc_actions: Optional[Sequence]=None,
+            chunk_size: Optional[int]=None,
             **kwargs):
         super().__init__(input, **kwargs)
         k = k or RAND(MUT_HAVOC_STACK_POW2, self._entropy) + 1
         self._actions = havoc_actions or self._entropy.choices(
                 havoc_handlers, weights=weights, k=k)
+        self._chunk = chunk_size
 
     def __iter__(self, *, orig):
         with self.entropy_ctx as entropy:
@@ -521,20 +524,31 @@ class HavocMutator(BaseMutator):
                     yield from (deepcopy(instruction) for _ in range(2))
                 elif oper == self.RandomOperation.CREATE:
                     buffer = entropy.randbytes(entropy.randint(1, 256))
-                    yield TransmitInstruction(buffer)
+                    for chunk in self._chunk_up(buffer):
+                        yield TransmitInstruction(chunk)
                 elif oper == self.RandomOperation.MUTATE:
                     if isinstance(instruction, TransmitInstruction):
                         mut_data = self._apply_actions(instruction._data, entropy)
-                        mut_instruction = MutatedTransmitInstruction(mut_data,
-                            self._actions)
-                        yield mut_instruction
+                        for chunk in self._chunk_up(mut_data):
+                            yield MutatedTransmitInstruction(chunk, self._actions)
                     else:
                         # no mutations on other instruction types for now,
                         # and we drop them
                         pass
         else:
             buffer = entropy.randbytes(entropy.randint(1, 256))
-            yield TransmitInstruction(buffer)
+            for chunk in self._chunk_up(buffer):
+                yield TransmitInstruction(chunk)
+
+    def _chunk_up(self, data):
+        if not self._chunk:
+            yield data
+        else:
+            aligned = (len(data) - 1) // self._chunk + 1
+            aligned *= self._chunk
+            ranges = pairwise(range(0, aligned, self._chunk))
+            for begin, end in ranges:
+                yield data[begin:end]
 
     def _apply_actions(self, data, entropy):
         for func in self._actions:
@@ -543,12 +557,18 @@ class HavocMutator(BaseMutator):
             data = func(data, entropy)
         return data
 
-class RandomInputGenerator(BaseInputGenerator):
+class RandomInputGenerator(BaseInputGenerator,
+        capture_paths=('generator.chunk_size',)):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
             config['generator'].get('type') == 'random'
 
+    def __init__(self, chunk_size: Optional[int]=None, **kwargs):
+        super().__init__(**kwargs)
+        self._chunk = chunk_size
+
     def generate(self, state: AbstractState) -> AbstractInput:
         candidate = self.select_candidate(state)
-        return HavocMutator(candidate, entropy=self._entropy)
+        return HavocMutator(candidate, entropy=self._entropy,
+            chunk_size=self._chunk)

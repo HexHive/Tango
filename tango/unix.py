@@ -1017,11 +1017,13 @@ class ForkserverCrashedException(RuntimeError):
     pass
 
 class FileDescriptorChannel(PtraceChannel):
-    def __init__(self, *, data_timeout: float, **kwargs):
+    def __init__(self, *,
+            data_timeout: float, chunk_size: Optional[int], **kwargs):
         super().__init__(**kwargs)
         self._refcounter = dict()
         self._data_timeout = data_timeout * self._timescale if data_timeout \
             else None
+        self._chunk = chunk_size
         self.synced = False
 
     async def process_new(self, *args, **kwargs):
@@ -1111,7 +1113,8 @@ class FileDescriptorChannel(PtraceChannel):
         self._send_data = data
         _, ret = await self.monitor_syscalls(self._send_monitor_target,
             self._send_ignore_callback, self._send_break_callback,
-            self._send_syscall_callback, timeout=self._data_timeout)
+            self._send_syscall_callback, timeout=self._data_timeout,
+            break_on_entry=bool(self._chunk), break_on_exit=True)
         return ret
 
     def dup_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
@@ -1197,18 +1200,23 @@ class FileDescriptorChannel(PtraceChannel):
         if matched_fd is not None:
             self.sync_callback(process, syscall)
 
-    @classmethod
-    def _select_match_fds(cls, process: PtraceProcess, syscall: PtraceSyscall,
+    def _select_match_fds(self, process: PtraceProcess, syscall: PtraceSyscall,
             fds: Iterable[int]) -> Optional[int]:
         matched_fd = None
+        argv = syscall.argument_values
         match syscall.name:
             case 'read':
-                if syscall.arguments[0].value not in fds:
+                if argv[0] not in fds:
                     return None
-                matched_fd = syscall.arguments[0].value
+                matched_fd = argv[0]
+                # read 1 byte at a time to bypass glibc buffering
+                if self._chunk:
+                    new_length = min(argv[2], self._chunk)
+                    argv = (*argv[:2], new_length)
+                    syscall.writeArgumentValues(*argv)
             case 'poll' | 'ppoll':
-                nfds = syscall.arguments[1].value
-                pollfds = syscall.arguments[0].value
+                nfds = argv[1]
+                pollfds = argv[0]
                 fmt = '@ihh'
                 size = struct.calcsize(fmt)
                 for i in range(nfds):
@@ -1216,23 +1224,22 @@ class FileDescriptorChannel(PtraceChannel):
                         pollfds + i * size, size))
                     if fd in fds and (events & select.POLLIN) != 0:
                         matched_fd = fd
-                        args = syscall.argument_values
                         # convert call to blocking
-                        if syscall.name == 'poll' and args[2] == 0:
-                            args = args[:2] + (-1,) + args[3:]  # inf timeout
-                        elif syscall.name == 'ppoll' and args[2] != 0:
-                            args = args[:2] + (0,) + args[3:]  # nullptr
+                        if syscall.name == 'poll' and argv[2] == 0:
+                            argv = argv[:2] + (-1,) + argv[3:]  # inf timeout
+                        elif syscall.name == 'ppoll' and argv[2] != 0:
+                            argv = argv[:2] + (0,) + argv[3:]  # nullptr
                         else:
                             break
-                        syscall.writeArgumentValues(*args)
+                        syscall.writeArgumentValues(*argv)
                         break
                 else:
                     return None
             case 'select' | 'pselect6':
-                nfds = syscall.arguments[0].value
+                nfds = argv[0]
                 if nfds <= max(fds):
                     return None
-                readfds = syscall.arguments[1].value
+                readfds = argv[1]
                 fmt = '@l'
                 size = struct.calcsize(fmt)
                 for fd in fds:
@@ -1242,13 +1249,12 @@ class FileDescriptorChannel(PtraceChannel):
                         readfds + l_idx * size, size))
                     if fd_set & (1 << b_idx) != 0:
                         matched_fd = fd
-                        args = syscall.argument_values
                         # convert call to blocking
-                        if args[4]:
-                            args = args[:4] + (0,) + args[5:]  # nullptr
+                        if argv[4]:
+                            argv = argv[:4] + (0,) + argv[5:]  # nullptr
                         else:
                             break
-                        syscall.writeArgumentValues(*args)
+                        syscall.writeArgumentValues(*argv)
                         break
                 else:
                     return None
@@ -1262,10 +1268,19 @@ class FileDescriptorChannel(PtraceChannel):
     async def _send_syscall_callback(self, process, syscall):
         if not self._send_ignore_callback(syscall) and \
                 syscall.arguments[0].value in self._refcounter:
-            if syscall.result <= 0:
+            if syscall.result is None:
+                # read 1 byte at a time to bypass glibc buffering
+                argv = syscall.argument_values
+                if self._chunk and syscall.name == 'read' and \
+                        argv[0] in self._refcounter:
+                    new_length = min(argv[2], self._chunk)
+                    argv = (*argv[:2], new_length)
+                    syscall.writeArgumentValues(*argv)
+            elif syscall.result <= 0:
                 raise ChannelBrokenException(
                     "Target failed to read data off file")
-            self._send_server_received += syscall.result
+            else:
+                self._send_server_received += syscall.result
 
     async def _send_break_callback(self):
         if not self._send_barrier_passed:
@@ -1296,8 +1311,9 @@ class FileDescriptorChannel(PtraceChannel):
 
 @dataclass(kw_only=True, frozen=True)
 class FileDescriptorChannelFactory(PtraceChannelFactory,
-        capture_paths=('channel.data_timeout',)):
+        capture_paths=('channel.data_timeout', 'generator.chunk_size')):
     data_timeout: float = None # seconds
+    chunk_size: Optional[int] = None
 
 class SharedMemoryObject:
     valid_chars = frozenset("-_. %s%s" % (ascii_letters, digits))
