@@ -235,7 +235,7 @@ class StatelessReactiveInputGenerator(ReactiveInputGenerator):
     def update_state(self, state: AbstractState, /, *, input: AbstractInput,
             orig_input: AbstractInput, exc: Exception=None, **kwargs):
         state = state.tracker._entry_state
-        super().update_state(state, input, orig_input=orig_input, exc=exc, **kwargs)
+        super().update_state(state, input=input, orig_input=orig_input, exc=exc, **kwargs)
 
     def update_transition(self, source: AbstractState,
             destination: AbstractState, input: AbstractInput, /, *,
