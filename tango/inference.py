@@ -203,19 +203,25 @@ class StateInferenceStrategy(UniformStrategy,
         await super().initialize()
         self._nprng = np.random.default_rng(
             seed=self._entropy.randint(0, 0xffffffff))
-        if is_profiling_active('time_elapsed', 'time_crosstest'):
+        self._profilers = (
+            'time_elapsed', 'time_crosstest', 'snapshots', 'states',
+            'dt_miss', 'dt_hit', 'dt_savings', 'total_savings')
+        if is_profiling_active(*self._profilers):
             session = get_current_session()
-            self._dump_path = self._work_dir / f'crosstest_{session.id}.csv'
-            self._dump_path.write_text('elapsed,crosstest\n')
+            self._dump_path = \
+                self._work_dir / f'crosstest_{session.id}.csv'
+            self._dump_path.write_text(','.join(self._profilers) + '\n')
             loop = session.loop
             loop.add_signal_handler(
-                signal.SIGUSR2, self._dump_crosstest_overhead, session.id)
+                signal.SIGUSR2, self._dump_profilers, session.id)
+        else:
+            del self._profilers
 
-    def _dump_crosstest_overhead(self, sid):
+    def _dump_profilers(self, sid):
         with open(self._dump_path, 'at') as file:
-            elapsed = get_profiler('time_elapsed').timedelta.total_seconds()
-            crosstest = get_profiler('time_crosstest').timedelta.total_seconds()
-            file.write(f'{elapsed},{crosstest}\n')
+            values = map(lambda p: get_profiler(p, None), self._profilers)
+            file.write(','.join(str(v.value) if v else '' for v in values))
+            file.write('\n')
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
