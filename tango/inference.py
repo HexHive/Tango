@@ -169,7 +169,7 @@ class StateInferenceStrategy(UniformStrategy,
             'strategy.dt_validate', 'strategy.broadcast_state_schedule']):
     def __init__(self, *, tracker: StateInferenceTracker,
             loader: AbstractLoader,
-            inference_batch: Optional[str | int]=None,
+            inference_batch: int=50,
             disperse_heat: bool=False,
             extend_on_groups: bool=False,
             recursive_collapse: bool=False,
@@ -180,7 +180,7 @@ class StateInferenceStrategy(UniformStrategy,
         super().__init__(**kwargs)
         self._tracker = tracker
         self._loader = loader
-        self._inference_batch = int(inference_batch or 50)
+        self._inference_batch = inference_batch
         self._disperse_heat = disperse_heat
         self._extend_on_groups = extend_on_groups
         self._recursive_collapse = recursive_collapse
@@ -280,13 +280,17 @@ class StateInferenceStrategy(UniformStrategy,
 
     async def perform_cross_pollination(self):
         G = self._tracker.state_graph
-        nodes = np.array(G.nodes)
+        batch_unmapped = self._entropy.sample(
+            tuple(self._tracker.unmapped_states), k=self._inference_batch)
+        nodes = np.array(list(
+            set(G.nodes) & self._tracker.nodes.keys() | set(batch_unmapped)))
 
         to_idx, from_idx = self.intersect1d_nosort(nodes,
             self._tracker.node_arr)
 
         # get current adjacency matrix
-        adj = G.adjacency_matrix
+        adj = G.adjacency_matrix(nodelist=nodes)
+
         # and current capability matrix
         cap = self._tracker.capability_matrix
         assert cap.shape == (len(from_idx), len(from_idx))

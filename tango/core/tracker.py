@@ -135,6 +135,11 @@ class AbstractStateGraphMeta(ABCMeta):
                 graph_cls = nx.Graph
         if not inherit:
             namespace['graph_cls'] = graph_cls
+            # networkx relies on G.__class__ for creating subviews and other
+            # operations; this is a workaround to allow it to instantiate such
+            # classes without the arguments typically required by subclasses of
+            # AbstractStateGraph
+            namespace['__class__'] = graph_cls
             bases = (graph_cls,) + bases
         return super().__new__(metacls, name, bases, namespace)
 
@@ -234,10 +239,11 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
         G._queue_maxlen = self._queue_maxlen
         return G
 
-    @property
-    def adjacency_matrix(self) \
+    def adjacency_matrix(self, **kwargs) \
             -> NDArray[Shape["Nodes, Nodes"], Iterable[Optional[BaseInput]]]:
-        return nx.to_numpy_array(self, weight='transition', nonedge=None)
+        kwargs.setdefault('weight', 'transition')
+        kwargs.setdefault('nonedge', None)
+        return nx.to_numpy_array(self, **kwargs)
 
     @EventProfiler('update_state')
     def update_state(self, state: AbstractState) -> tuple[AbstractState, bool]:
