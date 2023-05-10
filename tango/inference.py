@@ -461,12 +461,12 @@ class StateInferenceStrategy(UniformStrategy,
                 # At this point, we may have multiple possible groupings
                 candidates_eqv = np.vectorize(eqv_states.get,
                     otypes=(object,))(candidates)
-                if len(candidates_eqv) > 1:
+                if (l := len(candidates_eqv)) > 1:
                     # we have more than one possible equivalence set;
                     # we train a small DT to differentiate the two, based on
                     # their updated cap matrices
-                    critical("Multiple candidates are not yet supported!")
-                    candidates_eqv = candidates_eqv[(0,),:]
+                    critical(f"Multiple candidates ({l}) are not yet supported!")
+                    candidates_eqv = candidates_eqv[(0,),...]
 
                 # we choose a candidate
                 candidate_eqv, = candidates_eqv
