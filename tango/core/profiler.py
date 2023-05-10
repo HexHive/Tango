@@ -34,8 +34,8 @@ EnabledProfilers = set(
 
 DefaultProfilers = {}
 DefaultProfilers['minimal'] = \
-    {'elapsed', 'resets', 'instructions', 'execs', 'gens', 'total_instructions',
-     'coverage', 'crash'}
+    {'time_elapsed', 'resets', 'instructions', 'execs', 'gens',
+     'total_instructions', 'coverage', 'crash'}
 DefaultProfilers['web'] = DefaultProfilers['minimal'] | \
     {'webui', 'perform_instruction', 'target_name', 'status'}
 
@@ -58,12 +58,15 @@ def get_profiler(name: str, *args, **kwargs) -> AbstractProfiler:
 def get_all_profilers() -> Iterable[tuple[str, AbstractProfiler]]:
     return {name: get_profiler(name) for name in ProfiledObjects}.items()
 
-def is_profiling_active(name: Optional[str]=None) -> bool:
-    active = not AbstractProfilerMeta.ProfilingNOP
-    if name and not active:
-        active = ProfiledObjects.get(name) or name in EnabledProfilers or \
+def is_profiling_active(*names: Iterable[str]) -> bool:
+    if not AbstractProfilerMeta.ProfilingNOP:
+        return True
+    active = True
+    for name in names:
+        active = active and (ProfiledObjects.get(name) or \
+            name in EnabledProfilers or \
             any(name in DefaultProfilers.get(profset, ())
-                for profset in EnabledProfilers)
+                for profset in EnabledProfilers))
     return active
 
 class AbstractProfilerMeta(ABCMeta):
@@ -439,7 +442,11 @@ class TimeElapsedProfiler(AbstractProfiler):
 
     @property
     def value(self):
-        time = self._accum
+        return str(self.timedelta).split('.')[0]
+
+    @property
+    def timedelta(self) -> timedelta:
+        delta = self._accum
         if self._running:
-            time += datetime.now() - self._start
-        return str(time).split('.')[0]
+            delta += datetime.now() - self._start
+        return delta

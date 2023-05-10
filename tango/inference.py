@@ -5,7 +5,7 @@ from . import debug, info, warning, critical
 from tango.core import (UniformStrategy, AbstractState, AbstractInput,
     BaseStateGraph, AbstractTracker, ValueProfiler, TimeElapsedProfiler,
     ValueMeanProfiler, LambdaProfiler, AbstractLoader, CountProfiler,
-    EmptyInput)
+    EmptyInput, is_profiling_active, get_profiler, get_current_session)
 from tango.cov import CoverageTracker, CoverageWebRenderer, CoverageWebDataLoader
 from tango.reactive import ReactiveInputGenerator, HavocMutator
 from tango.webui import create_svg
@@ -14,6 +14,7 @@ from tango.exceptions import StabilityException
 from tango.havoc import havoc_handlers, RAND, MUT_HAVOC_STACK_POW2
 
 from functools import partial, cached_property
+from pathlib import Path
 from aiohttp import web
 from typing import Optional, Sequence
 from enum import Enum, auto
@@ -24,6 +25,7 @@ import networkx as nx
 import datetime
 import asyncio
 import json
+import signal
 
 utcnow = datetime.datetime.utcnow
 
@@ -166,9 +168,11 @@ class StateInferenceStrategy(UniformStrategy,
         capture_paths=['strategy.inference_batch', 'strategy.disperse_heat',
             'strategy.extend_on_groups', 'strategy.recursive_collapse',
             'strategy.dt_predict', 'strategy.dt_extrapolate',
-            'strategy.dt_validate', 'strategy.broadcast_state_schedule']):
+            'strategy.dt_validate', 'strategy.broadcast_state_schedule',
+            'fuzzer.work_dir']):
     def __init__(self, *, tracker: StateInferenceTracker,
             loader: AbstractLoader,
+            work_dir: str,
             inference_batch: int=50,
             disperse_heat: bool=False,
             extend_on_groups: bool=False,
@@ -180,6 +184,7 @@ class StateInferenceStrategy(UniformStrategy,
         super().__init__(**kwargs)
         self._tracker = tracker
         self._loader = loader
+        self._work_dir = Path(work_dir)
         self._inference_batch = inference_batch
         self._disperse_heat = disperse_heat
         self._extend_on_groups = extend_on_groups
@@ -198,6 +203,19 @@ class StateInferenceStrategy(UniformStrategy,
         await super().initialize()
         self._nprng = np.random.default_rng(
             seed=self._entropy.randint(0, 0xffffffff))
+        if is_profiling_active('time_elapsed', 'time_crosstest'):
+            session = get_current_session()
+            self._dump_path = self._work_dir / f'crosstest_{session.id}.csv'
+            self._dump_path.write_text('elapsed,crosstest\n')
+            loop = session.loop
+            loop.add_signal_handler(
+                signal.SIGUSR2, self._dump_crosstest_overhead, session.id)
+
+    def _dump_crosstest_overhead(self, sid):
+        with open(self._dump_path, 'at') as file:
+            elapsed = get_profiler('time_elapsed').timedelta.total_seconds()
+            crosstest = get_profiler('time_crosstest').timedelta.total_seconds()
+            file.write(f'{elapsed},{crosstest}\n')
 
     @classmethod
     def match_config(cls, config: dict) -> bool:

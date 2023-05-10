@@ -107,7 +107,7 @@ class Fuzzer:
         self._suspendable = Suspendable(self.run_all_sessions())
 
         # time starts now
-        self._timer = TimeElapsedProfiler('elapsed', session_local=False)
+        self._timer = TimeElapsedProfiler('time_elapsed', session_local=False)
 
         try:
             # let the fuzzing begin
