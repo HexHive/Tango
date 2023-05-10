@@ -429,6 +429,12 @@ class StateInferenceStrategy(UniformStrategy,
             dt_tests = 0
 
         uidx, = np.where(np.any(~edge_mask, axis=1))
+        uidx_existing, idx, _ = np.intersect1d(
+            uidx, to_idx, assume_unique=True, return_indices=True)
+        remaining = np.ones_like(uidx, dtype=bool)
+        remaining[idx] = False
+        uidx_remaining = uidx[remaining]
+        uidx = np.concatenate((uidx_existing, uidx_remaining))
         for eqv_idx in uidx:
             eqv_node = nodes[eqv_idx]
 
@@ -513,9 +519,9 @@ class StateInferenceStrategy(UniformStrategy,
                 if self._dt_extrapolate:
                     # get the set of new snapshots that we did not test, that
                     # the candidate can reproduce
-                    # FIXME this assumes that all of to_idx is processed
-                    # before new snapshots; instead, this should be enforced
-                    # by constructing uidx with to_idx first
+                    # WARN This assumes that all of to_idx is processed before
+                    # new snapshots; this is enforced by constructing uidx with
+                    # to_idx first
                     vidx_ungrouped = np.intersect1d(vidx_ungrouped, cap_eqv,
                         assume_unique=True)
 
