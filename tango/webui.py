@@ -62,14 +62,19 @@ class WebRenderer(AsyncComponent, component_type='webui',
                     for state, state_hits in self._hitcounter.items()
                 })
 
-        tg = get_session_task_group()
-        if self._draw_graph and all(x >= 0 for x in
-                (self._bubble_update_period, self._bubble_reload_period)):
+        update_prof = get_profiler('update_state', None)
+        reload_prof = get_profiler('reload_target', None)
+        self._draw_graph = self._draw_graph and all((update_prof, reload_prof))
+        self._draw_graph = self._draw_graph and all(x >= 0 for x in
+            (self._bubble_update_period, self._bubble_reload_period))
+
+        if self._draw_graph:
+            tg = get_session_task_group()
             tg.create_task(
-                get_profiler('update_state').listener(
+                update_prof.listener(
                     period=self._bubble_update_period)(update))
             tg.create_task(
-                get_profiler('reload_target').listener(
+                reload_prof.listener(
                     period=self._bubble_reload_period)(update))
 
     async def run(self):
@@ -164,8 +169,16 @@ class WebDataLoader:
 
         self.tasks = []
 
-        if draw_graph and all(x >= 0 for x in
-                (draw_update_period, draw_reload_period, draw_update_fadeout)):
+        update_state_prof = get_profiler('update_state', None)
+        update_transition_prof = get_profiler('update_transition', None)
+        reload_prof = get_profiler('reload_target', None)
+        instruction_prof = get_profiler('perform_instruction', None)
+        draw_graph = draw_graph and all(
+            (update_state_prof, update_transition_prof, reload_prof))
+        draw_graph = draw_graph and all(x >= 0 for x in
+            (draw_update_period, draw_reload_period, draw_update_fadeout))
+
+        if draw_graph:
             self.tasks.append(asyncio.create_task(
                     get_profiler('update_state').listener(
                         period=draw_update_period)(self.track_node)))
@@ -176,9 +189,9 @@ class WebDataLoader:
                     get_profiler('reload_target').listener(
                         period=draw_reload_period)(self.update_graph)))
 
-        if stats_update_period >= 0:
+        if instruction_prof:
             self.tasks.append(asyncio.create_task(
-                    get_profiler('perform_instruction').listener(
+                    instruction_prof.listener(
                         period=stats_update_period)(self.update_stats)))
 
     @classmethod

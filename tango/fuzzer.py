@@ -146,7 +146,7 @@ class Fuzzer:
         self._sessions.append(session)
         tg = get_session_task_group()
         tg.create_task(Suspendable(session.run()).as_coroutine(), name=name)
-        if is_profiling_active():
+        if is_profiling_active('webui'):
             webui = await config.instantiate('webui')
             tg.create_task(webui.run(), name=f'webui[{name}]')
 
@@ -184,7 +184,8 @@ class Fuzzer:
         # Unfortunately, this also means the coroutine is consumed after being
         # awaited, and we need to recreate it again before every call.
         self._stream_cache.clear()
-        self._repl.streams = get_standard_streams(cache=self._stream_cache, use_stderr=True, loop=loop)
+        self._repl.streams = get_standard_streams(
+            cache=self._stream_cache, use_stderr=True, loop=loop)
         await self._repl.interact(banner="Fuzzing paused (type exit() to quit)",
             stop=False, handle_sigint=False)
 

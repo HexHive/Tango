@@ -28,13 +28,27 @@ __all__ = [
 ProfiledObjects = {}
 ProfilingTasks = []
 
+EnabledProfilers = set(
+    name.split('TANGO_PROFILE_', 1)[1] for name in os.environ.keys()
+    if name.startswith('TANGO_PROFILE_'))
+
+DefaultProfilers = {}
+DefaultProfilers['minimal'] = \
+    {'elapsed', 'resets', 'instructions', 'execs', 'gens', 'total_instructions',
+     'coverage', 'crash'}
+DefaultProfilers['web'] = DefaultProfilers['minimal'] | \
+    {'webui', 'perform_instruction', 'target_name', 'status'}
+
 async def initialize(tg: Optional[asyncio.TaskGroup]=None):
     for idx, coro in enumerate(ProfilingTasks):
         factory = tg or asyncio
         ProfilingTasks[idx] = factory.create_task(coro)
 
-def get_profiler(name: str) -> AbstractProfiler:
-    p = ProfiledObjects[name]
+def get_profiler(name: str, *args, **kwargs) -> AbstractProfiler:
+    if any((args, kwargs)):
+        p = ProfiledObjects.get(name, *args, **kwargs)
+    else:
+        p = ProfiledObjects[name]
     if isinstance(p, ContextVar):
         context = get_session_context()
         return context[p]
@@ -42,19 +56,23 @@ def get_profiler(name: str) -> AbstractProfiler:
         return p
 
 def get_all_profilers() -> Iterable[tuple[str, AbstractProfiler]]:
-    yield from {
-        name: get_profiler(name) for name in ProfiledObjects
-    }.items()
+    return {name: get_profiler(name) for name in ProfiledObjects}.items()
 
-def is_profiling_active() -> bool:
-    return not AbstractProfilerMeta.ProfilingNOP
+def is_profiling_active(name: Optional[str]=None) -> bool:
+    active = not AbstractProfilerMeta.ProfilingNOP
+    if name and not active:
+        active = ProfiledObjects.get(name) or name in EnabledProfilers or \
+            any(name in DefaultProfilers.get(profset, ())
+                for profset in EnabledProfilers)
+    return active
 
 class AbstractProfilerMeta(ABCMeta):
     DEBUG = sys_gettrace() is not None
     ProfilingNOP = DEBUG or os.environ.get('TANGO_NO_PROFILE')
 
-    def __call__(cls, name, /, *args, session_local: bool=True, **kwargs):
-        if cls.ProfilingNOP:
+    def __call__(cls, name, /, *args,
+            session_local: bool=True, **kwargs):
+        if not is_profiling_active(name):
             return cls.nop
         if (p := ProfiledObjects.get(name)) is None:
             p = super().__call__(*args, **kwargs)

@@ -952,11 +952,17 @@ class CoverageWebDataLoader(WebDataLoader):
             draw_graph: bool=True, draw_heatmap: bool=False,
             stats_update_period: float=1, **kwargs):
         self._tracker = tracker
+
+        instruction_prof = get_profiler('perform_instruction', None)
+        draw_heatmap = draw_heatmap and tracker._track_heat and \
+            stats_update_period >= 0
+        draw_heatmap = draw_heatmap and instruction_prof
+
         tmp = []
-        if draw_heatmap and tracker._track_heat and stats_update_period >= 0:
+        if draw_heatmap:
             draw_graph = False
             tmp.append(asyncio.create_task(
-                    get_profiler('perform_instruction').listener(
+                    instruction_prof.listener(
                         period=stats_update_period)(self.update_heatmap)))
 
         super().__init__(*args, draw_graph=draw_graph,
