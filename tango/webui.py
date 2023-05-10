@@ -325,7 +325,7 @@ class WebDataLoader:
         stats = {'items': {}}
         for name, obj in get_all_profilers():
             try:
-                stats['items'][name] = obj.value
+                stats['items'][name] = str(obj)
             except Exception:
                 pass
         msg = json.dumps(stats | {'cmd': 'update_stats'})

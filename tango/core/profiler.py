@@ -107,10 +107,8 @@ class AbstractProfiler(ABC, metaclass=AbstractProfilerMeta):
     def __call__(self, obj):
         return obj
 
-    @property
-    @abstractmethod
-    def value(self):
-        pass
+    def __str__(self):
+        raise NotImplementedError
 
 class ValueProfiler(AbstractProfiler):
     def __call__(self, obj):
@@ -120,6 +118,9 @@ class ValueProfiler(AbstractProfiler):
     @property
     def value(self):
         return self._value
+
+    def __str__(self):
+        return str(self.value)
 
 class LambdaProfiler(ValueProfiler):
     @property
@@ -131,17 +132,16 @@ class NumericalProfiler(AbstractProfiler):
         super().__init__(**kwargs)
         self._step = 10 ** decimal_digits
 
+    @property
+    @abstractmethod
+    def value(self):
+        pass
+
     def truncate(self, value):
         return trunc(value * self._step) / self._step
 
-    @property
-    @abstractmethod
-    def numerical_value(self):
-        pass
-
-    @property
-    def value(self):
-        return self.truncate(self.numerical_value)
+    def __str__(self):
+        return str(self.truncate(self.value))
 
 class LocalGlobalProfilerMeta(AbstractProfilerMeta):
     def __call__(cls, name, /, *args, **kwargs):
@@ -229,10 +229,6 @@ class EventProfiler(FunctionCallProfiler):
     def callback(self, returncode, /, *args, **kwargs):
         argt = (args, kwargs)
         self._notify_listeners(argt, returncode)
-
-    @property
-    def value(self):
-        raise NotImplementedError
 
     def _create_event_context(self):
         ctx = EventContextManager(self)
@@ -345,7 +341,7 @@ class FrequencyProfiler(FunctionCallProfiler, PeriodicProfiler, NumericalProfile
         self._counter = 0
 
     @property
-    def numerical_value(self):
+    def value(self) -> float:
         return self._frequency
 
 class CountProfiler(ValueProfiler):
@@ -366,9 +362,12 @@ class CountProfiler(ValueProfiler):
             num /= 1000.0
         return "%.1f%s" % (num, 'M')
 
+    def __str__(self):
+        return self._format(self.value)
+
     @property
-    def value(self):
-        return self._format(self._count)
+    def value(self) -> int:
+        return self._count
 
 class ValueMeanProfiler(NumericalProfiler):
     def __init__(self, *, samples=10, **kwargs):
@@ -398,7 +397,7 @@ class ValueMeanProfiler(NumericalProfiler):
         return obj
 
     @property
-    def numerical_value(self):
+    def value(self) -> float:
         return self._calculate()
 
 class LambdaMeanProfiler(PeriodicProfiler, NumericalProfiler):
@@ -417,7 +416,7 @@ class LambdaMeanProfiler(PeriodicProfiler, NumericalProfiler):
         self._mean = mean(self._samples)
 
     @property
-    def numerical_value(self):
+    def value(self) -> float:
         return self._mean
 
 class TimeElapsedProfiler(AbstractProfiler):
@@ -440,9 +439,12 @@ class TimeElapsedProfiler(AbstractProfiler):
             self._start = now
             self._running = True
 
-    @property
-    def value(self):
+    def __str__(self):
         return str(self.timedelta).split('.')[0]
+
+    @property
+    def value(self) -> float:
+        return self.timedelta.total_seconds()
 
     @property
     def timedelta(self) -> timedelta:

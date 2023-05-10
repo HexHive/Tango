@@ -205,7 +205,7 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
 
         NumericalLambdaProfiler = create_profiler('NumericalLambdaProfiler',
             (NumericalProfiler, LambdaProfiler),
-            {'numerical_value': property(lambda self: float(self._value()))}
+            {'value': property(lambda self: float(self._value()))}
         )
         NumericalLambdaProfiler("transition_length")(lambda: \
             mean(                                       # mean value of
