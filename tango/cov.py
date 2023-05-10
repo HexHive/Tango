@@ -442,11 +442,11 @@ class CoverageTracker(BaseTracker,
         cov_idx, = self._feature_heat.nonzero()
         cov_arr = self._feature_heat[cov_idx]
         pc_arr = np.asarray(self._pc.object, dtype=int)[cov_idx]
-        fpath = os.path.join(self._work_dir, f'cov_pc_{sid}.txt')
+        fpath = os.path.join(self._work_dir, f'cov_pc_{sid}.csv')
         with open(fpath, "wt") as file:
-            file.write("idx\tcnt\tpc\n")
+            file.write(f"{'idx':>6},{'cnt':>6},pc\n")
             for idx, cnt, pc in zip(cov_idx, cov_arr, pc_arr):
-                row = f'{idx:6}\t{cnt:6}\t0x{pc:016X}\n'
+                row = f'{idx:6},{cnt:6},0x{pc:016X}\n'
                 file.write(row)
 
     @property
