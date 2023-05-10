@@ -231,7 +231,7 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
                 )
             ) if len(edges := self.edges(data='minimized')) > 0 else None
         )
-        LambdaProfiler("coverage")(lambda: len(self.nodes))
+        LambdaProfiler("snapshots")(lambda: len(self.nodes))
 
     def copy(self, **kwargs) -> AbstractStateGraph:
         G = super().copy(**kwargs)

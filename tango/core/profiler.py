@@ -35,7 +35,7 @@ EnabledProfilers = set(
 DefaultProfilers = {}
 DefaultProfilers['minimal'] = \
     {'time_elapsed', 'resets', 'instructions', 'execs', 'gens',
-     'total_instructions', 'coverage', 'crash'}
+     'total_instructions', 'snapshots', 'crash'}
 DefaultProfilers['web'] = DefaultProfilers['minimal'] | \
     {'webui', 'perform_instruction', 'target_name', 'status'}
 
