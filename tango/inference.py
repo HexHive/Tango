@@ -210,7 +210,10 @@ class StateInferenceStrategy(UniformStrategy,
             seed=self._entropy.randint(0, 0xffffffff))
         self._profilers = (
             'time_elapsed', 'time_crosstest', 'snapshots', 'states',
-            'dt_miss', 'dt_hit', 'dt_savings', 'total_savings')
+            'total_savings', 'total_misses', 'total_hits',
+            'eg_savings', 'eg_misses', 'eg_hits',
+            'dt_savings', 'dt_misses', 'dt_hits',
+            'dtex_savings', 'dtex_misses', 'dtex_hits')
         if is_profiling_active(*self._profilers):
             session = get_current_session()
             self._dump_path = \
@@ -485,6 +488,12 @@ class StateInferenceStrategy(UniformStrategy,
             dt_count_hits = 0
             dt_count_misses = 0
 
+            if self._dt_extrapolate:
+                dtex_count_skips = 0
+                dtex_count_tests = 0
+                dtex_count_hits = 0
+                dtex_count_misses = 0
+
         uidx, = np.where(np.any(~edge_mask, axis=1))
         uidx_existing, idx, _ = np.intersect1d(
             uidx, to_idx, assume_unique=True, return_indices=True)
@@ -577,6 +586,9 @@ class StateInferenceStrategy(UniformStrategy,
                 vidx_unpredicted = np.intersect1d(
                     vidx_untested,
                     np.intersect1d(cap_eqv, to_idx, assume_unique=True))
+                dt_count_tests += vidx_unpredicted.size
+                dt_count_skips += np.intersect1d(vidx_untested, to_idx,
+                    assume_unique=True).size - vidx_unpredicted.size
 
                 if self._dt_extrapolate:
                     # get the set of new snapshots that we did not test, that
@@ -584,20 +596,21 @@ class StateInferenceStrategy(UniformStrategy,
                     # WARN This assumes that all of to_idx is processed before
                     # new snapshots; this is enforced by constructing uidx with
                     # to_idx first
+                    init_size = vidx_ungrouped.size
                     vidx_ungrouped = np.intersect1d(vidx_ungrouped, cap_eqv,
                         assume_unique=True)
+                    dtex_count_tests += vidx_ungrouped.size
+                    dtex_count_skips += init_size - vidx_ungrouped.size
 
                 # the final set of edges to be tested after prediction
                 vidx_tobetested = np.union1d(
                     vidx_unpredicted,
                     vidx_ungrouped)
-                dt_count_tests += vidx_tobetested.size
 
                 vidx_tobeskipped = np.setdiff1d(vidx_untested, vidx_tobetested,
                     assume_unique=True)
                 assert np.all(~edge_mask[eqv_idx, vidx_tobeskipped])
                 edge_mask[eqv_idx, vidx_tobeskipped] = True
-                dt_count_skips += vidx_tobeskipped.size
                 count_skips += vidx_tobeskipped.size
 
                 vidx = vidx_tobetested
@@ -650,6 +663,25 @@ class StateInferenceStrategy(UniformStrategy,
                 is_valid = not (exists ^ (cap[eqv_idx, dst_idx] is not None))
                 assert not valid_mask[eqv_idx, dst_idx]
                 valid_mask[eqv_idx, dst_idx] = is_valid
+
+                match (eqv_idx in to_idx, dst_idx in to_idx):
+                    case (True, True):
+                        raise RuntimeError("Impossible situation")
+                    case (True, False):
+                        if is_valid:
+                            eg_count_hits += 1
+                        else:
+                            eg_count_misses += 1
+                    case (False, True):
+                        if is_valid:
+                            dt_count_hits += 1
+                        else:
+                            dt_count_misses += 1
+                    case (False, False):
+                        if is_valid:
+                            dtex_count_hits += 1
+                        else:
+                            dtex_count_misses += 1
                 if is_valid:
                     count_hits += 1
                 else:
@@ -657,14 +689,36 @@ class StateInferenceStrategy(UniformStrategy,
 
             ValueProfiler('total_misses')(count_misses)
             ValueProfiler('total_hits')(count_hits)
+            ValueProfiler('eg_misses')(eg_count_misses)
+            ValueProfiler('eg_hits')(eg_count_hits)
+            ValueProfiler('dt_misses')(dt_count_misses)
+            ValueProfiler('dt_hits')(dt_count_hits)
+            ValueProfiler('dtex_misses')(dtex_count_misses)
+            ValueProfiler('dtex_hits')(dtex_count_hits)
 
         if should_predict:
-            percent = 100 * dt_count_skips / (dt_count_tests + dt_count_skips)
-            NumericalValueProfiler('dt_savings')(percent)
+            verify_tests = 0
+            verify_skips = 0
+            if self._dt_predict:
+                verify_tests += dt_count_tests
+                verify_skips += dt_count_skips
+                percent = 100 * dt_count_skips / (dt_count_tests + dt_count_skips)
+                NumericalValueProfiler('dt_savings')(percent)
 
-            percent = 100 * eg_count_skips / (eg_count_tests + eg_count_skips)
-            NumericalValueProfiler('eg_savings')(percent)
+                if self._dt_extrapolate:
+                    verify_tests += dtex_count_tests
+                    verify_skips += dtex_count_skips
+                    percent = 100 * dtex_count_skips / (dtex_count_tests + dtex_count_skips)
+                    NumericalValueProfiler('dtex_savings')(percent)
 
+            if self._extend_on_groups:
+                verify_tests += eg_count_tests
+                verify_skips += eg_count_skips
+                percent = 100 * eg_count_skips / (eg_count_tests + eg_count_skips)
+                NumericalValueProfiler('eg_savings')(percent)
+
+            assert count_skips == verify_skips
+            assert count_tests == verify_tests
             assert init_pending == count_skips + count_tests
             percent = 100 * count_skips / init_pending
             NumericalValueProfiler('total_savings')(percent)
