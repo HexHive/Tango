@@ -68,6 +68,8 @@ class StateInferenceTracker(CoverageTracker,
         if disperse_heat:
             kwargs['track_heat'] = True
         super().__init__(**kwargs)
+        LambdaProfiler('inferred_snapshots')(lambda: len(self.nodes))
+
         # properties
         self.mode = InferenceMode.Discovery
         self.capability_matrix = np.empty((0,0), dtype=object)
@@ -215,7 +217,8 @@ class StateInferenceStrategy(UniformStrategy,
         self._nprng = np.random.default_rng(
             seed=self._entropy.randint(0, 0xffffffff))
         self._profilers = (
-            'time_elapsed', 'time_crosstest', 'snapshots', 'states',
+            'time_elapsed', 'time_crosstest',
+            'snapshots', 'states', 'inferred_snapshots',
             'total_savings', 'total_misses', 'total_hits',
             'eg_savings', 'eg_misses', 'eg_hits',
             'dt_savings', 'dt_misses', 'dt_hits',
