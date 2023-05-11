@@ -37,6 +37,12 @@ __all__ = [
 NumericalValueProfiler = create_profiler('NumericalValueProfiler',
     (NumericalProfiler, ValueProfiler),
     {'value': ValueProfiler.value})
+PercentProfiler = create_profiler('PercentProfiler',
+    (NumericalValueProfiler,),
+    {
+        'value': property(lambda self: self._value * 100),
+        '__str__': lambda self: f'{NumericalValueProfiler.__str__(self)}%'
+    })
 
 class InferenceMode(Enum):
     Discovery = auto()
@@ -46,7 +52,7 @@ class InferenceMode(Enum):
 class RecoveredStateGraph(BaseStateGraph):
     def __init__(self, **kwargs):
         self.graph_cls.__init__(self)
-        LambdaProfiler("states")(lambda: len(self.nodes))
+        LambdaProfiler('states')(lambda: len(self.nodes))
 
     def copy(self, **kwargs) -> RecoveredStateGraph:
         G = super(BaseStateGraph, self).copy(**kwargs)
@@ -432,8 +438,9 @@ class StateInferenceStrategy(UniformStrategy,
 
         def report_progress():
             current_done = np.count_nonzero(edge_mask) - init_done
-            percent = f'{100*current_done/init_pending:.1f}%'
-            ValueProfiler('status')(f'cross_test ({percent})')
+            progress = PercentProfiler('progress')
+            progress(current_done/init_pending)
+            ValueProfiler('status')(f'cross_test ({progress})')
 
         _, node_fwd_map, _, eqv_states = \
             self._tracker.reindex(from_idx, to_idx)
@@ -647,8 +654,9 @@ class StateInferenceStrategy(UniformStrategy,
             assert np.all(edge_mask)
             v_uidx, v_vidx = shadow_mask.nonzero()
             for i, (eqv_idx, dst_idx) in enumerate(zip(v_uidx, v_vidx)):
-                percent = f'{100*(i+1)/len(v_uidx):.1f}%'
-                ValueProfiler('status')(f'validate ({percent})')
+                progress = PercentProfiler('progress')
+                progress((i+1)/len(v_uidx))
+                ValueProfiler('status')(f'validate ({progress})')
                 eqv_node = nodes[eqv_idx]
                 dst_node = nodes[dst_idx]
 
@@ -702,26 +710,26 @@ class StateInferenceStrategy(UniformStrategy,
             if self._dt_predict:
                 verify_tests += dt_count_tests
                 verify_skips += dt_count_skips
-                percent = 100 * dt_count_skips / (dt_count_tests + dt_count_skips)
-                NumericalValueProfiler('dt_savings')(percent)
+                ratio = dt_count_skips / (dt_count_tests + dt_count_skips)
+                PercentProfiler('dt_savings')(ratio)
 
                 if self._dt_extrapolate:
                     verify_tests += dtex_count_tests
                     verify_skips += dtex_count_skips
-                    percent = 100 * dtex_count_skips / (dtex_count_tests + dtex_count_skips)
-                    NumericalValueProfiler('dtex_savings')(percent)
+                    ratio = dtex_count_skips / (dtex_count_tests + dtex_count_skips)
+                    PercentProfiler('dtex_savings')(ratio)
 
             if self._extend_on_groups:
                 verify_tests += eg_count_tests
                 verify_skips += eg_count_skips
-                percent = 100 * eg_count_skips / (eg_count_tests + eg_count_skips)
-                NumericalValueProfiler('eg_savings')(percent)
+                ratio = eg_count_skips / (eg_count_tests + eg_count_skips)
+                PercentProfiler('eg_savings')(ratio)
 
             assert count_skips == verify_skips
             assert count_tests == verify_tests
             assert init_pending == count_skips + count_tests
-            percent = 100 * count_skips / init_pending
-            NumericalValueProfiler('total_savings')(percent)
+            ratio = count_skips / init_pending
+            PercentProfiler('total_savings')(ratio)
 
     async def _perform_one_cross_pollination(self, eqv_src: AbstractState,
             eqv_dst: AbstractState, inputs: Sequence[AbstractInput]):
