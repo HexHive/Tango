@@ -182,7 +182,7 @@ class StateInferenceStrategy(UniformStrategy,
             'strategy.extend_on_groups', 'strategy.recursive_collapse',
             'strategy.dt_predict', 'strategy.dt_extrapolate',
             'strategy.validate', 'strategy.broadcast_state_schedule',
-            'fuzzer.work_dir']):
+            'strategy.dump_stats', 'fuzzer.work_dir']):
     def __init__(self, *, tracker: StateInferenceTracker,
             loader: AbstractLoader,
             work_dir: str,
@@ -193,7 +193,8 @@ class StateInferenceStrategy(UniformStrategy,
             dt_predict: bool=False,
             dt_extrapolate: bool=False,
             validate: bool=False,
-            broadcast_state_schedule: bool=False, **kwargs):
+            broadcast_state_schedule: bool=False,
+            dump_stats: bool=False, **kwargs):
         super().__init__(**kwargs)
         self._tracker = tracker
         self._loader = loader
@@ -206,6 +207,7 @@ class StateInferenceStrategy(UniformStrategy,
         self._dt_extrapolate = dt_extrapolate
         self._validate = validate
         self._broadcast_state_schedule = broadcast_state_schedule
+        self._auto_dump_stats = dump_stats
         if dt_predict:
             self._dt_clf = tree.DecisionTreeClassifier()
             self._dt_fit = False
@@ -232,6 +234,7 @@ class StateInferenceStrategy(UniformStrategy,
             loop.add_signal_handler(
                 signal.SIGUSR2, self._dump_profilers, session.id)
         else:
+            self._auto_dump_stats = False
             del self._profilers
 
     def _dump_profilers(self, sid):
@@ -278,6 +281,8 @@ class StateInferenceStrategy(UniformStrategy,
                 self._tracker.reconstruct_graph(collapsed)
                 self._tracker.mode = InferenceMode.Discovery
                 self._crosstest_timer()
+                if self._auto_dump_stats:
+                    self._dump_profilers(get_current_session().id)
 
     @classmethod
     def _collapse_until_stable(cls, adj, eqv_map):
