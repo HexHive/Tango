@@ -86,8 +86,8 @@ class Fuzzer:
 
     def _loop_exception_handler(self, loop, context):
         error(context)
-        import ipdb; ipdb.set_trace()
-        pass
+        import traceback
+        print(traceback.format_exc())
 
     async def _bootstrap(self):
         # use session-local task contexts

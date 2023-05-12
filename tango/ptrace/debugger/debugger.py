@@ -195,7 +195,6 @@ class PtraceDebugger(object):
                 # this first occured when the signalfd reader was not removed
                 # from the running loop
                 error("signalfd reader called without queued signals.")
-                raise
 
         def _flush_and_publish(self):
             ready = False
