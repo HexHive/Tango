@@ -12,5 +12,9 @@ IFS=','
 caps="${caps[*]}"=eip
 unset IFS
 
-exec sudo -E capsh --caps=$caps --user=$USER --addamb=$caps -- \
-	-c "exec $PYBIN $PYSCRIPT $ARGS"
+if [ ! -z $TANGO_TIMEOUT ]; then
+	timeout=(timeout --foreground -sTERM $TANGO_TIMEOUT)
+fi
+
+exec sudo -E capsh --caps=$caps --user=$USER --addamb=$caps --\
+	-c "exec ${timeout[*]} $PYBIN $PYSCRIPT $ARGS"
