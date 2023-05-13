@@ -339,7 +339,6 @@ class StateInferenceStrategy(UniformStrategy,
 
         # and current capability matrix
         cap = self._tracker.capability_matrix
-        assert cap.shape == (len(from_idx), len(from_idx))
 
         # mask out edges which have already been cross-tested
         edge_mask = adj != None
