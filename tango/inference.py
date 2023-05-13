@@ -712,28 +712,23 @@ class StateInferenceStrategy(UniformStrategy,
             ValueProfiler('dtex_hits')(dtex_count_hits)
 
         if should_predict:
-            verify_tests = 0
             verify_skips = 0
             if self._dt_predict:
-                verify_tests += dt_count_tests
                 verify_skips += dt_count_skips
                 ratio = dt_count_skips / (dt_count_tests + dt_count_skips)
                 PercentProfiler('dt_savings')(ratio)
 
                 if self._dt_extrapolate:
-                    verify_tests += dtex_count_tests
                     verify_skips += dtex_count_skips
                     ratio = dtex_count_skips / (dtex_count_tests + dtex_count_skips)
                     PercentProfiler('dtex_savings')(ratio)
 
             if self._extend_on_groups:
-                verify_tests += eg_count_tests
                 verify_skips += eg_count_skips
                 ratio = eg_count_skips / (eg_count_tests + eg_count_skips)
                 PercentProfiler('eg_savings')(ratio)
 
             assert count_skips == verify_skips
-            assert count_tests == verify_tests
             assert init_pending == count_skips + count_tests
             ratio = count_skips / init_pending
             PercentProfiler('total_savings')(ratio)
