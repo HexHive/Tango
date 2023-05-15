@@ -3,6 +3,7 @@ os.environ['TANGO_NO_PROFILE'] = 'y'
 
 from tango.core import FuzzerConfig
 from tango.core.tracker import *
+from tango.exceptions import LoadedException, ChannelBrokenException
 from abc          import ABC
 from tango.common import AsyncComponent, ComponentType
 from tango.common import AsyncComponent, timeit
@@ -102,14 +103,32 @@ async def send_eof(channel):
     await channel._proc.waitExit()
 
 tango_folder = os.getcwd()
-async def task(config, file):
-    gen = await config.instantiate('generator')
-    inp = gen.load_input(file)
+async def task(args, workdir, file):
+    try:
+        config = FuzzerConfig(args.config, {
+            'fuzzer': {'resume': True, 'work_dir': workdir},
+            'driver': {'forkserver': False},
+        })
+        config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += ":coverage=1"
+        config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += ":coverage_dir=/shared"
+        config._config['generator'] = {'type': config._config['generator']['type']}
+        config._config['strategy'] = {'type': config._config['strategy']['type']}
+        config._config['tracker'] = {'type': 'empty'}
 
-    drv = await config.instantiate('driver')
-    await drv.relaunch()
-    await drv.execute_input(inp)
-    await send_eof(drv._channel)
+        gen = await config.instantiate('generator')
+        inp = gen.load_input(file)
+
+        drv = await config.instantiate('driver')
+        await drv.relaunch()
+        try:
+            await drv.execute_input(inp)
+        except LoadedException as ex:
+            if not isinstance(ex._ex, ChannelBrokenException):
+                raise
+        await send_eof(drv._channel)
+    finally:
+        os.chdir(tango_folder)
+
 
 def rm_target_dir(file_path):
     folders = []
@@ -142,31 +161,24 @@ def main():
         }
     cov_files = [os.path.join(workdir, "queue", file.split("/")[-1]) for file in cov_files]
 
-    config = FuzzerConfig(args.config, {
-        'fuzzer': {'resume': True, 'work_dir': workdir},
-        'driver': {'forkserver': False},
-    })
-    config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += ":coverage=1"
-    config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += ":coverage_dir=/shared"
-    config._config['generator'] = {'type': config._config['generator']['type']}
-    config._config['strategy'] = {'type': config._config['strategy']['type']}
-    config._config['tracker'] = {'type': 'empty'}
-
     for file in cov_files:
         print("current file is", file)
         file_name = file.split("/")[-1]
         try:
-            asyncio.run(task(config, file))
+            asyncio.run(task(args, workdir, file))
             # find the generated sancov file
             sancov_file = glob.glob("**/*.sancov", recursive=True)[0]
             print(glob.glob("**/*.sancov", recursive=True))
             print("sancov_file is ", sancov_file)
             pc_set = read_sancov(sancov_file)
             cov_info_dict[file_name]["pc_set"] = list(pc_set)
-            os.remove(sancov_file)
         except Exception as ex:
+            # import ipdb; ipdb.set_trace()
             print("!!!!!!!!!!crashing file is {}!!!!!!!!!!".format(file_name))
             import traceback; print(traceback.format_exc())
+        finally:
+            for pathname in glob.glob("**/*.sancov", recursive=True):
+                os.remove(pathname)
 
     os.chdir(tango_folder)
     cov_info_json = json.dumps(cov_info_dict, indent=4)
