@@ -8,6 +8,7 @@ from tango.core import (BaseState, BaseTracker, AbstractInput, LambdaProfiler,
 from tango.replay import ReplayLoader
 from tango.unix import (
     ProcessDriver, ProcessForkDriver, SharedMemoryObject, resolve_symbol)
+from tango.ptrace import PtraceError
 from tango.ptrace.debugger import PtraceProcess
 from tango.webui import WebRenderer, WebDataLoader
 from tango.common import (
