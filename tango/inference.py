@@ -705,12 +705,15 @@ class StateInferenceStrategy(UniformStrategy,
 
             ValueProfiler('total_misses')(count_misses)
             ValueProfiler('total_hits')(count_hits)
-            ValueProfiler('eg_misses')(eg_count_misses)
-            ValueProfiler('eg_hits')(eg_count_hits)
-            ValueProfiler('dt_misses')(dt_count_misses)
-            ValueProfiler('dt_hits')(dt_count_hits)
-            ValueProfiler('dtex_misses')(dtex_count_misses)
-            ValueProfiler('dtex_hits')(dtex_count_hits)
+            if self._extend_on_groups:
+                ValueProfiler('eg_misses')(eg_count_misses)
+                ValueProfiler('eg_hits')(eg_count_hits)
+            if self._dt_predict:
+                ValueProfiler('dt_misses')(dt_count_misses)
+                ValueProfiler('dt_hits')(dt_count_hits)
+                if self._dt_extrapolate:
+                    ValueProfiler('dtex_misses')(dtex_count_misses)
+                    ValueProfiler('dtex_hits')(dtex_count_hits)
 
         if should_predict:
             verify_skips = 0
