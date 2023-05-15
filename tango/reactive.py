@@ -12,7 +12,7 @@ from enum import Enum
 from copy import deepcopy
 from math import exp
 from struct import pack
-import time
+import datetime
 import json
 import os
 
@@ -23,21 +23,29 @@ __all__ = [
 HAVOC_MIN_WEIGHT = 1e-3
 
 class ReactiveInputGenerator(BaseInputGenerator,
-        capture_paths=('generator.chunk_size',)):
-    def __init__(self, chunk_size: Optional[int]=None, **kwargs):
+        capture_paths=('generator.chunk_size', 'generator.log_model_history',
+            'generator.log_time_step', 'generator.log_flush_buffer')):
+    def __init__(self, chunk_size: Optional[int]=None,
+            log_model_history: bool=False, log_time_step: float=60.,
+            log_flush_buffer: int=256, **kwargs):
         super().__init__(**kwargs)
         self._chunk = chunk_size
         self._seen_transitions = set()
         self._state_model = dict()
 
-        self._log_counter = 0
-        self._log_path = os.path.join(self._work_dir, "model_history.bin")
-        self._log_buffer = bytearray()
-        self._pack_log_header()
+        self._log = log_model_history
+        if self._log:
+            self._log_counter = 0
+            self._log_flush_at = log_flush_buffer
+            self._log_timer = dict()
+            self._log_time_step = log_time_step
+            self._log_path = os.path.join(self._work_dir, "model_history.bin")
+            self._log_buffer = bytearray()
+            self._pack_log_header()
 
-        with open(self._log_path, "w"):
-            # clear the log file
-            pass
+            with open(self._log_path, "w"):
+                # clear the log file
+                pass
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -119,15 +127,19 @@ class ReactiveInputGenerator(BaseInputGenerator,
         return self._state_model[state]
 
     def _log_model(self, *states: list[AbstractState]):
-        now = time.time()
+        now = datetime.datetime.now()
         models = dict()
         for state in states:
-            models[state] = self._state_model[state]
-        self._pack_log_entry(now, models)
+            last_logged = self._log_timer.get(
+                state, now - datetime.timedelta(seconds=self._log_time_step+1))
+            if (now - last_logged).total_seconds() > self._log_time_step:
+                models[state] = self._state_model[state]
+                self._log_timer[state] = now
+        self._pack_log_entry(now.timestamp(), models)
 
         self._log_counter += 1
         ValueProfiler('log_counter')(self._log_counter)
-        if self._log_counter & 0xff == 0:
+        if self._log_counter == self._log_flush_at:
             self._log_counter = 0
 
             with open(self._log_path, 'ab') as f:
@@ -145,6 +157,8 @@ class ReactiveInputGenerator(BaseInputGenerator,
             self._pack_into_log(f'B{len(handler)}s', len(handler), handler)
 
     def _pack_log_entry(self, timestamp, models):
+        if not models:
+            return
         self._pack_into_log('d', timestamp)
         self._pack_into_log('I', len(models))
         for label, model in models.items():
