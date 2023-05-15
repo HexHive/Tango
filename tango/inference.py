@@ -225,7 +225,8 @@ class StateInferenceStrategy(UniformStrategy,
             'total_savings', 'total_misses', 'total_hits',
             'eg_savings', 'eg_misses', 'eg_hits',
             'dt_savings', 'dt_misses', 'dt_hits',
-            'dtex_savings', 'dtex_misses', 'dtex_hits')
+            'dtex_savings', 'dtex_misses', 'dtex_hits',
+            'snapshot_cov', 'total_cov')
         if is_profiling_active(*self._profilers):
             session = get_current_session()
             self._dump_path = \

@@ -419,6 +419,8 @@ class CoverageTracker(BaseTracker,
                                             bind_lib=self._bind_lib)
             self._diff_state = None
             self._feature_heat = np.zeros(self._differential.length, dtype=int)
+            LambdaProfiler('total_cov')(
+                lambda: np.count_nonzero(self._feature_heat))
 
         self._local_state = None
         self._current_state = None
@@ -431,7 +433,7 @@ class CoverageTracker(BaseTracker,
         # initialize local map and local state
         self.reset_state(self._current_state)
 
-        LambdaProfiler('global_cov')(lambda: sum(
+        LambdaProfiler('snapshot_cov')(lambda: sum(
             map(lambda x: x._feature_count,
                 filter(lambda x: x != self._entry_state,
                     self._state_graph.nodes
