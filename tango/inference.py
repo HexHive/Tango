@@ -211,6 +211,7 @@ class StateInferenceStrategy(UniformStrategy,
         if dt_predict:
             self._dt_clf = tree.DecisionTreeClassifier()
             self._dt_fit = False
+        self.filter_sblgs = np.vectorize(lambda s: s in self.valid_targets)
         self._crosstest_timer = TimeElapsedProfiler('time_crosstest')
         self._crosstest_timer()
 
@@ -958,13 +959,29 @@ class StateInferenceStrategy(UniformStrategy,
             if not self._disperse_heat:
                 self._target = self._entropy.choice(self._tracker.node_arr[eqv])
             else:
-                sblgs, temperatures = zip(*(
-                    (src, np.sum(self._tracker._feature_heat[
-                            np.asarray(dst._feature_mask).nonzero()]))
-                        for s in eqv for src,dst,_ in
-                            self._tracker.node_arr[s].out_edges))
-                weights = np.reciprocal(temperatures, dtype=float)
-                self._target = self._entropy.choices(sblgs, weights=weights)[0]
+                out_edges = ((
+                    (src := self._tracker.node_arr[s]),
+                    (dst for _, dst, _ in src.out_edges)
+                    ) for s in eqv)
+                tpairs = np.array([
+                    (
+                        src,
+                        np.sum(np.sum(self._tracker._feature_heat[
+                                np.asarray(dst._feature_mask).nonzero()])
+                            for dst in dsts)
+                    ) for (src, dsts) in out_edges]).transpose()
+                tpairs = tpairs[:, self.filter_sblgs(tpairs[0])]
+                warm_sblgs = tpairs[:, tpairs[1] != 0]
+                warm_sblgs[1,:] = np.cumsum(
+                    np.reciprocal(warm_sblgs[1,:].astype(float)))
+                warm_sblgs[1,:] *= 0.5 / warm_sblgs[1,:].max()
+                cold_sblgs = tpairs[:, tpairs[1] == 0]
+                cold_sblgs[1,:] = np.linspace(
+                    1, 0.5, num=cold_sblgs.shape[1], endpoint=False)[::-1]
+                sblgs, cum_weights = np.column_stack((warm_sblgs, cold_sblgs))
+                if sblgs.size:
+                    self._target, = self._entropy.choices(
+                        sblgs, cum_weights=cum_weights)
         except KeyError:
             pass
         return await super().reload_target()
