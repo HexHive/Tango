@@ -1081,7 +1081,10 @@ class FileDescriptorChannel(PtraceChannel):
             pass
 
         if len(data):
-            sent = await self._send_some(data)
+            try:
+                sent = await self._send_some(data)
+            except Exception as ex:
+                raise ChannelBrokenException("Failed to send data") from ex
             await self.sync()
             assert self.synced
         else:
