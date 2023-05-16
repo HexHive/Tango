@@ -978,10 +978,12 @@ class StateInferenceStrategy(UniformStrategy,
                 warm_sblgs = tpairs[:, tpairs[1] != 0]
                 warm_sblgs[1,:] = np.cumsum(
                     np.reciprocal(warm_sblgs[1,:].astype(float)))
-                warm_sblgs[1,:] *= 0.5 / warm_sblgs[1,:].max()
+                if warm_sblgs.size:
+                    warm_sblgs[1,:] *= 0.5 / warm_sblgs[1,:].max()
                 cold_sblgs = tpairs[:, tpairs[1] == 0]
                 cold_sblgs[1,:] = np.linspace(
-                    1, 0.5, num=cold_sblgs.shape[1], endpoint=False)[::-1]
+                    1, warm_sblgs[1,:].max(initial=0.),
+                    num=cold_sblgs.shape[1], endpoint=False)[::-1]
                 sblgs, cum_weights = np.column_stack((warm_sblgs, cold_sblgs))
                 if sblgs.size:
                     self._target, = self._entropy.choices(
