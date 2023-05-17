@@ -801,6 +801,8 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
             )
 
         plist = [p for p in plist if not isinstance(p[layer].payload, NoPayload)]
+        if not plist:
+            return
 
         tlast = plist[0].time
         for p in plist:
