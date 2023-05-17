@@ -720,18 +720,21 @@ class StateInferenceStrategy(UniformStrategy,
             verify_skips = 0
             if self._dt_predict:
                 verify_skips += dt_count_skips
-                ratio = dt_count_skips / (dt_count_tests + dt_count_skips)
-                PercentProfiler('dt_savings')(ratio)
+                dt_processed = dt_count_tests + dt_count_skips
+                if dt_processed:
+                    PercentProfiler('dt_savings')(dt_count_skips / dt_processed)
 
                 if self._dt_extrapolate:
                     verify_skips += dtex_count_skips
-                    ratio = dtex_count_skips / (dtex_count_tests + dtex_count_skips)
-                    PercentProfiler('dtex_savings')(ratio)
+                    dtex_processed = dtex_count_tests + dtex_count_skips
+                    if dtex_processed:
+                        PercentProfiler('dtex_savings')(dtex_count_skips / dtex_processed)
 
             if self._extend_on_groups:
                 verify_skips += eg_count_skips
-                ratio = eg_count_skips / (eg_count_tests + eg_count_skips)
-                PercentProfiler('eg_savings')(ratio)
+                eg_processed = eg_count_tests + eg_count_skips
+                if eg_processed:
+                    PercentProfiler('eg_savings')(eg_count_skips / eg_processed)
 
             assert count_skips == verify_skips
             assert init_pending == count_skips + count_tests
