@@ -133,6 +133,8 @@ class ReactiveInputGenerator(BaseInputGenerator,
             last_logged = self._log_timer.get(
                 state, now - datetime.timedelta(seconds=self._log_time_step+1))
             if (now - last_logged).total_seconds() > self._log_time_step:
+                if not state in self._state_model:
+                    continue
                 models[state] = self._state_model[state]
                 self._log_timer[state] = now
         self._pack_log_entry(now.timestamp(), models)
