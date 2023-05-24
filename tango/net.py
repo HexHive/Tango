@@ -27,7 +27,7 @@ import asyncio
 
 from scapy.all import (
     Ether, IP, TCP, UDP, Packet, PcapReader, PcapWriter, Raw, resolve_iface,
-    conf, NoPayload)
+    conf, NoPayload, Scapy_Exception)
 
 __all__ = [
     'NetworkFormatDescriptor', 'TransportFormatDescriptor', 'NetworkChannel',
@@ -788,7 +788,10 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
         if not layer:
             raise NotImplementedError
 
-        plist = PcapReader(self._file).read_all()
+        try:
+            plist = PcapReader(self._file).read_all()
+        except Scapy_Exception:
+            return
         endpoints = []
         for p in plist:
             eps = self._try_identify_endpoints(p)
