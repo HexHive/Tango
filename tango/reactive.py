@@ -106,7 +106,8 @@ class ReactiveInputGenerator(BaseInputGenerator,
                 # FIXME verify that state._parent == state.[ancestor]
                 state = state._parent
 
-        self._log_model(source, destination, *ancestors)
+        if self._log:
+            self._log_model(source, destination, *ancestors)
 
         return normalized_reward, actions
 
