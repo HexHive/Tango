@@ -18,11 +18,12 @@ import sys
 import os
 
 class Fuzzer:
-    def __init__(self, args=None):
+    def __init__(self, args=None, overrides={}):
         self._argspace = self.parse_args(args)
         self.configure_verbosity(self._argspace.verbose)
-        self._overrides = self.construct_overrides(self._argspace.override)
-        self._sessions = []
+        overrides = list(overrides.items()) + self._argspace.override
+        self._overrides = self.construct_overrides(overrides)
+        self._sessions = {}
         self._cleanup = False
         if self._argspace.pid:
             Path(self._argspace.pid).write_text(str(os.getpid()))
@@ -34,7 +35,8 @@ class Fuzzer:
         ))
         parser.add_argument("config",
             help="The path to the TangoFuzz fuzz.json file.")
-        parser.add_argument('--override', '-o', action='append', nargs=2)
+        parser.add_argument('--override', '-o', action='append', default=[],
+            nargs=2)
         parser.add_argument('--pid', '-p',
             help="Save the fuzzer's process PID at the specified path.")
         parser.add_argument('--sessions', '-s', type=int, default=1,
@@ -78,10 +80,11 @@ class Fuzzer:
                     d[k] = dict()
                 d = d[k]
             key = keys[-1]
-            if value.lower() in ('true', 'false'):
-                value = (value == 'true')
-            elif is_number_repl_isdigit(value):
-                value = literal_eval(value)
+            if isinstance(value, str):
+                if value.lower() in ('true', 'false'):
+                    value = (value == 'true')
+                elif is_number_repl_isdigit(value):
+                    value = literal_eval(value)
             d[key] = value
         return overrides
 
