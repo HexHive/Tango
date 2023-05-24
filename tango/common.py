@@ -1083,6 +1083,7 @@ class AsyncComponent(Component):
             if kls in visited:
                 if not component in owner._finalized:
                     await component.finalize(owner)
+                    object.__setattr__(component, 'owner', owner)
                     owner._finalized.add(component)
                     if postfinalize:
                         postfinalize(component)

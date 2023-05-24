@@ -1,7 +1,8 @@
 from . import info, warning, error
 
 from tango.core import (FuzzerConfig, FuzzerSession,
-    initialize as initialize_profiler, TimeElapsedProfiler, is_profiling_active)
+    initialize as initialize_profiler, TimeElapsedProfiler, is_profiling_active,
+    get_current_session)
 from tango.common import (Suspendable,
     create_session_context, get_session_task_group)
 from tango.webui import WebRenderer
@@ -130,25 +131,37 @@ class Fuzzer:
             async with asyncio.TaskGroup() as tg:
                 await initialize_profiler(tg)
                 for i in range(self._argspace.sessions):
-                    context = create_session_context(tg)
-                    tg.create_task(
-                        self.create_session(i),
-                        name=f'Session-{i}',
-                        context=context)
+                    await self.launch_session(tg, sid=i)
         except ExceptionGroup as exg:
             import ipdb; ipdb.set_trace()
             pass
 
-    async def create_session(self, sid):
-        name = asyncio.current_task().get_name()
-        config = FuzzerConfig(self._argspace.config, self._overrides)
-        session = await config.instantiate('session', sid)
-        self._sessions.append(session)
+    async def launch_session(self, tg, *args, **kwargs):
+        context = create_session_context(tg)
+        session = await tg.create_task(
+            self.create_session(context, *args, **kwargs),
+            context=context)
+        return await tg.create_task(
+            self.start_current_session(),
+            name=f'Session-{session.id}',
+            context=context)
+
+    async def start_current_session(self):
+        session = get_current_session()
         tg = get_session_task_group()
+        name = asyncio.current_task().get_name()
         tg.create_task(Suspendable(session.run()).as_coroutine(), name=name)
         if is_profiling_active('webui'):
-            webui = await config.instantiate('webui')
+            webui = await session.owner.instantiate('webui')
             tg.create_task(webui.run(), name=f'webui[{name}]')
+
+    async def create_session(self, context, sid=0):
+        if sid in self._sessions:
+            raise ValueError(f"Another session exists with the same {sid=}")
+        config = FuzzerConfig(self._argspace.config, self._overrides)
+        session = await config.instantiate('session', context, sid=sid)
+        self._sessions[sid] = session
+        return session
 
     def _bootstrap_sigint(self, loop, handle=True):
         if handle:
