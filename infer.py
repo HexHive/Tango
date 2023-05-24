@@ -17,9 +17,11 @@ def create_argparse():
     ))
     parser.add_argument("-C", "--corpus", type=Path, required=True,
         help="The path to the seed corpus directory.")
+    parser.add_argument("-O", "--out", type=Path, required=False,
+        help="The path to the output file (stdout otherwise).")
     return parser
 
-async def run_inference(session):
+async def run_inference(session, *, outfile=None):
     # strategy is already instantiated, we only get a reference to it
     strat = await session.owner.instantiate('strategy')
     tracker = await session.owner.instantiate('tracker')
@@ -32,14 +34,18 @@ async def run_inference(session):
         # flush the remaining nodes
         strat._inference_batch = rem
     groupings = {str(k): v for k, v in tracker.equivalence_states.items()}
-    print(json.dumps(groupings, cls=NumpyEncoder))
+    dump = json.dumps(groupings, cls=NumpyEncoder)
+    if outfile:
+        outfile.write_text(dump)
+    else:
+        print(dump)
     logging.info("Done!")
 
-async def infer(fuzzer):
+async def infer(fuzzer, **kwargs):
     async with asyncio.TaskGroup() as tg:
         context = create_session_context(tg)
         session = await fuzzer.create_session(context)
-        await tg.create_task(run_inference(session), context=context)
+        await tg.create_task(run_inference(session, **kwargs), context=context)
 
 def main():
     parser = create_argparse()
@@ -57,7 +63,7 @@ def main():
         'tracker.skip_counts': True,
     }
     fuzzer = Fuzzer(args=rest, overrides=overrides)
-    asyncio.run(infer(fuzzer))
+    asyncio.run(infer(fuzzer, outfile=argspace.out))
 
 class NumpyEncoder(json.JSONEncoder):
     """ Special json encoder for numpy types """
