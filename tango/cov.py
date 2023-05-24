@@ -169,6 +169,8 @@ class FeatureMap(ABC):
 
 class CFeatureMap(FeatureMap):
     def __init__(self, *args, bind_lib, **kwargs):
+        if 'skip_counts' in kwargs:
+            warning("Setting 'skip_counts' is not supported with the native lib")
         super().__init__(*args, **kwargs)
         self._feature_arr = self._features.ctype()
         self.clear()
@@ -235,15 +237,19 @@ class CFeatureMap(FeatureMap):
             memcmp(self._feature_arr, other._feature_arr, self.length) == 0
 
 class NPFeatureMap(FeatureMap):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, skip_counts: bool=False, **kwargs):
         super().__init__(*args, **kwargs)
         self._feature_arr = np.zeros(self.length, dtype=np.uint8)
+        self._skip_counts = skip_counts
         self.clear()
 
     def extract(self, *, commit: bool=False) \
             -> (Sequence, int, int):
         coverage_map = np.ctypeslib.as_array(self._shared_map)
-        kls_arr = CLASS_LUT[coverage_map]
+        if self._skip_counts:
+            kls_arr = np.clip(coverage_map, 0, 1)
+        else:
+            kls_arr = CLASS_LUT[coverage_map]
         feature_mask = (self._feature_arr | kls_arr) ^ self._feature_arr
         feature_count = np.sum(HAMMING_LUT[feature_mask])
         mask_hash = hash(feature_mask.data.tobytes())
@@ -359,14 +365,15 @@ class CoverageForkDriver(CoverageDriver, ProcessForkDriver):
 class CoverageTracker(BaseTracker,
         capture_components={ComponentType.driver},
         capture_paths=['tracker.native_lib', 'tracker.verify_raw_coverage',
-            'tracker.track_heat', 'tracker.use_cmplog', 'fuzzer.work_dir']):
+            'tracker.track_heat', 'tracker.use_cmplog', 'fuzzer.work_dir',
+            'tracker.skip_counts']):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
             config['tracker'].get('type') == 'coverage'
 
     def __init__(self, *, driver: CoverageDriver, work_dir: str,
-            native_lib=None,
+            native_lib=None, skip_counts: bool=False,
             verify_raw_coverage: bool=False, track_heat: bool=False,
             use_cmplog: bool=False, **kwargs):
         super().__init__(**kwargs)
@@ -376,12 +383,14 @@ class CoverageTracker(BaseTracker,
         self._use_cmplog = use_cmplog
         self._work_dir = work_dir
 
-        if native_lib:
-            self._bind_lib = CDLL(native_lib)
-        elif (lib := os.getenv("TANGO_LIBDIR")):
-            self._bind_lib = CDLL(os.path.join(lib, 'tango', 'pyfeaturemap.so'))
-        else:
-            self._bind_lib = None
+        self._map_kw = {}
+        self._map_kw['skip_counts'] = skip_counts
+        if native_lib is not False:
+            if native_lib:
+                self._map_kw['bind_lib'] = CDLL(native_lib)
+            elif (lib := os.getenv("TANGO_LIBDIR")):
+                self._map_kw['bind_lib'] = CDLL(
+                    os.path.join(lib, 'tango', 'pyfeaturemap.so'))
 
         # session-unique shm file
         self._shm_uuid = os.getpid()
@@ -411,12 +420,11 @@ class CoverageTracker(BaseTracker,
             self._cmplog = CmpLogTables(self._shm_uuid)
 
         # initialize feature maps
-        self._global = FeatureMap(self._features, bind_lib=self._bind_lib)
-        self._scratch = FeatureMap(self._features, bind_lib=self._bind_lib)
-        self._local = FeatureMap(self._features, bind_lib=self._bind_lib)
+        self._global = FeatureMap(self._features, **self._map_kw)
+        self._scratch = FeatureMap(self._features, **self._map_kw)
+        self._local = FeatureMap(self._features, **self._map_kw)
         if self._track_heat:
-            self._differential = FeatureMap(self._features,
-                                            bind_lib=self._bind_lib)
+            self._differential = FeatureMap(self._features, **self._map_kw)
             self._diff_state = None
             self._feature_heat = np.zeros(self._differential.length, dtype=int)
             LambdaProfiler('total_cov')(
