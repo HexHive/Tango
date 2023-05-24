@@ -23,12 +23,14 @@ async def run_inference(session):
     # strategy is already instantiated, we only get a reference to it
     strat = await session.owner.instantiate('strategy')
     tracker = await session.owner.instantiate('tracker')
-    while (rem := len(tracker.unmapped_states)) >= strat._inference_batch:
-        logging.info(f"Remaining snapshots: {rem}")
-        await strat.step()
-    # flush the remaining nodes
-    strat._inference_batch = rem
-    await strat.step()
+    while True:
+        while (rem := len(tracker.unmapped_states)) >= strat._inference_batch:
+            logging.info(f"Remaining snapshots: {rem}")
+            await strat.step()
+        if rem == 0:
+            break
+        # flush the remaining nodes
+        strat._inference_batch = rem
     groupings = {str(k): v for k, v in tracker.equivalence_states.items()}
     print(json.dumps(groupings, cls=NumpyEncoder))
     logging.info("Done!")
