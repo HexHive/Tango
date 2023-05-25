@@ -72,7 +72,6 @@ class ReactiveInputGenerator(BaseInputGenerator,
             state_changed: bool, orig_input: AbstractInput, exc: Exception=None,
             **kwargs):
         if state_changed:
-            assert source != destination, "No state change detected!"
             if (t := (source, destination)) in self._seen_transitions:
                 # TODO handle case where mutator results in a seen transition
                 return
