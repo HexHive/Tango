@@ -62,6 +62,7 @@ def main():
         'strategy.dt_extrapolate': True,
         'tracker.native_lib': False,
         'tracker.skip_counts': True,
+        'explorer.observe_postmortem': False,
     }
     fuzzer = Fuzzer(args=rest, overrides=overrides)
     asyncio.run(infer(fuzzer, outfile=argspace.out))
