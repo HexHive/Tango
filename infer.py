@@ -44,7 +44,8 @@ async def run_inference(session, *, outfile=None):
 async def infer(fuzzer, **kwargs):
     async with asyncio.TaskGroup() as tg:
         context = create_session_context(tg)
-        session = await fuzzer.create_session(context)
+        session = await tg.create_task(
+            fuzzer.create_session(context), context=context)
         await tg.create_task(run_inference(session, **kwargs), context=context)
 
 def main():
