@@ -15,6 +15,7 @@ from tango.exceptions import StabilityException
 from tango.havoc import havoc_handlers, RAND, MUT_HAVOC_STACK_POW2
 
 from functools import partial, cached_property
+from itertools import combinations
 from pathlib import Path
 from aiohttp import web
 from typing import Optional, Sequence
@@ -845,12 +846,21 @@ class StateInferenceStrategy(UniformStrategy,
             nbrs = np.array((nbrs, nbrs_in))
             nbrs = np.swapaxes(nbrs, 0, 1)
 
-        # create a grid of (i,j) indices
-        gridx = np.indices(adj.shape)
-        subsumes = lambda u, v: np.all(nbrs[u] > nbrs[v])
-        subsumes_ufn = np.frompyfunc(subsumes, 2, 1, identity=False)
+        subsumes = lambda u, v: 1 if np.all(nbrs[u] > nbrs[v]) else \
+            -1 if np.all(nbrs[u] < nbrs[v]) else 0
+        subsumes_ufn = np.frompyfunc(subsumes, 2, 1)
+
+        # create a list of (i,j) indices, without replacement
+        # FIXME can this be done without allocating the index?
+        gridx = list(zip(*combinations(range(adj.shape[0]), 2))) or [(),()]
+        mask = np.zeros_like(adj, dtype=bool)
+        mask[*gridx] = True
+
+        sub = np.zeros_like(adj, dtype=int)
         # apply subsumption logic for all node pairs (i,j)
-        sub = subsumes_ufn(*gridx).astype(bool)
+        sub[mask] = subsumes_ufn(*gridx).astype(int)
+        sub[mask.T] = -sub.T[mask.T]
+        sub = sub.clip(min=0).astype(bool)
 
         # get the unique sets of subsumed nodes
         subbeds, subbers = np.unique(sub, axis=0, return_index=True)
