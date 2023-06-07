@@ -419,10 +419,10 @@ class StateInferenceStrategy(UniformStrategy,
     def _broadcast_capabilities(cls, cap, eqvs, eqv_mask, edge_mask):
         for eqv in eqvs:
             eqv = eqv.astype(int)
-            idx_bc = np.where(eqv_mask)[0]
+            idx_bc, = np.where(eqv_mask)
             grid_bc = np.meshgrid(eqv, idx_bc, indexing='ij')
-            mixed = cls.combine_transitions(cap[*grid_bc], axis=0)
-            cap[*grid_bc] = mixed
+            mixed = cls.combine_transitions(cap, where=tuple(grid_bc), axis=0)
+            cap[*grid_bc] = mixed[idx_bc]
             edge_mask[*grid_bc] = True
 
     async def _extend_cap_matrix(self, cap, nodes, edge_mask, from_idx, to_idx):
@@ -774,11 +774,11 @@ class StateInferenceStrategy(UniformStrategy,
     def _update_cap_matrix(cap, src_idx, dst_idx, inputs):
         row = cap[src_idx,:]
         if not (t := row[dst_idx]):
-            row[dst_idx] = list(inputs)
+            row[dst_idx] = inputs
         else:
             warning("Appending to existing transition; this should not happen"
                 " if the original graph is a tree.")
-            row[dst_idx] = list(t) + list(inputs)
+            row[dst_idx] = t | inputs
 
     @staticmethod
     def _construct_equivalence_sets(adj, dual_axis=False):
@@ -874,10 +874,10 @@ class StateInferenceStrategy(UniformStrategy,
                 sub_map[u] = v
             if idx:
                 idx.append(v)
-                out_edges = cls.combine_transitions(adj[idx,:], axis=0)
+                out_edges = cls.combine_transitions(adj, rows=idx, axis=0)
                 adj[v,:] = out_edges
                 if dual_axis:
-                    in_edges = cls.combine_transitions(adj[:,idx], axis=1) \
+                    in_edges = cls.combine_transitions(adj, cols=idx, axis=1) \
                         .reshape(adj.shape[0])
                     adj[:,v] = in_edges
 
@@ -898,36 +898,31 @@ class StateInferenceStrategy(UniformStrategy,
         stilde.discard(frozenset())
         return adj, stilde, mask, sub_map
 
-    @staticmethod
-    def _combine_transitions(r, t):
-        if not (t and r):
-            return t or r
-        combined = list(r)
-        for elem in t:
-            if not elem in combined:
-                combined.append(elem)
-        return combined
-
     @classmethod
-    @property
-    def combine_transitions(cls):
-        return np.frompyfunc(cls._combine_transitions, 2, 1,
-            identity=[]).reduce
+    def combine_transitions(cls, adj, /, *, where=None, **kwargs):
+        axis_mask = np.zeros_like(adj, dtype=bool)
+        if where is None:
+            rows = kwargs.pop('rows', np.arange(adj.shape[0]))
+            cols = kwargs.pop('cols', np.arange(adj.shape[1]))
+            where = tuple(np.meshgrid(rows, cols, indexing='ij', copy=False))
+        else:
+            assert not {'rows', 'cols'} & kwargs.keys()
+        axis_mask[where] = True
+        combine = lambda t, r: t | r if t and r else t or r
+        return np.frompyfunc(combine, 2, 1, identity=None)\
+                 .reduce(adj, where=axis_mask, initial=frozenset(), **kwargs)
 
     @classmethod
     def _collapse_adj_matrix(cls, adj, stilde, mask, sub_map):
         eqv_mask = np.concatenate((mask, np.zeros(len(stilde), dtype=bool)))
         eqv_map = sub_map
         s_idx = 0
-        for eqv in stilde:
+        adj = np.pad(adj, (0, len(stilde)), constant_values=None)
+        for r, eqv in enumerate(stilde, start=mask.shape[0]):
             idx = np.array(list(eqv))
-            out_edges = cls.combine_transitions(adj[idx,:], axis=0)
-            in_edges = cls.combine_transitions(adj[:,idx], axis=1).reshape(adj.shape[0], 1)
-            self_edges = cls.combine_transitions(adj[idx,idx], axis=0, keepdims=True)
-            self_edges = cls.combine_transitions(self_edges, keepdims=True)
-            # s_idx = adj.shape[0]
-            adj = np.vstack((adj, out_edges))
-            adj = np.hstack((adj, np.vstack((in_edges, self_edges))))
+            adj[r,:] = cls.combine_transitions(adj, rows=idx, axis=0)
+            adj[:,r] = cls.combine_transitions(adj, cols=idx, axis=1)
+            adj[r,r] = cls.combine_transitions(adj, rows=idx, cols=idx, axis=None)
 
             for l in idx:
                 eqv_map[l] = s_idx

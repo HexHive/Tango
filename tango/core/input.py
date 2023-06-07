@@ -6,7 +6,7 @@ from tango.core.dataio import FormatDescriptor, AbstractInstruction
 
 from abc import ABC, ABCMeta, abstractmethod
 from typing import Union, Sequence, Iterable, Iterator, AsyncIterator, BinaryIO
-from functools import partial, partialmethod
+from functools import partial, partialmethod, cached_property, reduce
 from itertools import islice, chain, tee
 import inspect
 import types
@@ -70,6 +70,10 @@ class AbstractInput(ABC):
     def __add__(self, other: AbstractInput) -> AbstractInput:
         pass
 
+    @abstractmethod
+    def __hash__(self):
+        pass
+
 class BaseInput(AbstractInput):
     async def __aiter__(self) -> AsyncIterator[AbstractInstruction]:
         for e in iter(self):
@@ -97,6 +101,13 @@ class BaseInput(AbstractInput):
 
     def __add__(self, other: AbstractInput) -> BaseInput:
         return JoiningDecorator(self, suffix=(other,))
+
+    @cached_property
+    def _hash(self):
+        return reduce(lambda v, e: hash(e) ^ (v >> 1), self, 0)
+
+    def __hash__(self):
+        return self._hash
 
     def flatten(self) -> BaseInput:
         return MemoryCachingDecorator(self)
@@ -191,6 +202,7 @@ class MemoryCachingDecorator(AbstractDecorator, BaseInput, desc=identity):
         obj._cached_repr = repr(input)
         obj._cached_iter = tuple(input)
         obj._cached_len = len(obj._cached_iter)
+        obj._cached_hash = hash(input)
         obj.id = input.id
 
         if (hook := getattr(input, '__cache_hook__', None)):
@@ -217,6 +229,9 @@ class MemoryCachingDecorator(AbstractDecorator, BaseInput, desc=identity):
 
     def __getattr__(self, name):
         raise AttributeError
+
+    def __hash__(self):
+        return self._cached_hash
 
 class BaseDecorator(AbstractDecorator, BaseInput):
     def __new__(cls, input: AbstractInput, /, **kwargs):

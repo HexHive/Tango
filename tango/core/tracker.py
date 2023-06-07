@@ -16,6 +16,7 @@ from functools import partial
 from statistics import mean
 from datetime import datetime
 import networkx as nx
+import numpy as np
 import collections
 
 __all__ = [
@@ -240,10 +241,11 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
         return G
 
     def adjacency_matrix(self, **kwargs) \
-            -> NDArray[Shape["Nodes, Nodes"], Iterable[Optional[BaseInput]]]:
+            -> NDArray[Shape["Nodes, Nodes"], Optional[Iterable[BaseInput]]]:
         kwargs.setdefault('weight', 'transition')
         kwargs.setdefault('nonedge', None)
-        return nx.to_numpy_array(self, **kwargs)
+        to_input_sets = np.vectorize(lambda x: x and frozenset(x))
+        return to_input_sets(nx.to_numpy_array(self, **kwargs))
 
     @EventProfiler('update_state')
     def update_state(self, state: AbstractState) -> tuple[AbstractState, bool]:

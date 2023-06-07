@@ -112,6 +112,10 @@ class AbstractInstruction(ABC):
     def __eq__(self, other: AbstractInstruction):
         pass
 
+    @abstractmethod
+    def __hash__(self):
+        pass
+
 class TransmitInstruction(AbstractInstruction):
     def __init__(self, data: ByteString):
         self._data = data
@@ -127,6 +131,9 @@ class TransmitInstruction(AbstractInstruction):
 
     def __repr__(self):
         return f'<tx data="{self._data}">'
+
+    def __hash__(self):
+        return hash(bytes(self._data))
 
     def __deepcopy__(self, memo):
         cls = self.__class__
@@ -152,6 +159,9 @@ class ReceiveInstruction(AbstractInstruction):
         # FIXME make this depend on the expected data?
         return isinstance(other, ReceiveInstruction)
 
+    def __hash__(self):
+        return 0
+
     def __deepcopy__(self, memo):
         cls = self.__class__
         result = cls.__new__(cls)
@@ -175,6 +185,9 @@ class DelayInstruction(AbstractInstruction):
 
     def __repr__(self):
         return f'sleep({self._time})'
+
+    def __hash__(self):
+        return hash(self._time)
 
     def __deepcopy__(self, memo):
         cls = self.__class__
