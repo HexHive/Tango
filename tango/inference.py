@@ -924,9 +924,9 @@ class StateInferenceStrategy(UniformStrategy,
             adj[:,r] = cls.combine_transitions(adj, cols=idx, axis=1)
             adj[r,r] = cls.combine_transitions(adj, rows=idx, cols=idx, axis=None)
 
+            eqv_mask[idx] = True
             for l in idx:
                 eqv_map[l] = s_idx
-                eqv_mask[l] = True
             s_idx += 1
 
         return adj, eqv_map, eqv_mask
