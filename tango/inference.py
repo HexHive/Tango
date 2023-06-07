@@ -444,6 +444,8 @@ class StateInferenceStrategy(UniformStrategy,
 
         init_done = np.count_nonzero(edge_mask)
         init_pending = edge_mask.size - init_done
+        if not init_pending:
+            return
 
         def report_progress():
             current_done = np.count_nonzero(edge_mask) - init_done
