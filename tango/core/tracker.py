@@ -242,10 +242,12 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
 
     def adjacency_matrix(self, **kwargs) \
             -> NDArray[Shape["Nodes, Nodes"], Optional[Iterable[BaseInput]]]:
-        kwargs.setdefault('weight', 'transition')
-        kwargs.setdefault('nonedge', None)
-        to_input_sets = np.vectorize(lambda x: x and frozenset(x))
-        return to_input_sets(nx.to_numpy_array(self, **kwargs))
+        if kwargs.setdefault('weight', 'transition') == 'transition':
+            kwargs.setdefault('nonedge', None)
+            to_input_sets = np.vectorize(lambda x: x and frozenset(x))
+            return to_input_sets(nx.to_numpy_array(self, **kwargs))
+        else:
+            return nx.to_numpy_array(self, **kwargs)
 
     @EventProfiler('update_state')
     def update_state(self, state: AbstractState) -> tuple[AbstractState, bool]:
