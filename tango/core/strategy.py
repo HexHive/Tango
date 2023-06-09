@@ -60,17 +60,23 @@ class AbstractStrategy(AsyncComponent, IUpdateCallback, ABC,
 
 class BaseStrategy(AbstractStrategy,
         capture_components={ComponentType.explorer},
-        capture_paths=['strategy.minimize_transitions', 'strategy.validate_transitions']):
+        capture_paths=[
+            'strategy.minimize_transitions', 'strategy.validate_transitions',
+            'strategy.invalidate_on_exception']):
     def __init__(self, *,
             explorer: BaseExplorer,
             minimize_transitions: bool=True,
             validate_transitions: bool=True,
+            invalidate_on_exception: bool=False,
             **kwargs):
         super().__init__(**kwargs)
         self._explorer = explorer
         self._minimize_transitions = minimize_transitions
         self._validate_transitions = validate_transitions
+        self._invalidate = invalidate_on_exception
         self._step_interrupted = True
+        if invalidate_on_exception:
+            self._invalid_states = set()
 
     async def step(self, input: Optional[AbstractInput]=None):
         if self._step_interrupted:
@@ -108,6 +114,24 @@ class BaseStrategy(AbstractStrategy,
                     ex)
                 import ipdb; ipdb.set_trace()
                 pass
+
+    def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
+            **kwargs):
+        if not self._invalidate:
+            return
+        elif exc:
+            self._invalid_states.add(state)
+        else:
+            self._invalid_states.discard(state)
+
+    @property
+    def valid_targets(self) -> Iterable[LoadableTarget]:
+        if self._invalidate:
+            filtered = [x for x in self._explorer.tracker.state_graph.nodes
+                if x not in self._invalid_states]
+        else:
+            filtered = list(self._explorer.tracker.state_graph.nodes)
+        return filtered
 
 class SeedableStrategy(BaseStrategy,
         capture_paths=['strategy.minimize_seeds', 'strategy.validate_seeds']):
@@ -173,15 +197,12 @@ class SeedableStrategy(BaseStrategy,
             **kwargs)
 
 class RolloverCounterStrategy(AbstractStrategy,
-        capture_paths=['strategy.rollover', 'strategy.invalidate']):
-    def __init__(self, *, rollover: int=100, invalidate: bool=False, **kwargs):
+        capture_paths=['strategy.rollover']):
+    def __init__(self, *, rollover: int=100, **kwargs):
         super().__init__(**kwargs)
         self._rollover = rollover
-        self._invalidate = invalidate
         self._counter = 0
         self._target = None
-        if invalidate:
-            self._invalid_states = set()
         LambdaProfiler('strat_counter')(lambda: self._counter)
 
     async def step(self, input: Optional[AbstractInput]=None):
@@ -204,12 +225,6 @@ class RolloverCounterStrategy(AbstractStrategy,
         if exc and self._target == state:
             self._counter = 0
             self._target = self.recalculate_target()
-        if not self._invalidate:
-            return
-        elif exc:
-            self._invalid_states.add(state)
-        else:
-            self._invalid_states.discard(state)
 
     @abstractmethod
     def recalculate_target(self) -> LoadableTarget:
@@ -222,15 +237,6 @@ class RolloverCounterStrategy(AbstractStrategy,
     @property
     def target_state(self) -> AbstractState:
         return self._target
-
-    @property
-    def valid_targets(self) -> Iterable[LoadableTarget]:
-        if self._invalidate:
-            filtered = [x for x in self._explorer.tracker.state_graph.nodes
-                if x not in self._invalid_states]
-        else:
-            filtered = list(self._explorer.tracker.state_graph.nodes)
-        return filtered
 
 # FIXME these strategies are not strictly required to inherit SeedableStrategy;
 # a better approach may be to dynamically construct a strategy class/type that
