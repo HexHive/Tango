@@ -188,6 +188,7 @@ class PtraceProcess(object):
         self.syscall_state = SyscallState(self)
 
         self._ctx = None
+        self._in_ctx = False
 
     def isTraced(self):
         if not HAS_PROC:
@@ -499,14 +500,15 @@ class PtraceProcess(object):
     @contextmanager
     def regsctx(self):
         # WARN not compatible with asyncio or threads
+        self._in_ctx = True
         if self._ctx:
             yield
         else:
-            self._ctx = self.getregs()
             try:
                 yield
             finally:
                 self._flush_ctx()
+                self._in_ctx = False
 
     def getregs(self):
         if HAS_PTRACE_GETREGS or HAS_PTRACE_GETREGSET:
@@ -537,7 +539,9 @@ class PtraceProcess(object):
         return value
 
     def getreg(self, name):
-        if self._ctx:
+        if self._in_ctx:
+            if not self._ctx:
+                self._ctx = self.getregs()
             regs = self._ctx
         else:
             regs = self.getregs()
@@ -559,7 +563,9 @@ class PtraceProcess(object):
         setattr(regs, name, value)
 
     def setreg(self, name, value):
-        if self._ctx:
+        if self._in_ctx:
+            if not self._ctx:
+                self._ctx = self.getregs()
             self.updateregs(self._ctx, name, value)
         else:
             regs = self.getregs()
