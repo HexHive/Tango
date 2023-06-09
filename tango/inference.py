@@ -872,9 +872,8 @@ class StateInferenceStrategy(SeedableStrategy,
         svee = set()
         is_nbr = adj != None
 
-        # create a list of (i,j) indices, without replacement
         # FIXME can this be done without allocating the index?
-        gridx = list(zip(*combinations(range(adj.shape[0]), 2))) or [(),()]
+        gridx = np.triu_indices_from(adj, k=1)
         mask = np.zeros_like(adj, dtype=bool)
         mask[*gridx] = True
 
