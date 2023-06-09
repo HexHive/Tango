@@ -614,7 +614,7 @@ class CoverageExplorer(BaseExplorer,
     def __init__(self, *, tracker: CoverageTracker, driver: CoverageDriver,
             exclude_uncolored: bool=False,
             cmplog_samples: int=100, cmplog_goal: int=10,
-            observe_postmortem: bool=True,
+            observe_postmortem: bool=False,
             observe_timeout: float=1.0, **kwargs):
         super().__init__(tracker=tracker, driver=driver, **kwargs)
         self._exclude_uncolored = exclude_uncolored
