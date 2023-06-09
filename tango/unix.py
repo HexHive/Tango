@@ -369,7 +369,8 @@ class PtraceChannel(AbstractChannel):
                     opts = monitor_opts
 
                 try:
-                    rv = await self.process_event(event, opts, **kwargs)
+                    with event.process.regsctx():
+                        rv = await self.process_event(event, opts, **kwargs)
                     if rv and not observe_opts and event.is_syscall_stop():
                         last_process = event.process
                 except Exception as ex:

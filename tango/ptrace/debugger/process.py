@@ -506,9 +506,7 @@ class PtraceProcess(object):
             try:
                 yield
             finally:
-                if self._ctx:
-                    self.setregs(self._ctx)
-                    self._ctx = None
+                self._flush_ctx()
 
     def getregs(self):
         if HAS_PTRACE_GETREGS or HAS_PTRACE_GETREGSET:
