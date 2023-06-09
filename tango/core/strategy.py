@@ -204,6 +204,7 @@ class RolloverCounterStrategy(AbstractStrategy,
         self._counter = 0
         self._target = None
         LambdaProfiler('strat_counter')(lambda: self._counter)
+        LambdaProfiler('strat_target')(lambda: self._target)
 
     async def step(self, input: Optional[AbstractInput]=None):
         should_reset = False

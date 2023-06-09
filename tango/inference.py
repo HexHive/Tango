@@ -2,23 +2,26 @@ from __future__ import annotations
 
 from . import debug, info, warning, critical
 
-from tango.core import (UniformStrategy, AbstractState, AbstractInput,
-    BaseStateGraph, AbstractTracker, ValueProfiler, TimeElapsedProfiler,
-    NumericalProfiler, LambdaProfiler, AbstractLoader, CountProfiler,
-    EmptyInput, is_profiling_active, get_profiler, get_current_session,
-    AbstractProfilerMeta as create_profiler)
-from tango.cov import CoverageTracker, CoverageWebRenderer, CoverageWebDataLoader
+from tango.core import (SeedableStrategy,
+    AbstractState, AbstractInput, BaseStateGraph, AbstractTracker,
+    ValueProfiler, TimeElapsedProfiler, NumericalProfiler, LambdaProfiler,
+    AbstractLoader, CountProfiler, EmptyInput, is_profiling_active,
+    get_profiler, get_current_session, AbstractProfilerMeta as create_profiler)
+from tango.cov import (
+    CoverageTracker, CoverageWebRenderer, CoverageWebDataLoader,
+    FeatureSnapshot)
 from tango.reactive import ReactiveInputGenerator, HavocMutator
 from tango.webui import create_svg
 from tango.common import get_session_task_group
 from tango.exceptions import StabilityException
 from tango.havoc import havoc_handlers, RAND, MUT_HAVOC_STACK_POW2
 
-from functools import partial, cached_property, wraps
+from functools import partial, cached_property, cache, wraps
 from itertools import combinations
+from collections import defaultdict
 from pathlib import Path
 from aiohttp import web
-from typing import Optional, Sequence
+from types import SimpleNamespace as record
 from typing import Optional, Sequence, TypeVar, Iterable, Any
 from collections.abc import (Mapping as ABCMapping, Reversible as ABCReversible,
     Iterable as ABCIterable)
@@ -88,6 +91,16 @@ class StateInferenceTracker(CoverageTracker,
             lambda: len(self.equivalence.mapped_snapshots))
         LambdaProfiler('states')(
             lambda: len(self.equivalence.state_labels))
+
+    @cache
+    def _get_snapshot_features(self, snapshot: FeatureSnapshot) -> Sequence[int]:
+        return np.asarray(snapshot._feature_mask).nonzero()
+
+    def calculate_edge_temperature(self, sidx):
+        assert self._track_heat
+        return np.sum(
+            np.sum(self._feature_heat[self._get_snapshot_features(memb)])
+            for memb in self.equivalence.members(sidx))
 
     def reconstruct_graph(self, adj):
         dt = [('transition', object)]
@@ -175,12 +188,14 @@ class StateInferenceTracker(CoverageTracker,
     # edge that reaches a snapshot (it is the edge we use to cross-test the
     # capabilitity of reaching this snapshot)
 
-class StateInferenceStrategy(UniformStrategy,
+class StateInferenceStrategy(SeedableStrategy,
         capture_components={'tracker', 'loader'},
         capture_paths=['strategy.inference_batch', 'strategy.disperse_heat',
             'strategy.extend_on_groups', 'strategy.recursive_collapse',
             'strategy.dt_predict', 'strategy.dt_extrapolate',
-            'strategy.validate', 'strategy.broadcast_state_schedule',
+            'strategy.validate',
+            'strategy.learning_rate', 'strategy.learning_rounds',
+            'strategy.min_energy', 'strategy.max_energy',
             'strategy.dump_stats', 'fuzzer.work_dir']):
     def __init__(self, *, tracker: StateInferenceTracker,
             loader: AbstractLoader,
@@ -192,7 +207,10 @@ class StateInferenceStrategy(UniformStrategy,
             dt_predict: bool=False,
             dt_extrapolate: bool=False,
             validate: bool=False,
-            broadcast_state_schedule: bool=False,
+            learning_rate: float=0.1,
+            learning_rounds: int=10,
+            min_energy: int=100,
+            max_energy: int=1000,
             dump_stats: bool=False, **kwargs):
         super().__init__(**kwargs)
         self._tracker = tracker
@@ -205,7 +223,8 @@ class StateInferenceStrategy(UniformStrategy,
         self._dt_predict = dt_predict
         self._dt_extrapolate = dt_extrapolate
         self._validate = validate
-        self._broadcast_state_schedule = broadcast_state_schedule
+        self._learning_rate = learning_rate
+        self._learning_rounds = learning_rounds
         self._auto_dump_stats = dump_stats
         if dt_predict:
             self._dt_clf = tree.DecisionTreeClassifier()
@@ -213,6 +232,14 @@ class StateInferenceStrategy(UniformStrategy,
         self.filter_sblgs = np.vectorize(lambda s: s in self.valid_targets)
         self._crosstest_timer = TimeElapsedProfiler('time_crosstest')
         self._crosstest_timer()
+
+        self._target = None
+        self._min_energy = min_energy
+        self._max_energy = max_energy
+        self._energies = self._tracker.equivalence.wrap(defaultdict(lambda:
+            record(limit=self._min_energy, energy=self._min_energy)))
+
+        LambdaProfiler('strat_target')(lambda: self._target)
 
     async def initialize(self):
         await super().initialize()
@@ -255,11 +282,21 @@ class StateInferenceStrategy(UniformStrategy,
                     self._tracker.mode = InferenceMode.CrossPollination
                     self._step_interrupted = True
                 else:
+                    target = self._target
+                    rec = self._energies[target]
+                    LambdaProfiler('strat_counter')(lambda: rec.energy)
                     try:
+                        should_reset = False
+                        if rec.energy <= 0:
+                            old_target = target
+                            self._target = self.recalculate_target()
+                            should_reset = (old_target != self._target)
+                        if should_reset:
+                            await self.reload_target()
+                            self._step_interrupted = False
                         await super().step(input)
                     finally:
-                        if self._broadcast_state_schedule:
-                            self._broadcast_state_energy(self._target)
+                        rec.energy -= 1
 
             case InferenceMode.CrossPollination:
                 self._crosstest_timer()
@@ -281,6 +318,7 @@ class StateInferenceStrategy(UniformStrategy,
                 self._tracker.set_nodes(nodes, eqv_map)
                 self._tracker.reconstruct_graph(collapsed)
                 self._tracker.mode = InferenceMode.Discovery
+                self.assign_state_energies()
                 self._crosstest_timer()
                 if self._auto_dump_stats:
                     self._dump_profilers(get_current_session().id)
@@ -940,23 +978,8 @@ class StateInferenceStrategy(UniformStrategy,
     def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
             **kwargs):
         super().update_state(state, *args, exc=exc, **kwargs)
-        if not self._broadcast_state_schedule or not state:
-            return
-        if not exc:
-            self._broadcast_state_energy(state)
-
-    def _broadcast_state_energy(self, state: AbstractState):
-        try:
-            j = self._tracker.nodes[state]
-            sidx = self._tracker.equivalence_map[state]
-            eqv = self._tracker.equivalence_states[sidx]
-            for i in eqv:
-                if i == j:
-                    continue
-                sblg = self._tracker.node_arr[i]
-                self._energy_map[sblg] += 1
-        except KeyError:
-            pass
+        if state and not exc:
+            self._energies[state].energy -= 1
 
     async def reload_target(self) -> AbstractState:
         try:
@@ -966,6 +989,76 @@ class StateInferenceStrategy(UniformStrategy,
         except KeyError:
             pass
         return await super().reload_target()
+
+    def recalculate_target(self) -> AbstractState:
+        filtered = self.valid_targets
+        if not filtered:
+            return None
+        else:
+            # FIXME a lot of work is repeated in indexing self._energies for
+            # calculating siblings (see InferenceMap.wrap), but this is the
+            # shortest solution for now...
+            snapshot, rec = max(((s, self._energies[s]) for s in filtered),
+                key=lambda t: t[1].energy)
+            siblings = self._tracker.equivalence.siblings(snapshot)
+            if rec.energy <= 0:
+                # we've cycled through all states; reset energies
+                self.reset_state_energies()
+            return self._entropy.choice(tuple(siblings))
+
+    def reset_state_energies(self):
+        for rec in self._energies.values():
+            rec.energy = min(rec.limit * 2, self._max_energy)
+
+    def assign_state_energies(self):
+        if self._disperse_heat:
+            adj = self._tracker.recovered_graph.adjacency_matrix(
+                weight=None, nonedge=0)
+            heat_fn = np.vectorize(self._tracker.calculate_edge_temperature,
+                otypes=(float,))
+            edge_temperatures = heat_fn(np.arange(adj.shape[1]))
+            state_temperatures = np.mean(adj * edge_temperatures, axis=1)
+            for i in range(self._learning_rounds):
+                # WARN this assumes that out_edges are selected uniformly
+                # when searching for a candidate to mutate
+                edge_temperatures = \
+                    (1 - self._learning_rate) * edge_temperatures + \
+                    self._learning_rate * state_temperatures
+                state_temperatures = \
+                    (1 - self._learning_rate) * state_temperatures + \
+                    self._learning_rate * np.mean(adj * edge_temperatures,
+                                                  axis=1)
+            state_temperatures = state_temperatures.clip(min=np.nanmin(
+                state_temperatures, initial=np.inf) or 0)
+            state_energies = 1 / state_temperatures
+            state_energies = (state_energies * self._max_energy / 2) / state_energies.max()
+            state_energies = state_energies.clip(min=self._min_energy).astype(int)
+            for (s,), e in np.ndenumerate(state_energies):
+                # HACK due to how self._energies is wrapped and indexed, we need
+                # to get one member snapshot, which will later get mapped to its
+                # sibling set as a key into the energies dict;
+                # Alternatively, we would iterate over all snapshots and assign
+                # energies based on their set membership, but that may be even
+                # more expensive, and will involve duplicate assignments.
+                one_member = next(iter(self._tracker.equivalence.members(s)))
+                rec = self._energies[one_member]
+                rec.limit = rec.energy = e
+        else:
+            # self._energies is a defaultdict which initializes the energy
+            # record with self._min_energy for any entry, so we do not need to
+            # do it manually
+            pass
+
+    @property
+    def target_state(self) -> AbstractState:
+        return self._target
+
+    @property
+    def target(self) -> AbstractState:
+        return self._target
+
+    def update_transition(self, *args, **kwargs):
+        pass
 
 class InferenceWebRenderer(CoverageWebRenderer):
     @classmethod
