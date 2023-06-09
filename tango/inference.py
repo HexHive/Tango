@@ -871,16 +871,6 @@ class StateInferenceStrategy(SeedableStrategy,
     def _eliminate_subsumed_nodes(cls, adj, stilde, dual_axis=False):
         svee = set()
         is_nbr = adj != None
-        nbrs_fn = lambda x: frozenset(np.where(x)[0])
-        nbrs = np.apply_along_axis(nbrs_fn, 1, is_nbr)
-        if dual_axis:
-            nbrs_in = np.apply_along_axis(nbrs_fn, 0, is_nbr)
-            nbrs = np.array((nbrs, nbrs_in))
-            nbrs = np.swapaxes(nbrs, 0, 1)
-
-        subsumes = lambda u, v: 1 if np.all(nbrs[u] > nbrs[v]) else \
-            -1 if np.all(nbrs[u] < nbrs[v]) else 0
-        subsumes_ufn = np.frompyfunc(subsumes, 2, 1)
 
         # create a list of (i,j) indices, without replacement
         # FIXME can this be done without allocating the index?
@@ -888,15 +878,33 @@ class StateInferenceStrategy(SeedableStrategy,
         mask = np.zeros_like(adj, dtype=bool)
         mask[*gridx] = True
 
-        sub = np.zeros_like(adj, dtype=int)
+        iax = slice_along_axis = lambda arr, index, axis: \
+            arr[tuple(
+                slice(None) if i != axis else index for i in range(arr.ndim))]
+        subsumes = lambda u, v, ax: 0 if not \
+            (x := (
+                a := iax(is_nbr, u, ax)) ^ (b := iax(is_nbr, v, ax))).any() \
+            else  1 if ((x & a) == x).all() \
+            else -1 if ((x & b) == x).all() \
+            else 0
+        subsumes_ufn = np.frompyfunc(subsumes, 3, 1)
+
         # apply subsumption logic for all node pairs (i,j)
-        sub[mask] = subsumes_ufn(*gridx).astype(int)
+        all_sub = row_sub = subsumes_ufn(*gridx, 0, dtype=int)
+        if dual_axis:
+            col_sub = subsumes_ufn(*gridx, 1, dtype=int)
+            overlap = row_sub == col_sub
+            all_sub[~overlap] = 0
+
+        sub = np.zeros_like(adj, dtype=int)
+        sub[mask] = all_sub
         sub[mask.T] = -sub.T[mask.T]
         sub = sub.clip(min=0).astype(bool)
 
         # get the unique sets of subsumed nodes
         subbeds, subbers = np.unique(sub, axis=0, return_index=True)
-        subbeds = np.apply_along_axis(nbrs_fn, 1, subbeds)
+        subbed_fn = lambda x: frozenset(np.where(x)[0])
+        subbeds = np.apply_along_axis(subbed_fn, 1, subbeds)
 
         sub_map = {}
         mask = np.zeros(len(adj), dtype=bool)
