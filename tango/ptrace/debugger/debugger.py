@@ -45,6 +45,7 @@ class PtraceSubscription:
     def __post_init__(self, at):
         self._ready = asyncio.Event()
         self.at = at
+        self.catch_all = not self.wanted_pid
 
     def is_subscribed(self, pid):
         return self.catch_all or self.wanted_pid == pid
@@ -83,18 +84,17 @@ class PtraceSubscription:
     def __next__(self) -> tuple[int, WaitPidEvent]:
         history = self.debugger.event_history
         slicer = range(self.at, len(history))
-        indexed = zip(slicer, map(lambda i: history[i], slicer))
-        by_pid = filter(lambda e: self.is_subscribed(e[1][1]), indexed)
+        indexed = enumerate((history[i] for i in slicer), start=self.at)
+        if not self.catch_all:
+            by_pid = filter(lambda e: self.is_subscribed(e[1][1]), indexed)
+        else:
+            by_pid = indexed
         idx, item = next(by_pid)
         self.at = idx + 1
         return idx, item
 
     def __iter__(self) -> Iterator[tuple[int, WaitPidEvent]]:
         return self
-
-    @property
-    def catch_all(self) -> bool:
-        return not self.wanted_pid
 
     @property
     def ready(self) -> bool:
