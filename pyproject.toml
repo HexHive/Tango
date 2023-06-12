@@ -16,7 +16,7 @@ dependencies = [
     'pydot==1.4.2',
     'asyncstdlib==3.10.6',
     'ipdb==0.13.13',
-    'aioconsole==0.5.1',
+    'aioconsole==0.6.1',
     'aiohttp==3.8.4',
     'asynctempfile==0.5.0',
 ]
