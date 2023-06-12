@@ -1018,6 +1018,7 @@ class StateInferenceStrategy(SeedableStrategy,
             rec.energy = min(rec.limit * 2, self._max_energy)
 
     def assign_state_energies(self):
+        self._energies.clear()
         if self._disperse_heat:
             adj = self._tracker.recovered_graph.adjacency_matrix(
                 weight=None, nonedge=0)
