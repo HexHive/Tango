@@ -1119,9 +1119,10 @@ class InferenceWebDataLoader(CoverageWebDataLoader):
             return
 
         node_sizes = {
-            sidx: len(eqvs)
-                for sidx, eqvs in
-                    self._session._explorer.tracker.equivalence.states.items()
+            sidx: max((rec := \
+                self._session._strategy._energies[next(iter(eqvs))]).energy, 1)
+            for sidx, eqvs in
+                self._session._explorer.tracker.equivalence.states.items()
         }
         max_node_size = max(node_sizes.values())
         node_sizes = {
