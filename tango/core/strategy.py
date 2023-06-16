@@ -185,7 +185,9 @@ class SeedableStrategy(BaseStrategy,
             exc: Optional[Exception]=None, **kwargs):
 
         if new_transition:
-            self._generator.save_input(input, breadcrumbs, 'queue', repr(destination))
+            reproducer = self._explorer.get_reproducer(
+                input, breadcrumbs=breadcrumbs)
+            self._generator.save_input(reproducer, 'queue', repr(destination))
 
         self._generator.update_transition(source, destination, input,
             breadcrumbs=breadcrumbs, orig_input=orig_input,

@@ -12,7 +12,6 @@ from functools import reduce
 import os
 import unicodedata
 import re
-import operator
 
 __all__ = ['AbstractInputGenerator', 'BaseInputGenerator']
 
@@ -83,17 +82,12 @@ class BaseInputGenerator(AbstractInputGenerator,
         candidates = (*out_edges, *in_edges, *self.seeds, EmptyInput())
         return self._entropy.choice(candidates)
 
-    def save_input(self, input: AbstractInput,
-            prefix_path: Sequence[tuple[AbstractState, AbstractState, AbstractInput]],
-            category: str, label: str, filepath: str=None):
+    def save_input(self,
+            input: AbstractInput, category: str, label: str, filepath: str=None):
         if self._input_kls is None:
             return
 
-        if prefix_path:
-            prefix = reduce(operator.add, (x[2] for x in prefix_path))
-        else:
-            prefix = EmptyInput()
-        full_input = self.startup_input + prefix + input
+        full_input = self.startup_input + input
         long_name = f'[{label}] {repr(input)}'
 
         if filepath is None:

@@ -87,10 +87,10 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
                 except ProcessCrashedException as pc:
                     error(f"Process crashed: {pc = }")
                     CountProfiler('crash')(1)
-                    # TODO augment loader to dump stdout and stderr too
-                    self._generator.save_input(ex.payload,
-                        self._explorer._current_path, 'crash',
+                    reproducer = self._explorer.get_reproducer(ex.payload)
+                    self._generator.save_input(ex.payload, 'crash',
                         repr(self._explorer._last_state))
+                    # TODO augment loader to dump stdout and stderr too
                 except ProcessTerminatedException as pt:
                     debug("Process terminated unexpectedly? (pt=%s)", pt)
                 except ChannelTimeoutException:
@@ -160,7 +160,9 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
             else:
                 label = None
             if label:
-                self._generator.save_input(input, breadcrumbs, label, repr(state))
+                reproducer = self._explorer.get_reproducer(
+                    input, breadcrumbs=breadcrumbs)
+                self._generator.save_input(reproducer, label, repr(state))
 
             if isinstance(exc, ProcessCrashedException):
                 # FIXME kinda ugly
@@ -178,7 +180,9 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
             exc: Optional[Exception]=None, **kwargs):
 
         if new_transition:
-            self._generator.save_input(input, breadcrumbs, 'queue', repr(destination))
+            reproducer = self._explorer.get_reproducer(
+                input, breadcrumbs=breadcrumbs)
+            self._generator.save_input(reproducer, 'queue', repr(destination))
 
         self._generator.update_transition(source, destination, input,
             breadcrumbs=breadcrumbs, orig_input=orig_input,

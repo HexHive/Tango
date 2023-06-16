@@ -15,6 +15,10 @@ class LoadedException(RuntimeError):
     def payload(self):
         return self._payload_ctor()
 
+    @payload.setter
+    def payload(self, value):
+        self._payload_ctor = lambda: value
+
     @property
     def exception(self):
         return self._ex

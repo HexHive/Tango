@@ -2,7 +2,7 @@ from __future__ import annotations
 from . import debug, info, warning, critical
 
 from tango.exceptions import (StabilityException, StateNotReproducibleException,
-    StatePrecisionException)
+    StatePrecisionException, LoadedException)
 from tango.core.tracker import AbstractState, AbstractTracker
 from tango.core.input import (AbstractInput, BaseInput, PreparedInput,
     BaseDecorator, EmptyInput)
@@ -18,6 +18,8 @@ from tango.common import AsyncComponent, ComponentType, ComponentOwner
 from abc import ABC, abstractmethod
 from typing import Callable
 from itertools import chain
+from functools import reduce
+import operator
 
 __all__ = [
     'AbstractExplorer', 'BaseExplorer', 'BaseExplorerContext'
@@ -178,6 +180,15 @@ class BaseExplorer(AbstractExplorer,
     def get_context_input(self, input: BaseInput, **kwargs) -> BaseExplorerContext:
         return BaseExplorerContext(input, explorer=self, **kwargs)
 
+    def get_reproducer(self, input: BaseInput, *, \
+            breadcrumbs: Optional[LoadableTarget]=None) -> BaseInput:
+        breadcrumbs = breadcrumbs or self._current_path
+        if breadcrumbs:
+            prefix = reduce(operator.add, (x[2] for x in breadcrumbs))
+        else:
+            prefix = EmptyInput()
+        return prefix + input
+
     async def follow(self, input: BaseInput, **kwargs):
         """
         Executes the input and updates the state queues according to the
@@ -185,7 +196,13 @@ class BaseExplorer(AbstractExplorer,
         update it.
         """
         context_input = self.get_context_input(input, **kwargs)
-        await self._driver.execute_input(context_input)
+        try:
+            await self._driver.execute_input(context_input)
+        except LoadedException as ex:
+            # the driver is un-aware of the context_input semantics; if a crash
+            # occurs, we need to prepend the input accumulated by the explorer.
+            ex.payload = (self._accumulated_input or EmptyInput()) + ex.payload
+            raise
 
     async def update(self, input_gen: Callable[..., BaseInput],
             minimize: bool=True, validate: bool=True) \
@@ -491,8 +508,6 @@ class BaseExplorerContext(BaseDecorator):
         if self._stop and self._stop > self._start:
             # commit the tail of the input which did not result in an update
             exp._accumulated_input = self.input_gen()
-        else:
-            exp._accumulated_input = EmptyInput()
 
     def __iter__(self, *, orig):
         return orig()
