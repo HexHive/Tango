@@ -171,6 +171,10 @@ class StateInferenceStrategy(SeedableStrategy,
             'strategy.learning_rate', 'strategy.learning_rounds',
             'strategy.min_energy', 'strategy.max_energy',
             'strategy.dump_stats', 'fuzzer.work_dir']):
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return config['strategy'].get('type') == 'inference'
+
     def __init__(self, *, tracker: StateInferenceTracker,
             loader: AbstractLoader,
             work_dir: str,
@@ -245,10 +249,6 @@ class StateInferenceStrategy(SeedableStrategy,
             file.write(','.join(str(v.value) if v else '' for v in values))
             file.write('\n')
 
-    @classmethod
-    def match_config(cls, config: dict) -> bool:
-        return config['strategy'].get('type') == 'inference'
-
     async def step(self, input: Optional[AbstractInput]=None):
         match self._tracker.mode:
             case InferenceMode.Discovery:
@@ -273,29 +273,20 @@ class StateInferenceStrategy(SeedableStrategy,
                         rec.energy -= 1
 
             case InferenceMode.CrossPollination:
-                self._crosstest_timer()
-                cap, eqv_map, mask, nodes = await self.perform_cross_pollination()
-                collapsed = cap[~mask,:][:,~mask]
-                if self._recursive_collapse:
-                    collapsed, eqv_map = self._collapse_until_stable(
-                        collapsed, eqv_map)
-
-                if self._dt_predict:
-                    X = cap[mask,:][:,mask] != None
-                    Y = np.vectorize(eqv_map.get, otypes=(int,))(
-                        np.arange(X.shape[0]))
-                    self._dt_clf.fit(X, Y)
-                    self._dt_fit = True
-
-                self._tracker.capability_matrix = cap[mask,:][:,mask]
-                self._tracker.collapsed_matrix = collapsed
-                self._tracker.set_nodes(nodes, eqv_map)
-                self._tracker.reconstruct_graph(collapsed)
-                self._tracker.mode = InferenceMode.Discovery
+                await self.perform_inference()
                 self.assign_state_energies()
-                self._crosstest_timer()
-                if self._auto_dump_stats:
-                    self._dump_profilers(get_current_session().id)
+                self._tracker.mode = InferenceMode.Discovery
+
+    async def perform_inference(self):
+        self._crosstest_timer()
+        cap, collapsed, eqv_map, nodes = await self.perform_cross_pollination()
+        self._tracker.capability_matrix = cap
+        self._tracker.collapsed_matrix = collapsed
+        self._tracker.set_nodes(nodes, eqv_map)
+        self._tracker.reconstruct_graph(collapsed)
+        self._crosstest_timer()
+        if self._auto_dump_stats:
+            self._dump_profilers(get_current_session().id)
 
     @classmethod
     def _collapse_until_stable(cls, adj, eqv_map):
@@ -376,11 +367,23 @@ class StateInferenceStrategy(SeedableStrategy,
 
         assert len(eqv_map) == len(nodes)
 
-        # translate indices back to nodes
         for i in np.where(node_mask)[0]:
             eqv_map.setdefault(i, -1)
 
-        return cap, eqv_map, node_mask, nodes
+        collapsed = cap[~node_mask,:][:,~node_mask]
+        cap = cap[node_mask,:][:,node_mask]
+        if self._recursive_collapse:
+            collapsed, eqv_map = self._collapse_until_stable(
+                collapsed, eqv_map)
+
+        if self._dt_predict:
+            X = cap != None
+            Y = np.vectorize(eqv_map.get, otypes=(int,))(
+                np.arange(X.shape[0]))
+            self._dt_clf.fit(X, Y)
+            self._dt_fit = True
+
+        return cap, collapsed, eqv_map, nodes
 
     @staticmethod
     def _overlay_capabilities(cap, adj, from_idx, to_idx):
