@@ -79,11 +79,6 @@ class StateInferenceTracker(CoverageTracker,
         self.mode = InferenceMode.Discovery
         self.capability_matrix = np.empty((0,0), dtype=object)
         self.collapsed_matrix = np.empty((0,0), dtype=object)
-        self.nodes = {}
-        self.node_arr = np.empty((0,), dtype=object)
-        self.equivalence_map = {}
-        self.equivalence_arr = np.empty((0,), dtype=int)
-        self.equivalence_states = {}
         self.equivalence = InferenceMap()
         self.recovered_graph = RecoveredStateGraph()
 
@@ -147,27 +142,6 @@ class StateInferenceTracker(CoverageTracker,
             eqv_map: Mapping[int, int]):
         self.__dict__.pop('unmapped_states', None)
         self.equivalence = InferenceMap(nodes, eqv_map)
-
-        self.nodes.clear()
-        self.nodes.update({ nodes[i]: i for i in range(len(nodes)) })
-        self.node_arr = np.array(list(nodes), dtype=object)
-        self.equivalence_map = {nodes[l]: s_idx for l, s_idx in eqv_map.items()}
-
-        # the nodes array
-        idx = np.arange(self.node_arr.size)
-        self.equivalence_arr = np.vectorize(eqv_map.get, otypes=(int,))(idx)
-        # get the index of the unique equivalence set each node maps to
-        _, membership = np.unique(self.equivalence_arr, axis=0,
-            return_inverse=True)
-        # re-arrange eqv set indices so that members are grouped together
-        order = np.argsort(membership)
-        # get the boundaries of each eqv set in the ordered nodes array
-        groups, split = np.unique(membership[order], return_index=True)
-        # split the ordered nodes array into eqv groups
-        eqvs = np.split(idx[order], split[1:])
-        self.equivalence_states = {
-            sidx: eqvs[i] for i, sidx in enumerate(groups)
-        }
 
     def out_edges(self, state: AbstractState) -> Iterable[Transition]:
         if state in self.state_graph:
