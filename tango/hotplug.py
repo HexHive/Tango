@@ -221,7 +221,7 @@ class NyxNetInference(HotplugInference):
 
         # archive current queue to measure total coverage over time
         await (await asyncio.create_subprocess_shell('set -x;'
-            f'cd "{self.watch_path!s}";'
+            f'cd "{self.watch_path.parent!s}";'
             'mkdir -p "$SHARED/archive";'
             R'tar czf "$SHARED/archive"/`date +%s`.tar.gz .')).wait()
 
