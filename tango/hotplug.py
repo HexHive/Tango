@@ -234,5 +234,5 @@ class NyxNetInference(HotplugInference):
         header = struct.pack("<QQQQQ",
             self._checksum, graph_size, data_size, graph_offset, data_offset)
         # FIXME this is spec-dependent; we'll assume node 0 is always raw
-        graph_data = struct.pack("<"+ "H" * graph_size, (0,) * graph_size)
+        graph_data = struct.pack("<"+ "H" * graph_size, *((0,) * graph_size))
         return header + graph_data + data
