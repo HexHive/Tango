@@ -217,7 +217,7 @@ class NyxNetInference(HotplugInference):
             f'rm -f "$OUT/nyx/packed/nyx_$TARGETNAME/seeds"/*')).wait()
         for i, inp in enumerate(inputs):
             packed = self._pack_input(inp)
-            Path(os.environ['OUT'], 'packed', f'nyx_{os.environ["TARGETNAME"]}',
+            Path(os.environ['OUT'], 'nyx/packed', f'nyx_{os.environ["TARGETNAME"]}',
                 'seeds', f'seed_{i}.bin').write_bytes(packed)
 
     def _pack_input(self, input):
