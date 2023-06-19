@@ -14,6 +14,7 @@ import numpy as np
 import asyncio
 import struct
 import os
+import signal
 
 @dataclass
 class InotifyBatchObserver:
@@ -184,10 +185,11 @@ class NyxNetInference(HotplugInference):
         return await asyncio.create_subprocess_shell('set -x;'
             'cd "$FUZZER/targets/profuzzbench-nyx/scripts/nyx-eval";'
             './start.sh -c 0 -i 0 -T $TIMEOUT -p balanced -d "$SHARED"'
-            ' -t "$TARGETNAME" $NYX_FUZZARGS')
+            ' -t "$TARGETNAME" $NYX_FUZZARGS',
+            start_new_session=True)
 
     async def stop_fuzzer(self, process):
-        process.terminate()
+        os.killpg(process.pid, signal.SIGKILL)
         await process.wait()
 
     async def import_inputs(self, paths):
