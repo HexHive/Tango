@@ -78,6 +78,7 @@ class StateInferenceTracker(CoverageTracker,
         # properties
         self.mode = InferenceMode.Discovery
         self.capability_matrix = np.empty((0,0), dtype=object)
+        self.subsumption_matrix = np.empty((0,0), dtype=object)
         self.collapsed_matrix = np.empty((0,0), dtype=object)
         self.equivalence = InferenceMap()
         self.recovered_graph = RecoveredStateGraph()
@@ -138,10 +139,12 @@ class StateInferenceTracker(CoverageTracker,
             state_changed=state_changed, exc=exc, **kwargs)
         return rv
 
-    def set_nodes(self, nodes: Sequence[AbstractState],
-            eqv_map: Mapping[int, int]):
+    def update_equivalence(self, cap, sub, collapsed, eqv_map, nodes):
         self.__dict__.pop('unmapped_states', None)
-        self.equivalence = InferenceMap(nodes, eqv_map)
+        self.capability_matrix = cap
+        self.subsumption_matrix = sub
+        self.collapsed_matrix = collapsed
+        self.equivalence = InferenceMap(nodes, eqv_map, sub)
 
     def out_edges(self, state: AbstractState) -> Iterable[Transition]:
         if state in self.state_graph:
@@ -279,10 +282,8 @@ class StateInferenceStrategy(SeedableStrategy,
 
     async def perform_inference(self):
         self._crosstest_timer()
-        cap, collapsed, eqv_map, nodes = await self.perform_cross_pollination()
-        self._tracker.capability_matrix = cap
-        self._tracker.collapsed_matrix = collapsed
-        self._tracker.set_nodes(nodes, eqv_map)
+        cap, sub, collapsed, eqv_map, nodes = await self.perform_cross_pollination()
+        self._tracker.update_equivalence(cap, sub, collapsed, eqv_map, nodes)
         self._tracker.reconstruct_graph(collapsed)
         self._crosstest_timer()
         if self._auto_dump_stats:
@@ -292,7 +293,7 @@ class StateInferenceStrategy(SeedableStrategy,
     def _collapse_until_stable(cls, adj, eqv_map):
         last_adj = adj
         while True:
-            adj, eqv_map, node_mask = cls._collapse_graph(adj, eqv_map,
+            adj, eqv_map, node_mask, sub = cls._collapse_graph(adj, eqv_map,
                 dual_axis=True)
             # mask out collapsed nodes
             adj = adj[~node_mask,:][:,~node_mask]
@@ -308,7 +309,7 @@ class StateInferenceStrategy(SeedableStrategy,
         # construct equivalence sets
         stilde = cls._construct_equivalence_sets(adj, dual_axis=dual_axis)
         # remove strictly subsumed nodes
-        adj, stilde, node_mask, sub_map = cls._eliminate_subsumed_nodes(adj,
+        adj, stilde, node_mask, sub, sub_map = cls._eliminate_subsumed_nodes(adj,
             stilde, dual_axis=dual_axis)
         # collapse capability matrix where equivalence states exist
         ext_adj, eqv_map, node_mask = cls._collapse_adj_matrix(adj, stilde,
@@ -317,7 +318,7 @@ class StateInferenceStrategy(SeedableStrategy,
         # reconstruct eqv_map based on orig_eqv
         eqv_map = {i: eqv_map[s] for i, s in orig_eqv.items()}
 
-        return ext_adj, eqv_map, node_mask
+        return ext_adj, eqv_map, node_mask, sub
 
     async def perform_cross_pollination(self):
         G = self._tracker.state_graph
@@ -363,7 +364,7 @@ class StateInferenceStrategy(SeedableStrategy,
         await self._extend_cap_matrix(cap, nodes, edge_mask, new_equivalence)
 
         # collapse, single-axis
-        cap, eqv_map, node_mask = self._collapse_graph(cap)
+        cap, eqv_map, node_mask, sub = self._collapse_graph(cap)
 
         assert len(eqv_map) == len(nodes)
 
@@ -383,7 +384,7 @@ class StateInferenceStrategy(SeedableStrategy,
             self._dt_clf.fit(X, Y)
             self._dt_fit = True
 
-        return cap, collapsed, eqv_map, nodes
+        return cap, sub, collapsed, eqv_map, nodes
 
     @staticmethod
     def _overlay_capabilities(cap, adj, from_idx, to_idx):
@@ -924,7 +925,7 @@ class StateInferenceStrategy(SeedableStrategy,
         # discard the empty set if it exists
         stilde = {frozenset(x) for x in stilde}
         stilde.discard(frozenset())
-        return adj, stilde, mask, sub_map
+        return adj, stilde, mask, sub, sub_map
 
     @classmethod
     def combine_transitions(cls, adj, /, *, where=None, **kwargs):
@@ -1281,17 +1282,14 @@ class ReversibleMap(ABCMapping, ABCReversible):
                     s.add(v)
                     biject = False
                 elif isinstance(k, frozenset):
-                    v = {v}
                     for e in k:
-                        assert self._dict.setdefault(e, v) is v, \
-                            "Mapping is not reversible"
+                        vs = self._dict.setdefault(e, set())
+                        vs.add(v)
                 else:
                     self._dict[k] = {v}
             if biject:
                 for k, v in self._dict.items():
-                    # not great; but if we v.pop(), then one-to-many will fail
-                    # because they share the set {v} (see above)
-                    self._dict[k] = next(iter(v))
+                    self._dict[k] = v.pop()
             else:
                 vtype = vtype and object
                 for k, v in self._dict.items():
@@ -1334,11 +1332,24 @@ class ReversibleMap(ABCMapping, ABCReversible):
 
 class InferenceMap:
     def __init__(self,
-            nodes: Sequence[AbstractState]=(), eqv_map: Mapping[int, int]={}):
+            nodes: Sequence[AbstractState]=(), eqv_map: Mapping[int, int]={},
+            sub: NDArray[Shape["Nodes, Nodes"]]=np.empty((0,0), dtype=int)):
         self._i2s = ReversibleMap(enumerate(nodes), ktype=int, vtype=object)
         self._i2g = ReversibleMap(eqv_map, ktype=int, vtype=int)
         # HACK force cache the reverse, but with sets as values
         self._i2g.reverse(biject=False)
+
+        if sub.size:
+            subsumers = {
+                i: frozenset(*col.nonzero())
+                for i, col in enumerate(
+                    np.nditer(sub, flags=('external_loop',), order='F'))
+            }
+        else:
+            subsumers = {}
+        self._sub = ReversibleMap(subsumers, ktype=int, vtype=int)
+        # HACK force cache the reverse, but with sets as values
+        self._sub.reverse(biject=False)
 
     def siblings(self, snapshot: SliceableIndex[AbstractState | int], **kwargs) \
             -> frozenset[AbstractState | int]:
@@ -1371,6 +1382,38 @@ class InferenceMap:
         else:
             freeze = lambda idx: frozenset(self.snapshot(i) for i in idx)
             if isinstance(sidx, ABCIterable):
+                freeze = np.vectorize(freeze, otypes=(object,))
+            return freeze(idx)
+
+    def subsumers(self, snapshot: SliceableIndex[AbstractState | int], \
+            as_index: bool=False) -> frozenset[AbstractState | int]:
+        resolve = lambda s: \
+            self._sub[self.index(s) if isinstance(s, AbstractState)
+                      else s if isinstance(s, int) else None]
+        if isinstance(snapshot, ABCIterable):
+            resolve = np.vectorize(resolve, otypes=(object,))
+        idx = resolve(snapshot)
+        if as_index:
+            return idx
+        else:
+            freeze = lambda idx: frozenset(self.snapshot(i) for i in idx)
+            if isinstance(snapshot, ABCIterable):
+                freeze = np.vectorize(freeze, otypes=(object,))
+            return freeze(idx)
+
+    def subsumees(self, snapshot: SliceableIndex[AbstractState | int], \
+            as_index: bool=False) -> frozenset[AbstractState | int]:
+        resolve = lambda s: \
+            reversed(self._sub).get(self.index(s) if isinstance(s, AbstractState)
+                      else s if isinstance(s, int) else None, frozenset())
+        if isinstance(snapshot, ABCIterable):
+            resolve = np.vectorize(resolve, otypes=(object,))
+        idx = resolve(snapshot)
+        if as_index:
+            return idx
+        else:
+            freeze = lambda idx: frozenset(self.snapshot(i) for i in idx)
+            if isinstance(snapshot, ABCIterable):
                 freeze = np.vectorize(freeze, otypes=(object,))
             return freeze(idx)
 
