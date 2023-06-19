@@ -47,6 +47,7 @@ complete = [
     'tango[network]',
     'tango[coverage]',
     'tango[inference]',
+    'tango[hotplug]',
 ]
 
 [tool.setuptools]
