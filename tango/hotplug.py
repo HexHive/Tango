@@ -10,8 +10,10 @@ from typing import Optional, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from itertools import count
+import numpy as np
 import asyncio
 import struct
+import os
 
 @dataclass
 class InotifyBatchObserver:
