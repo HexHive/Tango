@@ -32,9 +32,9 @@ class InotifyBatchObserver:
                 return ev
 
     async def get_batch(self, batch: Optional[list]=None):
-        for _ in range(self.batch_size):
+        for i in range(self.batch_size):
             ev = await self.get_event()
-            info(f"Observed inotify event: {ev}")
+            info(f"Observed inotify event ({i}/{self.batch_size}) for {ev.path!s}")
             if batch is not None:
                 batch.append(ev)
         return batch
@@ -92,13 +92,14 @@ class HotplugInference(StateInferenceStrategy,
                 # feed input to target and populate state machine
                 await self._explorer.follow(inp, minimize=True)
                 info("Loaded seed file: %s", inp)
-            except LoadedException as ex:
-                warning("Failed to load %s: %s", inp, ex.exception)
+            except Exception as ex:
+                warning("Failed to load %s: %s", inp)
 
         start = self._crosstest_timer.value
         await self.perform_inference()
         end = self._crosstest_timer.value
         self._batch_timeout = max(1.1 * self._batch_timeout, 2 * (end - start))
+        info(f"Increased batch timeout to {self._batch_timeout}")
 
         culled = []
         for sid, sblgs in self._tracker.equivalence.states.items():
@@ -106,6 +107,7 @@ class HotplugInference(StateInferenceStrategy,
                 inp = self._explorer.get_reproducer(target=sblg)
                 inp = self._generator.startup_input + inp
                 culled.append(inp)
+        info(f'Culled queue to {len(culled)} inputs')
         await self.export_inputs(culled)
 
     @property
