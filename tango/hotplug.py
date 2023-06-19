@@ -95,7 +95,10 @@ class HotplugInference(StateInferenceStrategy,
             except LoadedException as ex:
                 warning("Failed to load %s: %s", inp, ex.exception)
 
+        start = self._crosstest_timer.value
         await self.perform_inference()
+        end = self._crosstest_timer.value
+        self._batch_timeout = max(1.1 * self._batch_timeout, 2 * (end - start))
 
         culled = []
         for sid, sblgs in self._tracker.equivalence.states.items():
