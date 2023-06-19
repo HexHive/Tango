@@ -210,6 +210,13 @@ class NyxNetInference(HotplugInference):
                     TransmitInstruction(bytes(data, 'latin-1')))
             }, locals())
             inputs.append(input)
+
+        # archive current queue to measure total coverage over time
+        await (await asyncio.create_subprocess_shell('set -x;'
+            f'cd "{self.watch_path!s}";'
+            'mkdir -p "$SHARED/archive";'
+            R'tar czf "$SHARED/archive"/`date +%s`.tar.gz .')).wait()
+
         return inputs
 
     async def export_inputs(self, inputs):
