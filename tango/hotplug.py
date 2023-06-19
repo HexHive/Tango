@@ -115,7 +115,7 @@ class HotplugInference(StateInferenceStrategy,
         pass
 
     @abstractmethod
-    def select_sibling(self, siblings):
+    def select_siblings(self, siblings):
         pass
 
     @abstractmethod
