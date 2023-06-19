@@ -1,6 +1,6 @@
-CC  ?= clang-13
-CXX ?= clang++-13
-AR  ?= llvm-ar-13
+CC  := clang-13
+CXX := clang++-13
+AR  := llvm-ar-13
 
 CFLAGS := -O3 -fPIC -I.
 PYBINDING_CFLAGS := $(CFLAGS) -fPIE -shared
