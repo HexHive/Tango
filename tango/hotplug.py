@@ -22,6 +22,7 @@ class InotifyBatchObserver:
     timeout: int
     batch_size: int
     select: Callable[[InotifyEvent], bool] = lambda _: True
+    process: Callable[[InotifyEvent], ...] = None
 
     def __post_init__(self):
         self._counter = 0
@@ -35,6 +36,8 @@ class InotifyBatchObserver:
         for i in range(self.batch_size):
             ev = await self.get_event()
             info(f"Observed inotify event ({i}/{self.batch_size}) for {ev.path!s}")
+            if self.process:
+                self.process(ev)
             if batch is not None:
                 batch.append(ev)
         return batch
