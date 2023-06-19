@@ -384,7 +384,8 @@ class CoverageTracker(BaseTracker,
         self._work_dir = work_dir
 
         self._map_kw = {}
-        self._map_kw['skip_counts'] = skip_counts
+        if skip_counts:
+            self._map_kw['skip_counts'] = skip_counts
         if native_lib is not False:
             if native_lib:
                 self._map_kw['bind_lib'] = CDLL(native_lib)
