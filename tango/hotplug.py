@@ -56,7 +56,6 @@ class HotplugInference(StateInferenceStrategy,
             batch_timeout: int,
             **kwargs):
         super().__init__(**kwargs)
-        self._queue = Path(path_to_queue)
         self._batch_timeout = batch_timeout
 
     async def step(self, input: Optional[AbstractInput]=None):
