@@ -323,7 +323,8 @@ class StateInferenceStrategy(SeedableStrategy,
     async def perform_cross_pollination(self):
         G = self._tracker.state_graph
         batch = self._entropy.sample(
-            tuple(self._tracker.unmapped_states), k=self._inference_batch)
+            (pop := tuple(self._tracker.unmapped_states)),
+            k=min(self._inference_batch, len(pop)))
         node_set = set(G.nodes) & self._tracker.equivalence.mapped_snapshots | set(batch)
         nodes = np.array(list(node_set))
 
