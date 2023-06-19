@@ -46,7 +46,7 @@ class InotifyBatchObserver:
             return batch
 
 class HotplugInference(StateInferenceStrategy,
-        capture_paths=('strategy.batch_timeout')):
+        capture_paths=('strategy.batch_timeout',)):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
