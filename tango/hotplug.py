@@ -168,14 +168,15 @@ class NyxNetInference(HotplugInference):
         return path.match('cov_*.bin')
 
     def select_siblings(self, siblings):
-        sblgs = filter(
-            lambda s: not self._tracker.equivalence.subsumers(s), siblings)
-        yield (most := max(
+        choices = set()
+        sblgs = tuple(filter(
+            lambda s: not self._tracker.equivalence.subsumers(s), siblings))
+        choices.add(max(
             sblgs, key=lambda s: np.count_nonzero(np.asarray(s._raw_coverage))))
-        least = min(
-            sblgs, key=lambda s: np.count_nonzero(np.asarray(s._raw_coverage)))
-        if least is not most:
-            yield least
+        choices.add(min(
+            reversed(sblgs), key=lambda s: np.count_nonzero(np.asarray(s._raw_coverage))))
+        choices.add(self._entropy.choice(tuple(siblings)))
+        return choices
 
     async def start_fuzzer(self):
         await (await asyncio.create_subprocess_shell('set -x;'
