@@ -39,6 +39,9 @@ coverage = [
 inference = [
     'scikit-learn==1.2.2',
 ]
+hotplug = [
+    'asyncinotify==4.0.2'
+]
 
 complete = [
     'tango[network]',
