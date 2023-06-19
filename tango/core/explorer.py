@@ -72,6 +72,7 @@ class BaseExplorer(AbstractExplorer,
 
         # these are generally persistent until a reload_state
         self._current_path = []
+        self._current_ctx = None
         self._accumulated_input = EmptyInput()
         self._last_state = None
 
@@ -180,14 +181,20 @@ class BaseExplorer(AbstractExplorer,
     def get_context_input(self, input: BaseInput, **kwargs) -> BaseExplorerContext:
         return BaseExplorerContext(input, explorer=self, **kwargs)
 
-    def get_reproducer(self, input: BaseInput, *, \
-            breadcrumbs: Optional[LoadableTarget]=None) -> BaseInput:
-        breadcrumbs = breadcrumbs or self._current_path
+    def get_reproducer(self, trailer: BaseInput=EmptyInput(), *, \
+            target: Optional[LoadableTarget]=None) -> BaseInput:
+        if not target:
+            breadcrumbs = self._current_path
+        elif isinstance((state := target), AbstractState):
+            breadcrumbs = next(self._tracker.state_graph.get_min_paths(state))
+        else:
+            breadcrumbs = target
+
         if breadcrumbs:
             prefix = reduce(operator.add, (x[2] for x in breadcrumbs))
         else:
             prefix = EmptyInput()
-        return prefix + input
+        return prefix + trailer
 
     async def follow(self, input: BaseInput, **kwargs):
         """
@@ -474,36 +481,40 @@ class BaseExplorerContext(BaseDecorator):
         exp = self._exp
         self._start = self._stop = 0
         idx = -1
-        for idx, instruction in enumerate(self._orig):
-            ValueProfiler('status')('fuzz')
-            self._stop = idx + 1
-            yield instruction
-            # the generator execution is suspended until next() is called so
-            # the BaseExplorer update is only called after the instruction
-            # is performed by the driver
-
-            try:
-                last_state = exp._last_state
-                updated, unseen, new_state, current_input = await exp.update(
-                    self.input_gen, **self._update_kwargs)
-                if updated:
-                    self._start = idx + 1
-
-                    # if an update has happened, we've transitioned out of the
-                    # last_state and as such, it's no longer necessary to keep
-                    # track of the last input
-                    exp._accumulated_input = EmptyInput()
-            except Exception as ex:
+        try:
+            exp._current_ctx = self
+            for idx, instruction in enumerate(self._orig):
+                ValueProfiler('status')('fuzz')
                 self._stop = idx + 1
-                await self.update_state(exp._tracker.current_state,
-                    breadcrumbs=exp._current_path,
-                    input=self.input_gen(), orig_input=self.orig_input,
-                    exc=ex)
-                raise
-            else:
-                await self._handle_update(
-                    updated, unseen,
-                    last_state, new_state, current_input)
+                yield instruction
+                # the generator execution is suspended until next() is called so
+                # the BaseExplorer update is only called after the instruction
+                # is performed by the driver
+
+                try:
+                    last_state = exp._last_state
+                    updated, unseen, new_state, current_input = await exp.update(
+                        self.input_gen, **self._update_kwargs)
+                    if updated:
+                        self._start = idx + 1
+
+                        # if an update has happened, we've transitioned out of the
+                        # last_state and as such, it's no longer necessary to keep
+                        # track of the last input
+                        exp._accumulated_input = EmptyInput()
+                except Exception as ex:
+                    self._stop = idx + 1
+                    await self.update_state(exp._tracker.current_state,
+                        breadcrumbs=exp._current_path,
+                        input=self.input_gen(), orig_input=self.orig_input,
+                        exc=ex)
+                    raise
+                else:
+                    await self._handle_update(
+                        updated, unseen,
+                        last_state, new_state, current_input)
+        finally:
+            exp._current_ctx = None
 
         if self._stop and self._stop > self._start:
             # commit the tail of the input which did not result in an update

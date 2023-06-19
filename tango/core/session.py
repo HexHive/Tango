@@ -161,7 +161,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
                 label = None
             if label:
                 reproducer = self._explorer.get_reproducer(
-                    input, breadcrumbs=breadcrumbs)
+                    input, target=breadcrumbs)
                 self._generator.save_input(reproducer, label, repr(state))
 
             if isinstance(exc, ProcessCrashedException):
@@ -181,7 +181,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
 
         if new_transition:
             reproducer = self._explorer.get_reproducer(
-                input, breadcrumbs=breadcrumbs)
+                input, target=breadcrumbs)
             self._generator.save_input(reproducer, 'queue', repr(destination))
 
         self._generator.update_transition(source, destination, input,
