@@ -179,9 +179,10 @@ class NyxNetInference(HotplugInference):
             yield least
 
     async def start_fuzzer(self):
-        await asyncio.create_subprocess_shell('set -x;'
-            f'rm -rf "{self._sharedir}"').wait()
+        await (await asyncio.create_subprocess_shell('set -x;'
+            f'rm -rf "{self._sharedir}"')).wait()
         return await asyncio.create_subprocess_shell('set -x;'
+            'cd "$FUZZER/targets/profuzzbench-nyx/scripts/nyx-eval";'
             './start.sh -c 0 -i 0 -T $TIMEOUT -p balanced -d "$SHARED"'
             ' -t "$TARGETNAME" $NYX_FUZZARGS')
 
@@ -190,9 +191,10 @@ class NyxNetInference(HotplugInference):
         await process.wait()
 
     async def import_inputs(self, paths):
-        await asyncio.create_subprocess_shell('set -x;'
+        await (await asyncio.create_subprocess_shell('set -x;'
+            'cd "$FUZZER/targets/profuzzbench-nyx/scripts/nyx-eval";'
             './reproducible.sh -c 0 -i 0 -p balanced -d "$SHARED"'
-            ' -t "$TARGETNAME" $NYX_FUZZARGS').wait()
+            ' -t "$TARGETNAME" $NYX_FUZZARGS')).wait()
 
         reproducible = self._sharedir / 'reproducible'
         stems = {p.stem for p in paths}
@@ -209,8 +211,8 @@ class NyxNetInference(HotplugInference):
         return inputs
 
     async def export_inputs(self, inputs):
-        await asyncio.create_subprocess_shell('set -x;'
-            f'rm -f "$OUT/packed/nyx_$TARGETNAME/seeds/*"').wait()
+        await (await asyncio.create_subprocess_shell('set -x;'
+            f'rm -f "$OUT/nyx/packed/nyx_$TARGETNAME/seeds"/*')).wait()
         for i, inp in enumerate(inputs):
             packed = self._pack_input(inp)
             Path(os.environ['OUT'], 'packed', f'nyx_{os.environ["TARGETNAME"]}',
