@@ -205,10 +205,10 @@ class NyxNetInference(HotplugInference):
             if file.stem not in stems:
                 continue
             input = PreparedInput()
-            exec(file.read_text(), globals=globals() | {
-                'packet': lambda b: input.append(
-                    TransmitInstruction(bytes(b, 'latin-1')))
-            })
+            exec(file.read_text(), globals() | {
+                'packet': lambda data: input.append(
+                    TransmitInstruction(bytes(data, 'latin-1')))
+            }, locals())
             inputs.append(input)
         return inputs
 
