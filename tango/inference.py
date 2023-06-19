@@ -861,8 +861,8 @@ class StateInferenceStrategy(SeedableStrategy,
         subsumes = lambda u, v, ax: 0 if not \
             (x := (
                 a := iax(is_nbr, u, ax)) ^ (b := iax(is_nbr, v, ax))).any() \
-            else  1 if ((x & a) == x).all() \
-            else -1 if ((x & b) == x).all() \
+            else  1 if np.array_equal(x & a, x) \
+            else -1 if np.array_equal(x & b, x) \
             else 0
         subsumes_ufn = np.frompyfunc(subsumes, 3, 1)
 
