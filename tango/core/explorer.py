@@ -413,11 +413,13 @@ class BaseExplorerContext(BaseDecorator):
     and the second part continues to build up state for any following
     transition.
     """
-    def __init__(self, input: AbstractInput, /, *, explorer: BaseExplorer, **kw):
+    def __init__(self, input: AbstractInput, /, *,
+            explorer: BaseExplorer, atomic: bool=True, **kw):
         super().__init__(input)
         self._exp = explorer
         self._start = self._stop = None
         self._update_kwargs = kw
+        self._atomic = atomic
 
     def input_gen(self):
         # we delay the call to the slicing decorator until needed
@@ -478,6 +480,30 @@ class BaseExplorerContext(BaseDecorator):
         return current_state, breadcrumbs
 
     async def __aiter__(self, *, orig):
+        async def publish_updates(exp, idx):
+            try:
+                last_state = exp._last_state
+                updated, unseen, new_state, current_input = await exp.update(
+                    self.input_gen, **self._update_kwargs)
+                if updated:
+                    self._start = idx + 1
+
+                    # if an update has happened, we've transitioned out of the
+                    # last_state and as such, it's no longer necessary to keep
+                    # track of the last input
+                    exp._accumulated_input = EmptyInput()
+            except Exception as ex:
+                self._stop = idx + 1
+                await self.update_state(exp._tracker.current_state,
+                    breadcrumbs=exp._current_path,
+                    input=self.input_gen(), orig_input=self.orig_input,
+                    exc=ex)
+                raise
+            else:
+                await self._handle_update(
+                    updated, unseen,
+                    last_state, new_state, current_input)
+
         exp = self._exp
         self._start = self._stop = 0
         idx = -1
@@ -490,29 +516,10 @@ class BaseExplorerContext(BaseDecorator):
                 # the generator execution is suspended until next() is called so
                 # the BaseExplorer update is only called after the instruction
                 # is performed by the driver
-
-                try:
-                    last_state = exp._last_state
-                    updated, unseen, new_state, current_input = await exp.update(
-                        self.input_gen, **self._update_kwargs)
-                    if updated:
-                        self._start = idx + 1
-
-                        # if an update has happened, we've transitioned out of the
-                        # last_state and as such, it's no longer necessary to keep
-                        # track of the last input
-                        exp._accumulated_input = EmptyInput()
-                except Exception as ex:
-                    self._stop = idx + 1
-                    await self.update_state(exp._tracker.current_state,
-                        breadcrumbs=exp._current_path,
-                        input=self.input_gen(), orig_input=self.orig_input,
-                        exc=ex)
-                    raise
-                else:
-                    await self._handle_update(
-                        updated, unseen,
-                        last_state, new_state, current_input)
+                if self._atomic:
+                    await publish_updates(exp, idx)
+            if not self._atomic:
+                await publish_updates(exp, idx)
         finally:
             exp._current_ctx = None
 
