@@ -10,11 +10,14 @@ from typing import Optional, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from itertools import count
+from collections import defaultdict
 import numpy as np
 import asyncio
 import struct
 import os
 import signal
+import json
+import re
 
 @dataclass
 class InotifyBatchObserver:
@@ -35,7 +38,7 @@ class InotifyBatchObserver:
     async def get_batch(self, batch: Optional[list]=None):
         for i in range(self.batch_size):
             ev = await self.get_event()
-            info(f"Observed inotify event ({i}/{self.batch_size}) for {ev.path!s}")
+            info(f"Observed inotify event ({i + 1}/{self.batch_size}) for {ev.path!s}")
             if self.process:
                 self.process(ev)
             if batch is not None:
@@ -61,12 +64,17 @@ class HotplugInference(StateInferenceStrategy,
             **kwargs):
         super().__init__(**kwargs)
         self._batch_timeout = batch_timeout
+        self._snapshots = defaultdict(list)
+        self._proc = None
+
+    async def initialize(self):
+        await super().initialize()
 
     async def step(self, input: Optional[AbstractInput]=None):
-        fuzzer = await self.start_fuzzer()
-        while not self.watch_path.exists():
-            await asyncio.sleep(1)
-
+        if not self._proc:
+            self._proc = await self.start_fuzzer()
+            while not self.watch_path.exists():
+                await asyncio.sleep(1)
         remaining = self._inference_batch
         batch = []
         # WARN this is racey; the fuzzer could have created more inputs while
@@ -86,17 +94,16 @@ class HotplugInference(StateInferenceStrategy,
                 for ev in events:
                     batch.append(ev.path)
 
-        await self.stop_fuzzer(fuzzer)
-
         inputs = await self.import_inputs(batch)
-        for inp in inputs:
+        for path, inp in inputs.items():
             try:
                 await self._explorer.reload_state()
                 # feed input to target and populate state machine
-                await self._explorer.follow(inp, minimize=True)
+                await self._explorer.follow(inp, minimize=False, atomic=True)
                 info("Loaded seed file: %s", inp)
             except Exception as ex:
-                warning("Failed to load %s: %s", inp)
+                warning("Failed to load %s: %s", inp, ex)
+            self._snapshots[self._explorer._last_state].append(path)
 
         start = self._crosstest_timer.value
         await self.perform_inference()
@@ -104,14 +111,11 @@ class HotplugInference(StateInferenceStrategy,
         self._batch_timeout = max(1.1 * self._batch_timeout, 2 * (end - start))
         info(f"Increased batch timeout to {self._batch_timeout}")
 
-        culled = []
-        for sid, sblgs in self._tracker.equivalence.states.items():
-            for sblg in self.select_siblings(sblgs):
-                inp = self._explorer.get_reproducer(target=sblg)
-                inp = self._generator.startup_input + inp
-                culled.append(inp)
-        info(f'Culled queue to {len(culled)} inputs')
-        await self.export_inputs(culled)
+        state_to_path_mapping = {
+            i[0]: [p for s in i[1] for p in self._snapshots[s]]
+                for i in self._tracker.equivalence.states.items()
+        }
+        await self.export_results(state_to_path_mapping)
 
     @property
     @abstractmethod
@@ -139,7 +143,7 @@ class HotplugInference(StateInferenceStrategy,
         pass
 
     @abstractmethod
-    async def export_inputs(self, inputs):
+    async def export_results(self, state_to_path_mapping):
         pass
 
 class NyxNetInference(HotplugInference):
@@ -168,13 +172,14 @@ class NyxNetInference(HotplugInference):
             'forked-daapd': 0x91129c9b474e534b,
         }[target]
         self._sharedir = Path(f'{shared}/out-{target}-balanced-000')
+        self._inputs = {}
 
     @property
     def watch_path(self):
         return self._sharedir / 'corpus/normal'
 
     def select_file(self, path):
-        return path.match('cov_*.bin')
+        return path not in self._inputs and path.match('cov_*.bin')
 
     def select_siblings(self, siblings):
         choices = set()
@@ -207,17 +212,18 @@ class NyxNetInference(HotplugInference):
             ' -t "$TARGETNAME" $NYX_FUZZARGS')).wait()
 
         reproducible = self._sharedir / 'reproducible'
-        stems = {p.stem for p in paths}
-        inputs = []
+        stems = {p.stem: p for p in paths}
+        inputs = {}
         for file in reproducible.iterdir():
-            if file.stem not in stems:
+            if not (orig := stems.get(file.stem)):
                 continue
             input = PreparedInput()
             exec(file.read_text(), globals() | {
                 'packet': lambda data: input.append(
                     TransmitInstruction(bytes(data, 'latin-1')))
             }, locals())
-            inputs.append(input)
+            inputs[orig] = input
+        self._inputs.update(inputs)
 
         # archive current queue to measure total coverage over time
         await (await asyncio.create_subprocess_shell('set -x;'
@@ -227,13 +233,14 @@ class NyxNetInference(HotplugInference):
 
         return inputs
 
-    async def export_inputs(self, inputs):
-        await (await asyncio.create_subprocess_shell('set -x;'
-            f'rm -f "$OUT/nyx/packed/nyx_$TARGETNAME/seeds"/*')).wait()
-        for i, inp in enumerate(inputs):
-            packed = self._pack_input(inp)
-            Path(os.environ['OUT'], 'nyx/packed', f'nyx_{os.environ["TARGETNAME"]}',
-                'seeds', f'seed_{i}.bin').write_bytes(packed)
+    async def export_results(self, state_to_path_mapping):
+        prog = re.compile(r'cov_(\d+)')
+        m = {
+            i[0]: [int(prog.match(p.stem).group(1)) for p in i[1]]
+                for i in state_to_path_mapping.items()
+        }
+        outfile = self._sharedir / 'inference.json'
+        outfile.write_text(json.dumps(m))
 
     def _pack_input(self, input):
         graph_size = 0
