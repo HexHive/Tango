@@ -449,12 +449,8 @@ class BaseExplorerContext(BaseDecorator):
             updated, unseen,
             last_state, new_state, current_input):
         exp = self._exp
-        # FIXME doesn't work as intended, but could save from
-        # recalculating cov map diffs if it works
-        # current_state = exp._tracker.update(last_state,
-        #   input=current_input, peek_result=new_state)
         current_state = exp._tracker.update_state(last_state,
-            input=current_input)
+            input=current_input, peek_result=new_state)
         if new_state != current_state:
             raise StabilityException(
                 "Failed to obtain consistent behavior",
