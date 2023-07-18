@@ -139,15 +139,15 @@ class FeatureMap(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def commit(self, feature_mask: Sequence, mask_hash: int):
+    def commit(self, feature_mask: Sequence):
         raise NotImplementedError
 
     @abstractmethod
-    def revert(self, feature_mask: Sequence, mask_hash: int):
+    def invert(self, feature_mask: Sequence):
         raise NotImplementedError
 
     @abstractmethod
-    def reset(self, feature_mask: Sequence, mask_hash: int):
+    def reset(self, feature_mask: Sequence):
         raise NotImplementedError
 
     @abstractmethod
@@ -187,12 +187,19 @@ class CFeatureMap(FeatureMap):
         )
         self._bind_lib.diff.restype = B # success?
 
-        self._bind_lib.apply.argtypes = (
+        self._bind_lib.commit.argtypes = (
             P(b), # global feature map (feature_arr)
             P(b), # feature_mask buffer
             S # common size of the coverage buffers
         )
-        self._bind_lib.apply.restype = B # success?
+        self._bind_lib.commit.restype = B # success?
+
+        self._bind_lib.invert.argtypes = (
+            P(b), # global feature map (feature_arr)
+            P(b), # feature_mask buffer
+            S # common size of the coverage buffers
+        )
+        self._bind_lib.invert.restype = B # success?
 
         self._bind_lib.reset.argtypes = (
             P(b), # global feature map (feature_arr)
@@ -211,13 +218,13 @@ class CFeatureMap(FeatureMap):
             self.length, byref(feature_count), byref(mask_hash), commit)
         return feature_mask, feature_count.value, mask_hash.value
 
-    def commit(self, feature_mask: Sequence, mask_hash: int):
-        self._bind_lib.apply(self._feature_arr, feature_mask, self.length)
+    def commit(self, feature_mask: Sequence):
+        self._bind_lib.commit(self._feature_arr, feature_mask, self.length)
 
-    def revert(self, feature_mask: Sequence, mask_hash: int):
-        self._bind_lib.apply(self._feature_arr, feature_mask, self.length)
+    def invert(self, feature_mask: Sequence):
+        self._bind_lib.invert(self._feature_arr, feature_mask, self.length)
 
-    def reset(self, feature_mask: Sequence, mask_hash: int):
+    def reset(self, feature_mask: Sequence):
         self._bind_lib.reset(self._feature_arr, feature_mask, self.length)
 
     def clone(self) -> CFeatureMap:
@@ -258,13 +265,13 @@ class NPFeatureMap(FeatureMap):
             self._feature_arr ^= feature_mask
         return feature_mask, feature_count, mask_hash
 
-    def commit(self, feature_mask: Sequence, mask_hash: int):
+    def commit(self, feature_mask: Sequence):
         self._feature_arr |= feature_mask
 
-    def revert(self, feature_mask: Sequence, mask_hash: int):
+    def invert(self, feature_mask: Sequence):
         self._feature_arr ^= feature_mask
 
-    def reset(self, feature_mask: Sequence, mask_hash: int):
+    def reset(self, feature_mask: Sequence):
         self._feature_arr &= feature_mask
 
     def clone(self) -> NPFeatureMap:
@@ -478,7 +485,7 @@ class CoverageTracker(BaseTracker,
                 parent_state, feature_mask, feature_count, feature_map,
                 tracker=self, state_hash=mask_hash, **kwargs)
             if commit:
-                feature_map.commit(feature_mask, mask_hash)
+                feature_map.commit(feature_mask)
             return state
 
     def update_state(self, source: FeatureSnapshot, /, *, input: AbstractInput,
@@ -494,8 +501,8 @@ class CoverageTracker(BaseTracker,
                 # if peek_result was specified, we can skip the recalculation
                 next_state = peek_result
                 self._global.copy_from(next_state._feature_context)
-                # we un-revert the bitmaps to obtain the actual global context
-                self._global.revert(next_state._feature_mask, next_state._hash)
+                # we commit the bitmaps to obtain the actual global context
+                self._global.commit(next_state._feature_mask)
 
             if not next_state:
                 next_state = source
@@ -513,7 +520,7 @@ class CoverageTracker(BaseTracker,
             return next_state
         else:
             if source:
-                self._global.revert(source._feature_mask, source._hash)
+                self._global.invert(source._feature_mask)
             return source
 
     def peek(self,

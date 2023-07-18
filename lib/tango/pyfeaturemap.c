@@ -49,7 +49,14 @@ bool diff(u8 *set_arr, const u8 *coverage_map, u8 *set_map, \
   return true;
 }
 
-bool apply(u8 *set_arr, const u8 *set_map, const size_t map_size)
+bool commit(u8 *set_arr, const u8 *set_map, const size_t map_size)
+{
+  for (size_t i = 0; i < map_size; ++i)
+    set_arr[i] |= set_map[i];
+  return true;
+}
+
+bool invert(u8 *set_arr, const u8 *set_map, const size_t map_size)
 {
   for (size_t i = 0; i < map_size; ++i)
     set_arr[i] ^= set_map[i];
