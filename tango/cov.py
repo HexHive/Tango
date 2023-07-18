@@ -664,7 +664,7 @@ class CoverageExplorer(BaseExplorer,
             # despite yielding the same feature set, could have a different
             # coverage map (features are bins). To force the state to be
             # updated, we delete it from the state cache.
-            FeatureSnapshot.invalidate(dst)
+            dst.__class__.invalidate(dst)
         return inp
 
 class CoverageExplorerContext(BaseExplorerContext):
