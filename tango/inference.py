@@ -966,6 +966,8 @@ class StateInferenceStrategy(SeedableStrategy,
         super().update_state(state, *args, exc=exc, **kwargs)
         if state and not exc:
             self._energies[state].energy -= 1
+        elif exc and self._target == state:
+            self._target = self.recalculate_target()
 
     async def reload_target(self) -> AbstractState:
         try:
