@@ -134,6 +134,11 @@ class FeatureMap(ABC):
     def length(self):
         return self._features.ctype._length_
 
+    @property
+    @abstractmethod
+    def feature_mask(self) -> Sequence[int]:
+        pass
+
     @abstractmethod
     def extract(self, *, commit: bool) -> (Sequence, int, int):
         raise NotImplementedError
@@ -208,6 +213,10 @@ class CFeatureMap(FeatureMap):
         )
         self._bind_lib.reset.restype = B # success?
 
+    @property
+    def feature_mask(self) -> Sequence[int]:
+        return self._feature_arr
+
     def extract(self, *, commit: bool=False) \
             -> (Sequence, int, int):
         feature_mask = self._features.ctype()
@@ -249,6 +258,10 @@ class NPFeatureMap(FeatureMap):
         self._feature_arr = np.zeros(self.length, dtype=np.uint8)
         self._skip_counts = skip_counts
         self.clear()
+
+    @property
+    def feature_mask(self) -> Sequence[int]:
+        return self._feature_arr
 
     def extract(self, *, commit: bool=False) \
             -> (Sequence, int, int):
@@ -498,10 +511,15 @@ class CoverageTracker(BaseTracker,
                 next_state = self.extract_snapshot(self._global,
                     parent_state=source, allow_empty=source is None)
             else:
-                # if peek_result was specified, we can skip the recalculation
-                next_state = peek_result
-                self._global.copy_from(next_state._feature_context)
+                # if peek_result was specified, we can skip the recalculation;
+                # we reconstruct a cached version of the state
+                next_state = FeatureSnapshot(
+                    peek_result._parent, peek_result._feature_mask,
+                    peek_result._feature_count, peek_result._feature_context,
+                    tracker=self, state_hash=hash(peek_result)
+                )
                 # we commit the bitmaps to obtain the actual global context
+                self._global.commit(next_state._feature_context.feature_mask)
                 self._global.commit(next_state._feature_mask)
 
             if not next_state:
@@ -540,9 +558,16 @@ class CoverageTracker(BaseTracker,
         next_state = self.extract_snapshot(fmap, parent, commit=False,
             allow_empty=parent is None, **kwargs)
         if not next_state:
-            next_state = FeatureSnapshot(parent, default_source._feature_mask,
-                default_source._feature_count, default_source._feature_context,
-                tracker=self, state_hash=hash(default_source), **kwargs)
+            for _, next_state, _ in self._current_state.out_edges:
+                fmap.copy_from(next_state._feature_context)
+                parent = next_state._parent
+                if next_state == self.extract_snapshot(
+                        fmap, parent, commit=False, **kwargs):
+                    break
+            else:
+                next_state = FeatureSnapshot(parent, default_source._feature_mask,
+                    default_source._feature_count, default_source._feature_context,
+                    tracker=self, state_hash=hash(default_source), **kwargs)
         return next_state
 
     def reset_state(self, state: FeatureSnapshot):
