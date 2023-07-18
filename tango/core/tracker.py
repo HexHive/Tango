@@ -521,7 +521,7 @@ class BaseTracker(AbstractTracker):
                     # stitching may consume too much time and may bring the
                     # fuzzer to a halt (example: states = DOOM map locations)
                     self._state_graph.dissolve_state(state, stitch=True)
-                    state.invalidate(state)
+                    state.__class__.invalidate(state)
                     CountProfiler("dissolved_states")(1)
                 except KeyError as ex:
                     warning("Faulty state was not even valid (ex=%r)", ex)
