@@ -598,8 +598,13 @@ class StateInferenceStrategy(SeedableStrategy,
                     critical(f"Multiple candidates ({l}) are not yet supported!")
                     candidates_eqv = candidates_eqv[(0,),...]
 
-                # we choose a candidate
-                candidate_eqv, = candidates_eqv
+                # We choose a candidate;
+                # equivalence.members may return None in case a group was not
+                # found in the mapping; we need to replace that by an empty
+                # iterable for use later in the code.
+                # A group may disappear from the mapping after re-indexing if
+                # all its members vanish (e.g. irreproducible)
+                candidate_eqv = candidates_eqv[0] or ()
                 # snapshot indices which the candidate can reproduce
                 cap_eqv, = np.where(
                     np.logical_or.reduce(cap[list(candidate_eqv)] != None, axis=0))
