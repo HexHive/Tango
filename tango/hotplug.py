@@ -112,8 +112,17 @@ class HotplugInference(StateInferenceStrategy,
         info(f"Increased batch timeout to {self._batch_timeout}")
 
         state_to_path_mapping = {
-            i[0]: [p for s in i[1] for p in self._snapshots[s]]
+            i[0]: paths
                 for i in self._tracker.equivalence.states.items()
+                # remove intermediate states for which no input file exists;
+                # this occurs when an input traverses multiple snapshots,
+                # arriving at a different final snapshot (only happens when
+                # atomic==True). Without atomic==True, an input may result in
+                # terminating the target and would not generate any states. As a
+                # compromise, for such inputs, we consider the last snapshot
+                # they arrive at before termination as their final snapshot
+                # (which would otherwise be considered intermediate).
+                if (paths := [p for s in i[1] for p in self._snapshots[s]])
         }
         await self.export_results(state_to_path_mapping)
 
