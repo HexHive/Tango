@@ -1,7 +1,9 @@
 from . import debug, info, warning
 
-from tango.core import AbstractInput, PreparedInput, TransmitInstruction
+from tango.core import (
+    AbstractInput, PreparedInput, TransmitInstruction, SeedableStrategy)
 from tango.inference import StateInferenceStrategy
+from tango.common import ComponentOwner
 
 from asyncinotify import Inotify, Mask, Event as InotifyEvent
 
@@ -69,6 +71,11 @@ class HotplugInference(StateInferenceStrategy,
 
     async def initialize(self):
         await super().initialize()
+
+    async def finalize(self, owner: ComponentOwner):
+        # we skip seed loading, to allow the fuzzer to map the discovered states
+        # to paths
+        await super(SeedableStrategy, self).finalize(owner)
 
     async def step(self, input: Optional[AbstractInput]=None):
         if not self._proc:
