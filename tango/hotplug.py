@@ -101,6 +101,10 @@ class HotplugInference(StateInferenceStrategy,
                 for ev in events:
                     batch.append(ev.path)
 
+        if not batch:
+            info("No new inputs after timeout");
+            return
+
         inputs = await self.import_inputs(batch)
         for path, inp in inputs.items():
             try:
