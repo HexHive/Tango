@@ -199,7 +199,7 @@ class NyxNetInference(HotplugInference):
         return self._sharedir / 'corpus/normal'
 
     def select_file(self, path):
-        return path not in self._inputs and path.match('cov_*.bin')
+        return path not in self._inputs and path.match('*.bin')
 
     def select_siblings(self, siblings):
         choices = set()
@@ -254,7 +254,7 @@ class NyxNetInference(HotplugInference):
         return inputs
 
     async def export_results(self, state_to_path_mapping):
-        prog = re.compile(r'cov_(\d+)')
+        prog = re.compile(r'.*?_(\d+)')
         m = {
             i[0]: [int(prog.match(p.stem).group(1)) for p in i[1]]
                 for i in state_to_path_mapping.items()
