@@ -109,6 +109,14 @@ class HotplugInference(StateInferenceStrategy,
         for path, inp in inputs.items():
             try:
                 await self._explorer.reload_state()
+
+                # reset the global coverage map to that of the root;
+                # this ensures that coverage is not masked by previous inputs
+                self._explorer._tracker._global.copy_from(
+                    self_explorer._last_state._feature_context)
+                self._explorer._tracker._global.commit(
+                    self_explorer._last_state._feature_mask)
+
                 # feed input to target and populate state machine
                 await self._explorer.follow(inp, minimize=False, atomic=True)
                 info("Loaded seed file: %s", inp)
