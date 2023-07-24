@@ -346,7 +346,7 @@ class StateInferenceStrategy(SeedableStrategy,
             # order. We map the old indices to the new ones
             features = self._dt_clf.tree_.feature
             features[...] = np.vectorize(
-                lambda u: v if (v := fwd_map.get(u)) is not None else u,
+                lambda u: v if (v := fwd_map.get(u)) is not None else -1,
                 otypes=(int,))(features)
 
         # get current adjacency matrix
@@ -563,7 +563,7 @@ class StateInferenceStrategy(SeedableStrategy,
                         # and for grouped nodes, it is all True.
                         continue
                     dst_idx = dt.feature[cur]
-                    if not dst_idx:
+                    if dst_idx == -1:
                         # the snapshot no longer exists, we try both sides
                         stack.append(dt.children_left[cur])
                         stack.append(dt.children_right[cur])
