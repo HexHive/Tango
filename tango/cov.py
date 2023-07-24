@@ -112,9 +112,9 @@ class FeatureSnapshot(BaseState):
         # return hash(self) == hash(other)
         return isinstance(other, FeatureSnapshot) and \
                hash(self) == hash(other) and \
-               self._feature_count == other._feature_count
-               # np.array_equal(self._feature_mask, other._feature_mask) and \
-               # self._feature_context == other._feature_context
+               self._feature_count == other._feature_count and \
+               self._feature_context == other._feature_context
+               # np.array_equal(self._feature_mask, other._feature_mask)
 
     def __repr__(self):
         return f'({self._id}) +{self._feature_count}'
@@ -170,7 +170,7 @@ class FeatureMap(ABC):
 
     @abstractmethod
     def __eq__(self, other):
-        return isinstance(other, FeatureMap)
+        return isinstance(other, type(self))
 
 class CFeatureMap(FeatureMap):
     def __init__(self, *args, bind_lib, **kwargs):
