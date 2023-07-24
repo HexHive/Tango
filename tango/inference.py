@@ -171,6 +171,7 @@ class StateInferenceStrategy(SeedableStrategy,
             'strategy.extend_on_groups', 'strategy.recursive_collapse',
             'strategy.dt_predict', 'strategy.dt_extrapolate',
             'strategy.validate',
+            'strategy.dynamic_inference', 'strategy.complete_inference',
             'strategy.learning_rate', 'strategy.learning_rounds',
             'strategy.min_energy', 'strategy.max_energy',
             'strategy.dump_stats', 'fuzzer.work_dir']):
@@ -188,6 +189,8 @@ class StateInferenceStrategy(SeedableStrategy,
             dt_predict: bool=False,
             dt_extrapolate: bool=False,
             validate: bool=False,
+            dynamic_inference: bool=False,
+            complete_inference: bool=False,
             learning_rate: float=0.1,
             learning_rounds: int=10,
             min_energy: int=100,
@@ -204,6 +207,8 @@ class StateInferenceStrategy(SeedableStrategy,
         self._dt_predict = dt_predict
         self._dt_extrapolate = dt_extrapolate
         self._validate = validate
+        self._dynamic_inference = dynamic_inference
+        self._complete_inference = complete_inference
         self._learning_rate = learning_rate
         self._learning_rounds = learning_rounds
         self._auto_dump_stats = dump_stats
@@ -282,8 +287,11 @@ class StateInferenceStrategy(SeedableStrategy,
 
     async def perform_inference(self):
         self._crosstest_timer()
-        cap, sub, collapsed, eqv_map, nodes = await self.perform_cross_pollination()
-        self._tracker.update_equivalence(cap, sub, collapsed, eqv_map, nodes)
+        while self._tracker.unmapped_states:
+            cap, sub, collapsed, eqv_map, nodes = await self.perform_cross_pollination()
+            self._tracker.update_equivalence(cap, sub, collapsed, eqv_map, nodes)
+            if not self._complete_inference:
+                break
         self._tracker.reconstruct_graph(collapsed)
         self._crosstest_timer()
         if self._auto_dump_stats:
@@ -761,33 +769,57 @@ class StateInferenceStrategy(SeedableStrategy,
             PercentProfiler('total_savings')(ratio)
 
     async def _perform_one_cross_pollination(self, eqv_src: AbstractState,
-            eqv_dst: AbstractState, inputs: Sequence[AbstractInput]):
+            eqv_dst: AbstractState, inputs: Sequence[AbstractInput]) \
+            -> Optional[AbstractState]:
+        alt_dst = None
         for inp in inputs:
             try:
-                if not await self._perform_partial_cross_pollination(
-                        eqv_src, eqv_dst, inp):
+                if (state := await self._perform_partial_cross_pollination(
+                        eqv_src, eqv_dst, inp)) and state != eqv_dst:
+                    # we check if all responses reach a different state;
+                    # this is a simplification for "each input may elicit a
+                    #   different response"
+                    alt_dst = alt_dst or state
+                    if alt_dst != state:
+                        # a different alt_dst was observed
+                        break
+                    else:
+                        # we now consider this the new eqv_dst
+                        eqv_dst = alt_dst
+                elif not state:
                     break
             except Exception:
                 break
         else:
-            # eqv_node matched all the responses of src to reach dst
-            return True
-        return False
+            if alt_dst:
+                # a consistent alt destination was found; we add it to the graph
+                if self._dynamic_inference and alt_dst != eqv_src:
+                    new_dst = self._tracker.update_state(eqv_src,
+                        input=None, peek_result=alt_dst)
+                    assert new_dst == alt_dst
+                    for inp in inputs:
+                        self._tracker.update_transition(eqv_src, new_dst, inp,
+                            state_changed=True)
+                # deliberate fall-through to return
+            else:
+                # eqv_src matched all the responses to reach expected dst
+                return eqv_dst
+        return None
 
     async def _perform_partial_cross_pollination(self, eqv_src: AbstractState,
-            eqv_dst: AbstractState, input: AbstractInput):
+            eqv_dst: AbstractState, input: AbstractInput) \
+            -> Optional[AbstractState]:
         try:
             assert eqv_src == await self._explorer.reload_state(eqv_src,
                 dryrun=True)
-            await self._loader.apply_transition(
+            return await self._loader.apply_transition(
                 (eqv_src, eqv_dst, input), eqv_src, update_cache=False)
-            return True
         except StabilityException as ex:
             # TODO add new states to graph and match against them too?
             # current_state = ex.current_state
-            return False
+            return ex.current_state
         except Exception:
-            return False
+            return None
 
     @staticmethod
     def _update_cap_matrix(cap, src_idx, dst_idx, inputs):

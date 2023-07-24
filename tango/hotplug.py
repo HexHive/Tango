@@ -270,6 +270,15 @@ class NyxNetInference(HotplugInference):
         outfile = self._sharedir / 'inference.json'
         outfile.write_text(json.dumps(m))
 
+        for snapshot in self._tracker.equivalence.mapped_snapshots:
+            inp = self._explorer.get_reproducer(target=snapshot)
+            p = self._sharedir / 'imports' / f'{hash(snapshot)}.bin'
+            if not p.parent.exists():
+                p.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                assert p.parent.is_dir()
+            p.write_bytes(self._pack_input(inp))
+
     def _pack_input(self, input):
         graph_size = 0
         data = b''
