@@ -297,3 +297,96 @@ class NyxNetInference(HotplugInference):
         # FIXME this is spec-dependent; we'll assume node 0 is always raw
         graph_data = struct.pack("<"+ "H" * graph_size, *((0,) * graph_size))
         return header + graph_data + data
+
+class AFLppInference(HotplugInference):
+    @classmethod
+    def match_config(cls, config: dict) -> bool:
+        return super().match_config(config) and \
+            config['strategy'].get('hotplug') == 'aflpp'
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        shared = os.environ['SHARED']
+        self._out_dir = Path(f'{shared}/default')
+        self._inputs = {}
+
+    @property
+    def watch_path(self):
+        return self._out_dir / 'queue'
+
+    def select_file(self, path):
+        return path not in self._inputs and path.match('id:*')
+
+    def select_siblings(self, siblings):
+        choices = set()
+        sblgs = tuple(filter(
+            lambda s: not self._tracker.equivalence.subsumers(s), siblings))
+        choices.add(max(
+            sblgs, key=lambda s: np.count_nonzero(np.asarray(s._raw_coverage))))
+        choices.add(min(
+            reversed(sblgs), key=lambda s: np.count_nonzero(np.asarray(s._raw_coverage))))
+        choices.add(self._entropy.choice(tuple(siblings)))
+        return choices
+
+    async def start_fuzzer(self):
+        await (await asyncio.create_subprocess_shell('set -x;'
+            f'rm -rf "{self._out_dir}"')).wait()
+        return await asyncio.create_subprocess_shell('set -x;'
+            'cd "$FUZZER/fuzzer/repo";'
+            './afl-fuzz -i "$TARGET/corpus/$PROGRAM" -o "$SHARED" -X'
+            ' -F "$SHARED/imports" $AFL_FUZZARGS'
+            ' -- "$OUT/nyx/packed/nyx_$TARGETNAME"',
+            start_new_session=True)
+
+    async def stop_fuzzer(self, process):
+        os.killpg(process.pid, signal.SIGKILL)
+        await process.wait()
+
+    async def import_inputs(self, paths):
+        reproducible = self._out_dir / 'queue'
+        inputs = {}
+        for file in paths:
+            input = self._generator.load_input(str(file))
+            inputs[file] = input
+        self._inputs.update(inputs)
+
+        # archive current queue to measure total coverage over time
+        await (await asyncio.create_subprocess_shell('set -x;'
+            f'cd "{self.watch_path.parent!s}";'
+            'mkdir -p "$SHARED/archive";'
+            R'tar czf "$SHARED/archive"/`date +%s`.tar.gz .')).wait()
+
+        return inputs
+
+    async def export_results(self, state_to_path_mapping):
+        prog = re.compile(r'id.(\d{6}).*?')
+        m = {
+            state: [int(prog.match(p.stem).group(1)) for p in paths]
+                for state, paths in state_to_path_mapping.items()
+        }
+        outfile = self._out_dir / 'inference.bin'
+
+        with outfile.open('wb') as f:
+            f.write(struct.pack('I', len(m)))
+            for state, inputs in m.items():
+                f.write(struct.pack('I', len(inputs)))
+            for state, inputs in m.items():
+                f.write(struct.pack('I', state))
+                for i in inputs:
+                    f.write(struct.pack('I', i))
+
+        for snapshot in self._tracker.equivalence.mapped_snapshots:
+            inp = self._explorer.get_reproducer(target=snapshot)
+            p = self._out_dir.parent / 'imports' / f'{hash(snapshot)}.bin'
+            if not p.parent.exists():
+                p.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                assert p.parent.is_dir()
+            p.write_bytes(self._pack_input(inp))
+
+    def _pack_input(self, input):
+        data = b''
+        for instruction in input:
+            if isinstance(instruction, TransmitInstruction):
+                data += instruction._data
+        return data
