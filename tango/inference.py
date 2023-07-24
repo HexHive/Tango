@@ -451,8 +451,7 @@ class StateInferenceStrategy(SeedableStrategy,
     async def _extend_cap_matrix(self, cap, nodes, edge_mask, equivalence):
         # we need the complete adj matrix to obtain inputs which may have been
         # batched out
-        node_set = set(nodes)
-        other_nodes = self._tracker.state_graph.nodes - node_set
+        other_nodes = self._tracker.state_graph.nodes - set(nodes)
         nodelist = np.concatenate((nodes, list(other_nodes)))
         orig_adj = self._tracker.state_graph.adjacency_matrix(nodelist=nodelist)
 
