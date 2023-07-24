@@ -503,8 +503,12 @@ class BaseTracker(AbstractTracker):
 
     def reset_state(self, state: AbstractState):
         if state not in self._state_graph:
-            error("Requested state is not in state graph!")
-            import ipdb; ipdb.set_trace()
+            error("Requested state is not in state graph! Attempting to stitch")
+            if state.predecessor_transition:
+                self.update_transition(*state.predecessor_transition,
+                    state_changed=True)
+            else:
+                raise StateNotReproducibleException("Orphaned state", state)
 
     def update_state(self, state: AbstractState, /, *, input: AbstractInput,
             exc: Exception=None, peek_result: Optional[AbstractState]=None) \
