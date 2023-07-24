@@ -104,7 +104,8 @@ class BaseExplorer(AbstractExplorer,
             # FIXME fetch the paths via the tracker; a non-replay loader would
             # be able to reproduce the final state without loading intermediate
             # states. The tracker would then return a single-transition "path".
-            paths = chain(self._tracker.state_graph.get_min_paths(state),
+            paths = chain((self._tracker.state_graph.get_any_path(state),),
+                          self._tracker.state_graph.get_min_paths(state),
                           self._tracker.state_graph.get_paths(state))
             # Loop over possible paths until retry threshold
             ipaths = zip(range(self._reload_attempts), paths)
@@ -186,7 +187,7 @@ class BaseExplorer(AbstractExplorer,
         if not target:
             breadcrumbs = self._current_path
         elif isinstance((state := target), AbstractState):
-            breadcrumbs = next(self._tracker.state_graph.get_min_paths(state))
+            breadcrumbs = self._tracker.state_graph.get_any_path(state)
         else:
             breadcrumbs = target
 
