@@ -796,9 +796,17 @@ class StateInferenceStrategy(SeedableStrategy,
                     new_dst = self._tracker.update_state(eqv_src,
                         input=None, peek_result=alt_dst)
                     assert new_dst == alt_dst
+                    # FIXME this callback interface is cursed
+                    await self._explorer._state_update_cb(new_dst,
+                        input=None, orig_input=None, breadcrumbs=new_dst)
                     for inp in inputs:
                         self._tracker.update_transition(eqv_src, new_dst, inp,
                             state_changed=True)
+                        # we call these to yield new files in the queue
+                        await self._explorer._transition_update_cb(
+                            eqv_src, new_dst, inp, orig_input=inp,
+                            breadcrumbs=new_dst, state_changed=True,
+                            new_transition=True)
                 # deliberate fall-through to return
             else:
                 # eqv_src matched all the responses to reach expected dst
