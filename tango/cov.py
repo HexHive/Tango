@@ -462,13 +462,8 @@ class CoverageTracker(BaseTracker,
         # initialize local map and local state
         self.reset_state(self._current_state)
 
-        LambdaProfiler('snapshot_cov')(lambda: sum(
-            map(lambda x: x._feature_count,
-                filter(lambda x: x != self._entry_state,
-                    self._state_graph.nodes
-                )
-            )
-        ))
+        LambdaProfiler('snapshot_cov')(lambda: np.sum(
+            HAMMING_LUT[np.asarray(self._global._feature_arr)]))
 
     def _dump_pcs(self, sid):
         cov_idx, = self._feature_heat.nonzero()
