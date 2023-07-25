@@ -332,8 +332,8 @@ class AFLppInference(HotplugInference):
         await (await asyncio.create_subprocess_shell('set -x;'
             f'rm -rf "{self._out_dir}"')).wait()
         return await asyncio.create_subprocess_shell('set -x;'
-            'cd "$FUZZER/fuzzer/repo";'
-            './afl-fuzz -i "$TARGET/corpus/$PROGRAM" -o "$SHARED" -X'
+            'cd "$FUZZER/fuzzer";'
+            'AFL_NO_UI=1 ./afl-fuzz -i "$TARGET/corpus/$PROGRAM" -o "$SHARED" -X'
             ' -F "$SHARED/imports" $AFL_FUZZARGS'
             ' -- "$OUT/nyx/packed/nyx_$TARGETNAME"',
             start_new_session=True)
