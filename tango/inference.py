@@ -285,12 +285,14 @@ class StateInferenceStrategy(SeedableStrategy,
                 self.assign_state_energies()
                 self._tracker.mode = InferenceMode.Discovery
 
-    async def perform_inference(self):
+    async def perform_inference(self,
+            limit: Optional[set[AbstractState]]=None):
         if not self._tracker.unmapped_states:
             return
         self._crosstest_timer()
         while self._tracker.unmapped_states:
-            cap, sub, collapsed, eqv_map, nodes = await self.perform_cross_pollination()
+            cap, sub, collapsed, eqv_map, nodes = \
+                await self.perform_cross_pollination(limit)
             self._tracker.update_equivalence(cap, sub, collapsed, eqv_map, nodes)
             if not self._complete_inference:
                 break
@@ -330,11 +332,12 @@ class StateInferenceStrategy(SeedableStrategy,
 
         return ext_adj, eqv_map, node_mask, sub
 
-    async def perform_cross_pollination(self):
+    async def perform_cross_pollination(self, limit):
         G = self._tracker.state_graph
-        batch = self._entropy.sample(
-            (pop := tuple(self._tracker.unmapped_states)),
-            k=min(self._inference_batch, len(pop)))
+        remaining = self._inference_batch
+        pop = tuple(self._tracker.unmapped_states)
+        batch = self._entropy.sample(pop, k=min(remaining, len(pop)))
+
         node_set = set(G.nodes) & self._tracker.equivalence.mapped_snapshots | set(batch)
         nodes = np.array(list(node_set))
 
@@ -367,6 +370,10 @@ class StateInferenceStrategy(SeedableStrategy,
             root_idx, = np.where(nodes == root_node)
             # the root node has no incident edges
             edge_mask[:, root_idx] = True
+        if limit:
+            # we exclude cross-testing anything not in the limited set
+            excludes, = np.where(np.vectorize(lambda x: x not in limit)(nodes))
+            edge_mask[excludes, :] = True
 
         # get a new capability matrix, overlayed with new adjacencies
         cap = self._overlay_capabilities(cap, adj, from_idx, to_idx)
