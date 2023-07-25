@@ -797,6 +797,8 @@ class StateInferenceStrategy(SeedableStrategy,
                 elif not state:
                     break
             except Exception:
+                # we either failed to reload state, or failed to send data;
+                # we'll ignore this silently and consider the state incapable
                 break
         else:
             if alt_dst:
@@ -827,17 +829,12 @@ class StateInferenceStrategy(SeedableStrategy,
     async def _perform_partial_cross_pollination(self, eqv_src: AbstractState,
             eqv_dst: AbstractState, input: AbstractInput) \
             -> Optional[AbstractState]:
+        assert eqv_src == await self._explorer.reload_state(eqv_src, dryrun=True)
         try:
-            assert eqv_src == await self._explorer.reload_state(eqv_src,
-                dryrun=True)
             return await self._loader.apply_transition(
                 (eqv_src, eqv_dst, input), eqv_src, update_cache=False)
         except StabilityException as ex:
-            # TODO add new states to graph and match against them too?
-            # current_state = ex.current_state
             return ex.current_state
-        except Exception:
-            return None
 
     @staticmethod
     def _update_cap_matrix(cap, src_idx, dst_idx, inputs):
