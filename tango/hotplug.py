@@ -88,6 +88,7 @@ class HotplugInference(StateInferenceStrategy,
         # WARN this is racey; the fuzzer could have created more inputs while
         # we iterate over the existing ones
         for p in self.watch_path.iterdir():
+            if len(batch) >= remaining: break
             if self.select_file(p):
                 batch.append(p)
         remaining -= len(batch)
