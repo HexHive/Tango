@@ -5,10 +5,16 @@
 			"path": "./sshd",
 			"args": ["./sshd", "-d", "-e", "-p", "2022", "-r", "-f", "sshd_config"],
 			"cwd": "./",
-			"env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
+			"env": {
+				"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0",
+				"LD_PRELOAD": "../../lib/libfaketime/src/libfaketime.so.1",
+				"FAKETIME": "+0 i0",
+				"FAKETIME_NO_CACHE": "1"
+			}
 		},
 		"forkserver": true,
-		"disable_aslr": true
+		"disable_aslr": true,
+		"use_seccomp": false
 	},
 	"channel": {
 		"type": "tcp",
