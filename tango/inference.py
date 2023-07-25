@@ -286,6 +286,8 @@ class StateInferenceStrategy(SeedableStrategy,
                 self._tracker.mode = InferenceMode.Discovery
 
     async def perform_inference(self):
+        if not self._tracker.unmapped_states:
+            return
         self._crosstest_timer()
         while self._tracker.unmapped_states:
             cap, sub, collapsed, eqv_map, nodes = await self.perform_cross_pollination()
