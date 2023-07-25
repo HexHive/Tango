@@ -4,6 +4,7 @@ from tango.core import (
     AbstractInput, PreparedInput, TransmitInstruction, SeedableStrategy)
 from tango.inference import StateInferenceStrategy
 from tango.common import ComponentOwner
+from tango.cov import FeatureMap
 
 from asyncinotify import Inotify, Mask, Event as InotifyEvent
 
@@ -105,24 +106,42 @@ class HotplugInference(StateInferenceStrategy,
             info("No new inputs after timeout");
             return
 
+        glbl_map = self._explorer._tracker._global
+        saved = glbl_map.clone()
         inputs = await self.import_inputs(batch)
+        non_atomics = set()
         for path, inp in inputs.items():
+            # reset the global coverage map to that of the root;
+            # this ensures that coverage is not masked by previous inputs
+            glbl_map.copy_from(
+                self._explorer._tracker.entry_state._feature_context)
+            glbl_map.commit(
+                self._explorer._tracker.entry_state._feature_mask)
+
             try:
                 await self._explorer.reload_state()
-
-                # reset the global coverage map to that of the root;
-                # this ensures that coverage is not masked by previous inputs
-                self._explorer._tracker._global.copy_from(
-                    self._explorer._last_state._feature_context)
-                self._explorer._tracker._global.commit(
-                    self._explorer._last_state._feature_mask)
-
                 # feed input to target and populate state machine
                 await self._explorer.follow(inp, minimize=False, atomic=True)
+                self._snapshots[self._explorer._last_state].append(path)
                 info("Loaded seed file: %s", inp)
             except Exception as ex:
                 warning("Failed to load %s: %s", inp, ex)
-            self._snapshots[self._explorer._last_state].append(path)
+                non_atomics.add(path)
+        glbl_map.copy_from(saved)
+
+        for path, inp in inputs.items():
+            if len(inp) > 1:
+                try:
+                    await self._explorer.reload_state()
+
+                    # feed input to target and populate state machine
+                    await self._explorer.follow(inp,
+                        minimize=False, atomic=True)
+                except Exception as ex:
+                    pass
+                info("Loaded atomics from seed file: %s", inp)
+                if path in non_atomics:
+                    self._snapshots[self._explorer._last_state].append(path)
 
         start = self._crosstest_timer.value
         await self.perform_inference()
