@@ -82,6 +82,7 @@ from . import net
 from . import raw
 from . import reactive
 from . import webui
+from . import cli
 from . import fuzzer
 from . import inference
 from . import hotplug

@@ -157,6 +157,9 @@ class Fuzzer:
         if is_profiling_active('webui'):
             webui = await session.owner.instantiate('webui')
             tg.create_task(webui.run(), name=f'webui[{name}]')
+        if is_profiling_active('cli'):
+            cli = await session.owner.instantiate('cli')
+            tg.create_task(cli.run(), name=f'cli[{name}]')
 
     async def create_session(self, context, sid=0):
         if sid in self._sessions:
