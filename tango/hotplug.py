@@ -357,7 +357,6 @@ class AFLppInference(HotplugInference):
         return await asyncio.create_subprocess_shell('set -x;'
             'cd "$FUZZER/fuzzer";'
             'export AFL_SKIP_CPUFREQ=1;'
-            'export AFL_NO_AFFINITY=1;'
             'export AFL_NO_UI=1;'
             './afl-fuzz -i "$TARGET/corpus/$PROGRAM" -o "$SHARED" -X'
             ' -F "$SHARED/imports" $AFL_FUZZARGS'
