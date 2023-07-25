@@ -146,7 +146,7 @@ class HotplugInference(StateInferenceStrategy,
                     self._snapshots[self._explorer._last_state].append(path)
 
         start = self._crosstest_timer.value
-        await self.perform_inference()
+        await self.perform_inference(set(self._snapshots))
         end = self._crosstest_timer.value
         self._batch_timeout = max(1.1 * self._batch_timeout, 2 * (end - start))
         info(f"Increased batch timeout to {self._batch_timeout}")
