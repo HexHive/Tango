@@ -122,7 +122,8 @@ class HotplugInference(StateInferenceStrategy,
             try:
                 await self._explorer.reload_state()
                 # feed input to target and populate state machine
-                await self._explorer.follow(inp, minimize=False, atomic=True)
+                await self._explorer.follow(inp,
+                    minimize=False, atomic=False)
                 self._snapshots[self._explorer._last_state].append(path)
                 info("Loaded seed file: %s", inp)
             except Exception as ex:
@@ -137,7 +138,7 @@ class HotplugInference(StateInferenceStrategy,
 
                     # feed input to target and populate state machine
                     await self._explorer.follow(inp,
-                        minimize=False, atomic=True)
+                        minimize=False, validate=False, atomic=True)
                 except Exception as ex:
                     pass
                 info("Loaded atomics from seed file: %s", inp)
