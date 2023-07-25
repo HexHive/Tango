@@ -350,6 +350,8 @@ class AFLppInference(HotplugInference):
         return choices
 
     async def start_fuzzer(self):
+        cpu_bind = os.environ['AFFINITY']
+        cpu_bind = cpu_bind.split(',')[0]
         await (await asyncio.create_subprocess_shell('set -x;'
             f'rm -rf "{self._out_dir}"')).wait()
         return await asyncio.create_subprocess_shell('set -x;'
@@ -359,6 +361,7 @@ class AFLppInference(HotplugInference):
             'export AFL_NO_UI=1;'
             './afl-fuzz -i "$TARGET/corpus/$PROGRAM" -o "$SHARED" -X'
             ' -F "$SHARED/imports" $AFL_FUZZARGS'
+           f' -b {cpu_bind}'
             ' -- "$OUT/nyx/packed/nyx_$TARGETNAME"',
             start_new_session=True)
 
