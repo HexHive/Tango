@@ -1081,15 +1081,27 @@ class FileDescriptorChannel(PtraceChannel):
         while await self.receive():
             pass
 
-        if len(data):
+        sent = 0
+        if self._chunk:
+            unpack_len = len(data) - (len(data) % self._chunk)
+            for s, in struct.iter_unpack(f'{self._chunk}s', data[:unpack_len]):
+                try:
+                    sent += await self._send_some(s)
+                except Exception as ex:
+                    raise ChannelBrokenException("Failed to send data") from ex
+                await self.sync()
+                assert self.synced
+        else:
+            unpack_len = 0
+
+        if unpack_len < len(data):
             try:
-                sent = await self._send_some(data)
+                sent += await self._send_some(data[unpack_len:])
             except Exception as ex:
                 raise ChannelBrokenException("Failed to send data") from ex
             await self.sync()
             assert self.synced
-        else:
-            sent = 0
+
         debug("Sent data to target: %s", data[:sent])
         return sent
 
