@@ -196,8 +196,9 @@ class BaseExplorer(AbstractExplorer,
         else:
             paths = (target,)
 
+        ipaths = zip(range(self._reload_attempts), paths)
         first_path = None
-        for path in paths:
+        for i, path in ipaths:
             if not first_path:
                 first_path = path
             if path:
