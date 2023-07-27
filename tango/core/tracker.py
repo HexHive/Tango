@@ -389,10 +389,13 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
 
         predecessor_path = []
         current_state = destination
+        seen = set()
         while current_state.predecessor_transition is not None:
             pred, inp = current_state.predecessor_transition
             predecessor_path.append((pred, current_state, inp))
             current_state = pred
+            assert current_state not in seen, "Cycle detected in predecessors"
+            seen.add(current_state)
         predecessor_path.reverse()
         if (path := get_subpath(predecessor_path, source)):
             yield path
