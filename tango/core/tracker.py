@@ -97,16 +97,21 @@ class AbstractState(ABC, metaclass=AbstractStateMeta):
     def predecessor_transition(self) -> Transition:
         pass
 
+    @property
+    def preferred_path(self) -> Optional[Path]:
+        pass
+
     @abstractmethod
     def __eq__(self, other: AbstractState) -> bool:
         pass
 
 class BaseState(AbstractState):
-    __slots__ = '_pred',
+    __slots__ = '_pred', '_preferred'
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._pred = None
+        self._preferred = None
 
     @property
     def out_edges(self) -> Iterable[Transition]:
@@ -123,6 +128,14 @@ class BaseState(AbstractState):
     @predecessor_transition.setter
     def predecessor_transition(self, transition: Transition):
         self._pred = transition
+
+    @property
+    def preferred_path(self) -> Optional[Path]:
+        return self._preferred
+
+    @preferred_path.setter
+    def preferred_path(self, path: Path):
+        self._preferred = path
 
 class AbstractStateGraphMeta(ABCMeta):
     def __new__(metacls, name, bases, namespace, *, graph_cls=None):
@@ -375,6 +388,43 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
         else:
             path.reverse()
             return path
+
+    def get_preferred_paths(self, destination: AbstractState, source: AbstractState=None) \
+            -> PathGenerator:
+        """
+        Returns a sequence of two paths to the destination, where possible:
+        - first, using the destination.preferred_path property
+        - second, by stitching together the predecessor transitions of each
+          state, until `source` is encountered.
+
+        :param      destination:  The destination state
+        :type       destination:  AbstractState
+        :param      source:       The source state
+        :type       source:       AbstractState
+
+        :returns:   Generator object, each item is a list of consecutive edge
+                    tuples on the same path.
+        :rtype:     generator[list[src, dst, input]]
+        """
+        def get_subpath(path, until_source):
+            until_source = until_source or self._entry_state
+            for i, (src, _, _)  in enumerate(path):
+                if src == until_source:
+                    return path[i:]
+
+        if destination.preferred_path:
+            if (path := get_subpath(destination.preferred_path, source)):
+                yield path
+
+        predecessor_path = []
+        current_state = destination
+        while current_state.predecessor_transition is not None:
+            pred, inp = current_state.predecessor_transition
+            predecessor_path.append((pred, current_state, inp))
+            current_state = pred
+        predecessor_path.reverse()
+        if (path := get_subpath(predecessor_path, source)):
+            yield path
 
     def get_min_paths(self, destination: AbstractState, source: AbstractState=None) \
             -> PathGenerator:

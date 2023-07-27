@@ -109,10 +109,16 @@ class BaseExplorer(AbstractExplorer,
                           self._tracker.state_graph.get_paths(state))
             # Loop over possible paths until retry threshold
             ipaths = zip(range(self._reload_attempts), paths)
+            retry = False
             while True:
                 try:
                     i, path = next(ipaths)
-                    return await self._arbitrate_load_state(path)
+                    current_state = await self._arbitrate_load_state(path)
+                    if retry:
+                        info(f"Reached {state} through path {i}")
+                    if retry and not current_state.preferred_path:
+                        current_state.preferred_path = path
+                    return current_state
                 except StopIteration:
                     break
                 except StabilityException as ex:
@@ -121,6 +127,7 @@ class BaseExplorer(AbstractExplorer,
                             ex.args[0], i + 1, self._reload_attempts)
                     CountProfiler('unstable')(1)
                     await self._state_reload_cb(ex.expected_state, exc=ex)
+                    retry = True
                 except Exception as ex:
                     warning("Failed to load state %s (ex=%r)!", state, ex)
                     break
