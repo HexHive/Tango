@@ -130,7 +130,7 @@ class TransmitInstruction(AbstractInstruction):
         return isinstance(other, TransmitInstruction) and self._data == other._data
 
     def __repr__(self):
-        return f'<tx data="{self._data}">'
+        return f'<tx data={self._data}>'
 
     def __hash__(self):
         return hash(bytes(self._data))
@@ -153,7 +153,7 @@ class ReceiveInstruction(AbstractInstruction):
         # TODO verify size? verify data??
 
     def __repr__(self):
-        return f'<rx data="{self._data}">'
+        return f'<rx data={self._data}>'
 
     def __eq__(self, other: ReceiveInstruction):
         # FIXME make this depend on the expected data?
