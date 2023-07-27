@@ -787,63 +787,75 @@ class StateInferenceStrategy(SeedableStrategy,
 
     async def _perform_one_cross_pollination(self, eqv_src: AbstractState,
             eqv_dst: AbstractState, inputs: Sequence[AbstractInput]) \
-            -> Optional[AbstractState]:
-        alt_dst = None
+            -> bool:
+        success = True
         for inp in inputs:
             try:
-                if (state := await self._perform_partial_cross_pollination(
-                        eqv_src, eqv_dst, inp)) and state != eqv_dst:
-                    # we check if all responses reach a different state;
-                    # this is a simplification for "each input may elicit a
-                    #   different response"
-                    alt_dst = alt_dst or state
-                    if alt_dst != state:
-                        # a different alt_dst was observed
-                        break
-                    else:
-                        # we now consider this the new eqv_dst
-                        eqv_dst = alt_dst
-                elif not state:
-                    break
-            except Exception:
-                # we either failed to reload state, or failed to send data;
-                # we'll ignore this silently and consider the state incapable
-                break
-        else:
-            if alt_dst:
-                # a consistent alt destination was found; we add it to the graph
-                if self._dynamic_inference and alt_dst != eqv_src:
+                if not await self._perform_partial_cross_pollination(
+                        eqv_src, eqv_dst, inp):
+                    # some other exception occurred
+                    success = False
+            except StabilityException as ex:
+                # we observed a state different that the expected destination
+                success = False
+                if self._dynamic_inference and ex.current_state != eqv_src:
+                    if self._loader._restore:
+                        # WARN we need to re-execute the input with an un-altered
+                        # coverage map, because the original one was based on
+                        # eqv_dst, which we failed to reach
+                        assert eqv_src == await self._explorer.reload_state(
+                            eqv_src)
+                        try:
+                            await self._loader._driver.execute_input(inp)
+                        except Exception as ex:
+                            # silently ignore any exceptions that arise
+                            warning(f"Failed to re-apply input ({ex = })")
+                            continue
+                    # if this is an unseen state, the result will not be cached;
+                    # we'll use this as an oracle instead of checking if the
+                    # state is in the state graph
+                    alt_dst = self._tracker.current_state
                     new_dst = self._tracker.update_state(eqv_src,
-                        input=None, peek_result=alt_dst)
+                        input=inp, peek_result=alt_dst)
                     assert new_dst == alt_dst
-                    if new_dst is not alt_dst:
+                    unseen = new_dst is not alt_dst
+                    self._tracker.update_transition(eqv_src, new_dst, inp,
+                        state_changed=True, new_transition=unseen)
+                    if unseen:
                         info(f"Discovered new state {new_dst} during inference")
                         # FIXME this callback interface is cursed
                         await self._explorer._state_update_cb(new_dst,
-                            input=None, orig_input=None, breadcrumbs=new_dst)
-                        for inp in inputs:
-                            self._tracker.update_transition(eqv_src, new_dst, inp,
-                                state_changed=True)
-                            # we call these to yield new files in the queue
-                            await self._explorer._transition_update_cb(
-                                eqv_src, new_dst, inp, orig_input=inp,
-                                breadcrumbs=new_dst, state_changed=True,
-                                new_transition=True)
-                # deliberate fall-through to return
-            else:
-                # eqv_src matched all the responses to reach expected dst
-                return eqv_dst
-        return None
+                            input=inp, orig_input=inp, breadcrumbs=new_dst)
+                        # we call these to yield new files in the queue
+                        await self._explorer._transition_update_cb(
+                            eqv_src, new_dst, inp, orig_input=inp,
+                            breadcrumbs=new_dst, state_changed=True,
+                            new_transition=True)
+                else:
+                    # no need to try the rest if we're not interested in new
+                    # responses
+                    break
+            except Exception:
+                # we either failed to reload state, or failed to send data;
+                # we'll raise this so that the state is skipped
+                raise
+        return success
 
     async def _perform_partial_cross_pollination(self, eqv_src: AbstractState,
             eqv_dst: AbstractState, input: AbstractInput) \
             -> Optional[AbstractState]:
-        assert eqv_src == await self._explorer.reload_state(eqv_src, dryrun=True)
+        assert eqv_src == await self._explorer.reload_state(eqv_src)
         try:
             return await self._loader.apply_transition(
                 (eqv_src, eqv_dst, input), eqv_src, update_cache=False)
         except StabilityException as ex:
-            return ex.current_state
+            # we'll just inform the caller that we failed to reproduce the
+            # transition; this would be used with dynamic_inference
+            assert ex.expected_state is eqv_dst
+            raise
+        except Exception as ex:
+            # otherwise, we ignore the exception and return a failure
+            return None
 
     @staticmethod
     def _update_cap_matrix(cap, src_idx, dst_idx, inputs):
