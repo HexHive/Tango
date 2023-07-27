@@ -292,7 +292,7 @@ class NyxNetInference(HotplugInference):
         outfile.write_text(json.dumps(m))
 
         for snapshot in self._tracker.equivalence.mapped_snapshots:
-            inp = self._explorer.get_reproducer(target=snapshot)
+            inp = await self._explorer.get_reproducer(target=snapshot)
             p = self._sharedir / 'imports' / f'{hash(snapshot)}.bin'
             if not p.parent.exists():
                 p.parent.mkdir(parents=True, exist_ok=True)
@@ -402,7 +402,7 @@ class AFLppInference(HotplugInference):
                     f.write(struct.pack('I', i))
 
         for snapshot in self._tracker.equivalence.mapped_snapshots:
-            inp = self._explorer.get_reproducer(target=snapshot)
+            inp = await self._explorer.get_reproducer(target=snapshot)
             p = self._out_dir.parent / 'imports' / f'{hash(snapshot)}.bin'
             if not p.parent.exists():
                 p.parent.mkdir(parents=True, exist_ok=True)

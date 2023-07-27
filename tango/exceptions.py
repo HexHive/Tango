@@ -54,3 +54,8 @@ class StateNotReproducibleException(RuntimeError):
     def __init__(self, msg, faulty_state):
         super().__init__(msg)
         self.faulty_state = faulty_state
+
+class PathNotReproducibleException(RuntimeError):
+    def __init__(self, msg, faulty_path):
+        super().__init__(msg)
+        self.faulty_path = faulty_path
