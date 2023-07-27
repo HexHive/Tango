@@ -799,7 +799,7 @@ class StateInferenceStrategy(SeedableStrategy,
                 # we observed a state different that the expected destination
                 success = False
                 if self._dynamic_inference and ex.current_state != eqv_src:
-                    if self._loader._restore:
+                    if self._loader._restore or self._loader._driver._clear_cov:
                         # WARN we need to re-execute the input with an un-altered
                         # coverage map, because the original one was based on
                         # eqv_dst, which we failed to reach
