@@ -344,11 +344,13 @@ class CoverageDriver(ProcessDriver,
                 if self._clear_cov:
                     memset(self._tracker._features.object, 0,
                         self._tracker._features.size)
-                await instruction.perform(self._channel)
-                # we invalidate the current_state cache
-                # WARN we use pop with a default value in case the cache is
-                # invalidated twice in a row.
-                self._tracker.__dict__.pop('current_state', None)
+                try:
+                    await instruction.perform(self._channel)
+                finally:
+                    # we invalidate the current_state cache
+                    # WARN we use pop with a default value in case the cache is
+                    # invalidated twice in a row.
+                    self._tracker.__dict__.pop('current_state', None)
         except Exception as ex:
             raise LoadedException(ex, lambda: input[:idx]) from ex
         finally:
