@@ -566,6 +566,7 @@ class BaseTracker(AbstractTracker):
                 # reproducing the state is more path-aware and does not invoke a
                 # graph search every time
                 if input is not None and new and \
+                        destination is not self.entry_state and \
                         destination.predecessor_transition is None:
                     destination.predecessor_transition = (source, input)
         else:

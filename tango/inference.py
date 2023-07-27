@@ -819,10 +819,10 @@ class StateInferenceStrategy(SeedableStrategy,
                         input=inp, peek_result=alt_dst)
                     assert new_dst == alt_dst
                     unseen = new_dst is not alt_dst
+                    self._tracker.update_transition(eqv_src, new_dst, inp,
+                        state_changed=eqv_src != new_dst, new_transition=unseen)
                     if unseen:
                         info(f"Discovered new state {new_dst} during inference")
-                        self._tracker.update_transition(eqv_src, new_dst, inp,
-                            state_changed=True, new_transition=unseen)
                         # FIXME this callback interface is cursed
                         await self._explorer._state_update_cb(new_dst,
                             input=inp, orig_input=inp, breadcrumbs=new_dst)
