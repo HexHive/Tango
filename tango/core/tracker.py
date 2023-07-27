@@ -11,7 +11,7 @@ from tango.exceptions import StateNotReproducibleException
 from abc          import ABC, ABCMeta, abstractmethod
 from typing import TypeVar, Iterable, Optional, Any
 from nptyping import NDArray, Shape
-from itertools import product as xproduct, tee
+from itertools import product as xproduct, tee, chain
 from functools import partial
 from statistics import mean
 from datetime import datetime
@@ -388,6 +388,12 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
         else:
             path.reverse()
             return path
+
+    def get_all_paths(self, destination: AbstractState, source: AbstractState=None) \
+            -> PathGenerator:
+        return chain(self.get_preferred_paths(destination, source),
+                     self.get_min_paths(destination, source),
+                     self.get_paths(destination, source))
 
     def get_preferred_paths(self, destination: AbstractState, source: AbstractState=None) \
             -> PathGenerator:
