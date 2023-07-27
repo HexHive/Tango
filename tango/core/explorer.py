@@ -167,7 +167,6 @@ class BaseExplorer(AbstractExplorer,
     async def reload_state(self, state_or_path: LoadableTarget=None, *,
             dryrun=False) -> AbstractState:
         if not dryrun:
-            ValueProfiler('status')('reset_state')
             self._reset_current_path()
             self._accumulated_input = EmptyInput()
 
