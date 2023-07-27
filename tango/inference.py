@@ -608,20 +608,17 @@ class StateInferenceStrategy(SeedableStrategy,
 
                     # At this point, we may have multiple possible groupings
                     candidates_eqv = equivalence.members(candidates, as_index=True)
-                    if (l := len(candidates_eqv)) > 1:
-                        # we have more than one possible equivalence set;
-                        # we train a small DT to differentiate the two, based on
-                        # their updated cap matrices
-                        critical(f"Multiple candidates ({l}) are not yet supported!")
-                        candidates_eqv = candidates_eqv[(0,),...]
-
                     # We choose a candidate;
                     # equivalence.members may return None in case a group was not
                     # found in the mapping; we need to replace that by an empty
                     # iterable for use later in the code.
                     # A group may disappear from the mapping after re-indexing if
                     # all its members vanish (e.g. irreproducible)
-                    candidate_eqv = candidates_eqv[0] or ()
+                    combine = np.frompyfunc(lambda l, r:
+                        (l or frozenset()) | (r or frozenset()), 2, 1,
+                        identity=frozenset())
+                    candidate_eqv = combine.reduce(candidates_eqv)
+
                     # snapshot indices which the candidate can reproduce
                     cap_eqv, = np.where(
                         np.logical_or.reduce(cap[list(candidate_eqv)] != None, axis=0))
