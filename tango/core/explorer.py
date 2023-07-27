@@ -2,7 +2,7 @@ from __future__ import annotations
 from . import debug, info, warning, critical
 
 from tango.exceptions import (StabilityException, StateNotReproducibleException,
-    StatePrecisionException, LoadedException)
+    StatePrecisionException, LoadedException, PathNotReproducibleException)
 from tango.core.tracker import AbstractState, AbstractTracker
 from tango.core.input import (AbstractInput, BaseInput, PreparedInput,
     BaseDecorator, EmptyInput)
@@ -187,20 +187,39 @@ class BaseExplorer(AbstractExplorer,
     def get_context_input(self, input: BaseInput, **kwargs) -> BaseExplorerContext:
         return BaseExplorerContext(input, explorer=self, **kwargs)
 
-    def get_reproducer(self, trailer: BaseInput=EmptyInput(), *, \
-            target: Optional[LoadableTarget]=None) -> BaseInput:
+    async def get_reproducer(self, trailer: BaseInput=EmptyInput(), *, \
+            target: Optional[LoadableTarget]=None, validate: bool=True,
+            expected_exception: Optional[Exception]=None) -> BaseInput:
         if not target:
-            breadcrumbs = self._current_path
+            paths = (self._current_path,)
         elif isinstance((state := target), AbstractState):
-            breadcrumbs = self._tracker.state_graph.get_any_path(state)
+            paths = self._tracker.state_graph.get_all_paths(state)
         else:
-            breadcrumbs = target
+            paths = (target,)
 
-        if breadcrumbs:
-            prefix = reduce(operator.add, (x[2] for x in breadcrumbs))
-        else:
-            prefix = EmptyInput()
-        return prefix + trailer
+        first_path = None
+        for path in paths:
+            if not first_path:
+                first_path = path
+            if path:
+                prefix = reduce(operator.add, (x[2] for x in path))
+            else:
+                prefix = EmptyInput()
+            reproducer = prefix + trailer
+            if not validate:
+                return reproducer
+            try:
+                await self.reload_state(dryrun=True)
+                await self._driver.execute_input(reproducer)
+                return reproducer
+            except Exception as ex:
+                # FIXME maybe perform more robust structural matching
+                if expected_exception and type(ex) is type(expected_exception):
+                    return reproducer
+
+        warning("Failed to get reproducer for behavior")
+        raise PathNotReproducibleException("Failed to get reproducer",
+            first_path)
 
     async def follow(self, input: BaseInput, **kwargs):
         """

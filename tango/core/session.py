@@ -19,10 +19,13 @@ from tango.exceptions import (StabilityException,
                           ChannelSetupException,
                           ProcessCrashedException,
                           ProcessTerminatedException,
-                          StateNotReproducibleException)
+                          StateNotReproducibleException,
+                          PathNotReproducibleException)
 from contextvars import ContextVar
+from functools import reduce
 
 import asyncio
+import operator
 
 __all__ = ['FuzzerSession', 'get_current_session', 'set_current_session']
 
@@ -87,9 +90,17 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
                 except ProcessCrashedException as pc:
                     error(f"Process crashed: {pc = }")
                     CountProfiler('crash')(1)
-                    reproducer = self._explorer.get_reproducer(ex.payload)
-                    self._generator.save_input(ex.payload, 'crash',
-                        repr(self._explorer._last_state))
+                    category = 'crash'
+                    label = repr(self._explorer._last_state)
+                    try:
+                        reproducer = await self._explorer.get_reproducer(
+                            ex.payload, expected_exception=ex)
+                    except PathNotReproducibleException as rep:
+                        prefix = reduce(operator.add, (x[2] for x in rep.faulty_path))
+                        reproducer = prefix + ex.payload
+                        category = 'unstable'
+                        label = f'crash_{label}'
+                    self._generator.save_input(reproducer, category, label)
                     # TODO augment loader to dump stdout and stderr too
                 except ProcessTerminatedException as pt:
                     debug("Process terminated unexpectedly? (pt=%s)", pt)
@@ -153,16 +164,23 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
             exc: Optional[Exception]=None, **kwargs):
         if exc:
             if isinstance(exc, StatePrecisionException):
-                label = 'unstable'
+                category = 'unstable'
             elif isinstance(exc, ProcessCrashedException):
-                label = 'crash'
+                category = 'crash'
                 error("Process crashed: exc=%s", exc)
             else:
-                label = None
-            if label:
-                reproducer = self._explorer.get_reproducer(
-                    input, target=breadcrumbs)
-                self._generator.save_input(reproducer, label, repr(state))
+                category = None
+            label = repr(state)
+            if category:
+                try:
+                    reproducer = await self._explorer.get_reproducer(
+                        input, target=breadcrumbs, expected_exception=exc)
+                except PathNotReproducibleException as ex:
+                    prefix = reduce(operator.add, (x[2] for x in ex.faulty_path))
+                    reproducer = prefix + ex.payload
+                    category = unstable
+                    label = f'crash_{label}'
+                self._generator.save_input(reproducer, category, label)
 
             if isinstance(exc, ProcessCrashedException):
                 # FIXME kinda ugly
@@ -180,8 +198,8 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
             exc: Optional[Exception]=None, **kwargs):
 
         if new_transition:
-            reproducer = self._explorer.get_reproducer(
-                input, target=breadcrumbs)
+            reproducer = await self._explorer.get_reproducer(
+                input, target=breadcrumbs, validate=False)
             self._generator.save_input(reproducer, 'queue', repr(destination))
 
         self._generator.update_transition(source, destination, input,
