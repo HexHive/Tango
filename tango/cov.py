@@ -505,8 +505,7 @@ class CoverageTracker(BaseTracker,
                 peek_result=peek_result)
         if not exc:
             if peek_result is None:
-                next_state = self.extract_snapshot(self._global,
-                    parent_state=source, allow_empty=source is None)
+                next_state = self.peek(source, commit=True)
             else:
                 # if peek_result was specified, we can skip the recalculation;
                 # we reconstruct a cached version of the state
@@ -541,6 +540,7 @@ class CoverageTracker(BaseTracker,
     def peek(self,
             default_source: FeatureSnapshot=None,
             expected_destination: FeatureSnapshot=None,
+            commit: bool=False,
             **kwargs) -> FeatureSnapshot:
         fmap = self._scratch
         if expected_destination:
@@ -552,14 +552,14 @@ class CoverageTracker(BaseTracker,
             fmap.copy_from(self._global)
             parent = default_source
 
-        next_state = self.extract_snapshot(fmap, parent, commit=False,
+        next_state = self.extract_snapshot(fmap, parent, commit=commit,
             allow_empty=parent is None, **kwargs)
         if not next_state:
             for _, next_state, _ in self._current_state.out_edges:
                 fmap.copy_from(next_state._feature_context)
                 parent = next_state._parent
                 if next_state == self.extract_snapshot(
-                        fmap, parent, commit=False, **kwargs):
+                        fmap, parent, commit=commit, **kwargs):
                     break
             else:
                 next_state = FeatureSnapshot(parent, default_source._feature_mask,
