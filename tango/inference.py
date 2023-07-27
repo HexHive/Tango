@@ -552,144 +552,153 @@ class StateInferenceStrategy(SeedableStrategy,
         for eqv_idx in uidx:
             eqv_node = nodes[eqv_idx]
 
-            # with DT, we are only concerned with quadrants C and D
-            should_dt_predict = should_predict and eqv_idx not in mapped_labels
+            try:
+                # with DT, we are only concerned with quadrants C and D
+                should_dt_predict = should_predict and eqv_idx not in mapped_labels
 
-            vidx = None
-            if self._dt_predict and should_dt_predict:
-                # traverse the dt
-                dt = self._dt_clf.tree_
-                stack = [0]
-                candidates = np.empty((0,), dtype=int)
-                while stack:
-                    cur = stack.pop()
-                    if dt.children_left[cur] == dt.children_right[cur]:
-                        # we've reached a leaf node
-                        ((sidx,)) = dt.value[cur][0].nonzero()
-                        candidates = np.append(candidates, sidx)
-                        # at this point, egde_mask[:,mapped_labels] has been covered;
-                        # and for grouped nodes, it is all True.
-                        continue
-                    dst_idx = dt.feature[cur]
-                    if dst_idx == -1:
-                        # the snapshot no longer exists, we try both sides
-                        stack.append(dt.children_left[cur])
-                        stack.append(dt.children_right[cur])
-                        continue
+                vidx = None
+                if self._dt_predict and should_dt_predict:
+                    # traverse the dt
+                    dt = self._dt_clf.tree_
+                    stack = [0]
+                    candidates = np.empty((0,), dtype=int)
+                    while stack:
+                        cur = stack.pop()
+                        if dt.children_left[cur] == dt.children_right[cur]:
+                            # we've reached a leaf node
+                            ((sidx,)) = dt.value[cur][0].nonzero()
+                            candidates = np.append(candidates, sidx)
+                            # at this point, egde_mask[:,mapped_labels] has been covered;
+                            # and for grouped nodes, it is all True.
+                            continue
+                        dst_idx = dt.feature[cur]
+                        if dst_idx == -1:
+                            # the snapshot no longer exists, we try both sides
+                            stack.append(dt.children_left[cur])
+                            stack.append(dt.children_right[cur])
+                            continue
 
-                    if edge_mask[eqv_idx, dst_idx]:
-                        # can occur when multiple paths are traversed
-                        # e.g., when the snapshot no longer exists as above
-                        exists = cap[eqv_idx, dst_idx] is not None
-                    else:
-                        if should_validate:
-                            # edge was actually tested, so we mark it as such
-                            shadow_mask[eqv_idx, dst_idx] = False
-                            valid_mask[eqv_idx, dst_idx] = True
+                        if edge_mask[eqv_idx, dst_idx]:
+                            # can occur when multiple paths are traversed
+                            # e.g., when the snapshot no longer exists as above
+                            exists = cap[eqv_idx, dst_idx] is not None
+                        else:
+                            if should_validate:
+                                # edge was actually tested, so we mark it as such
+                                shadow_mask[eqv_idx, dst_idx] = False
+                                valid_mask[eqv_idx, dst_idx] = True
 
-                        dst_node = nodes[dst_idx]
-                        inputv = get_incident_input_vector(dst_idx)
-                        if (exists := await self._perform_one_cross_pollination(
-                                eqv_node, dst_node, inputv)):
-                            self._update_cap_matrix(cap, eqv_idx, dst_idx, inputv)
+                            dst_node = nodes[dst_idx]
+                            inputv = get_incident_input_vector(dst_idx)
+                            if (exists := await self._perform_one_cross_pollination(
+                                    eqv_node, dst_node, inputv)):
+                                self._update_cap_matrix(cap, eqv_idx, dst_idx, inputv)
 
-                        # mark edge as tested
-                        edge_mask[eqv_idx, dst_idx] = True
+                            # mark edge as tested
+                            edge_mask[eqv_idx, dst_idx] = True
 
-                        dt_count_tests += 1
+                            dt_count_tests += 1
+                            count_tests += 1
+
+                            # report completion status
+                            report_progress()
+
+                        children = dt.children_left if exists else dt.children_right
+                        stack.append(children[cur])
+
+                    # At this point, we may have multiple possible groupings
+                    candidates_eqv = equivalence.members(candidates, as_index=True)
+                    if (l := len(candidates_eqv)) > 1:
+                        # we have more than one possible equivalence set;
+                        # we train a small DT to differentiate the two, based on
+                        # their updated cap matrices
+                        critical(f"Multiple candidates ({l}) are not yet supported!")
+                        candidates_eqv = candidates_eqv[(0,),...]
+
+                    # We choose a candidate;
+                    # equivalence.members may return None in case a group was not
+                    # found in the mapping; we need to replace that by an empty
+                    # iterable for use later in the code.
+                    # A group may disappear from the mapping after re-indexing if
+                    # all its members vanish (e.g. irreproducible)
+                    candidate_eqv = candidates_eqv[0] or ()
+                    # snapshot indices which the candidate can reproduce
+                    cap_eqv, = np.where(
+                        np.logical_or.reduce(cap[list(candidate_eqv)] != None, axis=0))
+
+                    # the set of edges which were not tested during prediction
+                    vidx_untested, = np.where(~edge_mask[eqv_idx,:])
+
+                    # the set of untested edges to all new snapshots (quadrant D)
+                    vidx_ungrouped = np.setdiff1d(vidx_untested, mapped_labels,
+                        assume_unique=True)
+
+                    # the set of edges from the capability set of the candidate
+                    # (quadrant C)
+                    vidx_unpredicted = np.intersect1d(
+                        vidx_untested,
+                        np.intersect1d(cap_eqv, mapped_labels, assume_unique=True))
+                    dt_count_tests += vidx_unpredicted.size
+                    dt_count_skips += np.intersect1d(vidx_untested, mapped_labels,
+                        assume_unique=True).size - vidx_unpredicted.size
+
+                    if self._dt_extrapolate:
+                        # get the set of new snapshots that we did not test, that
+                        # the candidate can reproduce (quadrant D)
+                        # WARN This assumes that all of mapped_labels is processed before
+                        # new snapshots; this is enforced by constructing uidx with
+                        # mapped_labels first
+                        init_size = vidx_ungrouped.size
+                        vidx_ungrouped = np.intersect1d(vidx_ungrouped, cap_eqv,
+                            assume_unique=True)
+                        dtex_count_tests += vidx_ungrouped.size
+                        dtex_count_skips += init_size - vidx_ungrouped.size
+
+                    # the final set of edges to be tested after prediction
+                    vidx_tobetested = np.union1d(
+                        vidx_unpredicted,
+                        vidx_ungrouped)
+
+                    vidx_tobeskipped = np.setdiff1d(vidx_untested, vidx_tobetested,
+                        assume_unique=True)
+                    assert np.all(~edge_mask[eqv_idx, vidx_tobeskipped])
+                    edge_mask[eqv_idx, vidx_tobeskipped] = True
+                    count_skips += vidx_tobeskipped.size
+
+                    vidx = vidx_tobetested
+                else:
+                    vidx, = np.where(~edge_mask[eqv_idx,:])
+
+                if should_validate:
+                    valid_mask[eqv_idx, vidx] = True
+                    shadow_mask[eqv_idx, vidx] = False
+
+                for dst_idx in vidx:
+                    dst_node = nodes[dst_idx]
+                    inputv = get_incident_input_vector(dst_idx)
+                    assert inputv
+
+                    if (exists := await self._perform_one_cross_pollination(
+                            eqv_node, dst_node, inputv)):
+                        self._update_cap_matrix(cap, eqv_idx, dst_idx, inputv)
+
+                    # mark edge as tested
+                    assert not edge_mask[eqv_idx, dst_idx]
+                    edge_mask[eqv_idx, dst_idx] = True
+
+                    if should_predict:
                         count_tests += 1
 
-                        # report completion status
-                        report_progress()
-
-                    children = dt.children_left if exists else dt.children_right
-                    stack.append(children[cur])
-
-                # At this point, we may have multiple possible groupings
-                candidates_eqv = equivalence.members(candidates, as_index=True)
-                if (l := len(candidates_eqv)) > 1:
-                    # we have more than one possible equivalence set;
-                    # we train a small DT to differentiate the two, based on
-                    # their updated cap matrices
-                    critical(f"Multiple candidates ({l}) are not yet supported!")
-                    candidates_eqv = candidates_eqv[(0,),...]
-
-                # We choose a candidate;
-                # equivalence.members may return None in case a group was not
-                # found in the mapping; we need to replace that by an empty
-                # iterable for use later in the code.
-                # A group may disappear from the mapping after re-indexing if
-                # all its members vanish (e.g. irreproducible)
-                candidate_eqv = candidates_eqv[0] or ()
-                # snapshot indices which the candidate can reproduce
-                cap_eqv, = np.where(
-                    np.logical_or.reduce(cap[list(candidate_eqv)] != None, axis=0))
-
-                # the set of edges which were not tested during prediction
-                vidx_untested, = np.where(~edge_mask[eqv_idx,:])
-
-                # the set of untested edges to all new snapshots (quadrant D)
-                vidx_ungrouped = np.setdiff1d(vidx_untested, mapped_labels,
-                    assume_unique=True)
-
-                # the set of edges from the capability set of the candidate
-                # (quadrant C)
-                vidx_unpredicted = np.intersect1d(
-                    vidx_untested,
-                    np.intersect1d(cap_eqv, mapped_labels, assume_unique=True))
-                dt_count_tests += vidx_unpredicted.size
-                dt_count_skips += np.intersect1d(vidx_untested, mapped_labels,
-                    assume_unique=True).size - vidx_unpredicted.size
-
-                if self._dt_extrapolate:
-                    # get the set of new snapshots that we did not test, that
-                    # the candidate can reproduce (quadrant D)
-                    # WARN This assumes that all of mapped_labels is processed before
-                    # new snapshots; this is enforced by constructing uidx with
-                    # mapped_labels first
-                    init_size = vidx_ungrouped.size
-                    vidx_ungrouped = np.intersect1d(vidx_ungrouped, cap_eqv,
-                        assume_unique=True)
-                    dtex_count_tests += vidx_ungrouped.size
-                    dtex_count_skips += init_size - vidx_ungrouped.size
-
-                # the final set of edges to be tested after prediction
-                vidx_tobetested = np.union1d(
-                    vidx_unpredicted,
-                    vidx_ungrouped)
-
-                vidx_tobeskipped = np.setdiff1d(vidx_untested, vidx_tobetested,
-                    assume_unique=True)
-                assert np.all(~edge_mask[eqv_idx, vidx_tobeskipped])
-                edge_mask[eqv_idx, vidx_tobeskipped] = True
-                count_skips += vidx_tobeskipped.size
-
-                vidx = vidx_tobetested
-            else:
-                vidx, = np.where(~edge_mask[eqv_idx,:])
-
-            if should_predict:
-                count_tests += vidx.size
-
-            if should_validate:
-                valid_mask[eqv_idx, vidx] = True
-                shadow_mask[eqv_idx, vidx] = False
-
-            for dst_idx in vidx:
-                dst_node = nodes[dst_idx]
-                inputv = get_incident_input_vector(dst_idx)
-                assert inputv
-
-                if (exists := await self._perform_one_cross_pollination(
-                        eqv_node, dst_node, inputv)):
-                    self._update_cap_matrix(cap, eqv_idx, dst_idx, inputv)
-
-                # mark edge as tested
-                assert not edge_mask[eqv_idx, dst_idx]
-                edge_mask[eqv_idx, dst_idx] = True
-
-                # report completion status
-                report_progress()
+                    # report completion status
+                    report_progress()
+            except Exception as ex:
+                # we failed, likely at loading a state; skip
+                warning(f"Failed to cross-test {eqv_node} ({ex = })")
+                skipped_pending = np.count_nonzero(~edge_mask[eqv_idx])
+                if should_predict:
+                    count_tests += skipped_pending
+                edge_mask[eqv_idx] = True
+                continue
 
         if self._extend_on_groups:
             self._broadcast_capabilities(cap, eqvs, eqv_mask, edge_mask)
