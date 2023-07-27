@@ -354,41 +354,6 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
             raise KeyError("Transition not valid")
         self.remove_edge(source, destination)
 
-    def get_any_path(self, destination: AbstractState, source: AbstractState=None) \
-            -> Path:
-        """
-        Returns an arbitrary path to the destination by reconstructing it from
-        each state's cached predecessor transition (i.e. the transition that
-        first led to that state from some predecessor). If source is not on the
-        reconstructed path, we search for it as usual with get_min_paths.
-
-        :param      destination:  The destination state
-        :type       destination:  AbstractState
-        :param      source:       The source state
-        :type       source:       AbstractState
-
-        :returns:   a list of consecutive edge tuples on the same path.
-        :rtype:     list[src, dst, input]
-        """
-        path = []
-        current_state = destination
-        while current_state.predecessor_transition is not None \
-                and current_state != source:
-            pred, inp = current_state.predecessor_transition
-            path.append((pred, current_state, inp))
-            current_state = pred
-
-        if source not in (None, self._entry_state) and current_state is None:
-            # the source state was not on the reconstructed path, so we try to
-            # find it through a graph search
-            return next(self.get_min_paths(destination, source))
-
-        if not path:
-            return [(destination, destination, EmptyInput())]
-        else:
-            path.reverse()
-            return path
-
     def get_all_paths(self, destination: AbstractState, source: AbstractState=None) \
             -> PathGenerator:
         return chain(self.get_preferred_paths(destination, source),
