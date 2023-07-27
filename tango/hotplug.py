@@ -294,7 +294,8 @@ class NyxNetInference(HotplugInference):
         for snapshot in self._tracker.equivalence.mapped_snapshots:
             p = self._sharedir / 'imports' / f'{hash(snapshot)}.bin'
             if p.exists(): continue
-            inp = await self._explorer.get_reproducer(target=snapshot)
+            inp = await self._explorer.get_reproducer(target=snapshot,
+                validate=False)
             if not p.parent.exists():
                 p.parent.mkdir(parents=True, exist_ok=True)
             else:
@@ -405,7 +406,8 @@ class AFLppInference(HotplugInference):
         for snapshot in self._tracker.equivalence.mapped_snapshots:
             p = self._out_dir.parent / 'imports' / f'{hash(snapshot)}.bin'
             if p.exists(): continue
-            inp = await self._explorer.get_reproducer(target=snapshot)
+            inp = await self._explorer.get_reproducer(target=snapshot,
+                validate=False)
             if not p.parent.exists():
                 p.parent.mkdir(parents=True, exist_ok=True)
             else:
