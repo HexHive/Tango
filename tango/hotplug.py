@@ -79,92 +79,95 @@ class HotplugInference(StateInferenceStrategy,
         await super(SeedableStrategy, self).finalize(owner)
 
     async def step(self, input: Optional[AbstractInput]=None):
-        if not self._proc:
-            self._proc = await self.start_fuzzer()
-            while not self.watch_path.exists():
-                await asyncio.sleep(1)
-        remaining = self._inference_batch
-        batch = []
-        # WARN this is racey; the fuzzer could have created more inputs while
-        # we iterate over the existing ones
-        for p in self.watch_path.iterdir():
-            if len(batch) >= remaining: break
-            if self.select_file(p):
-                batch.append(p)
-        remaining -= len(batch)
+        try:
+            if not self._proc:
+                self._proc = await self.start_fuzzer()
+                while not self.watch_path.exists():
+                    await asyncio.sleep(1)
+            remaining = self._inference_batch
+            batch = []
+            # WARN this is racey; the fuzzer could have created more inputs while
+            # we iterate over the existing ones
+            for p in self.watch_path.iterdir():
+                if len(batch) >= remaining: break
+                if self.select_file(p):
+                    batch.append(p)
+            remaining -= len(batch)
 
-        if remaining > 0:
-            with Inotify() as inotify:
-                inotify.add_watch(self.watch_path, Mask.CREATE | Mask.ONLYDIR)
-                observer = InotifyBatchObserver(
-                    inotify, self._batch_timeout, remaining,
-                    select=lambda ev: self.select_file(ev.path))
-                events = await observer.get_batch_or_timeout()
-                for ev in events:
-                    batch.append(ev.path)
+            if remaining > 0:
+                with Inotify() as inotify:
+                    inotify.add_watch(self.watch_path, Mask.CREATE | Mask.ONLYDIR)
+                    observer = InotifyBatchObserver(
+                        inotify, self._batch_timeout, remaining,
+                        select=lambda ev: self.select_file(ev.path))
+                    events = await observer.get_batch_or_timeout()
+                    for ev in events:
+                        batch.append(ev.path)
 
-        if not batch:
-            info("No new inputs after timeout");
-            return
+            if not batch:
+                info("No new inputs after timeout");
+                return
 
-        glbl_map = self._explorer._tracker._global
-        saved = glbl_map.clone()
-        inputs = await self.import_inputs(batch)
-        non_atomics = set()
-        for path, inp in inputs.items():
-            # reset the global coverage map to that of the root;
-            # this ensures that coverage is not masked by previous inputs
-            glbl_map.copy_from(
-                self._explorer._tracker.entry_state._feature_context)
-            glbl_map.commit(
-                self._explorer._tracker.entry_state._feature_mask)
+            glbl_map = self._explorer._tracker._global
+            saved = glbl_map.clone()
+            inputs = await self.import_inputs(batch)
+            non_atomics = set()
+            for path, inp in inputs.items():
+                # reset the global coverage map to that of the root;
+                # this ensures that coverage is not masked by previous inputs
+                glbl_map.copy_from(
+                    self._explorer._tracker.entry_state._feature_context)
+                glbl_map.commit(
+                    self._explorer._tracker.entry_state._feature_mask)
 
-            try:
-                await self._explorer.reload_state()
-                # feed input to target and populate state machine
-                await self._explorer.follow(inp,
-                    minimize=False, atomic=False)
-                self._snapshots[self._explorer._last_state].append(path)
-                info("Loaded seed file: %s", inp)
-            except Exception as ex:
-                warning("Failed to load %s: %s", inp, ex)
-                non_atomics.add(path)
-        glbl_map.copy_from(saved)
-
-        for path, inp in inputs.items():
-            if len(inp) > 1:
                 try:
                     await self._explorer.reload_state()
-
                     # feed input to target and populate state machine
                     await self._explorer.follow(inp,
-                        minimize=False, validate=False, atomic=True)
-                except Exception as ex:
-                    pass
-                info("Loaded atomics from seed file: %s", inp)
-                if path in non_atomics:
+                        minimize=False, atomic=False)
                     self._snapshots[self._explorer._last_state].append(path)
+                    info("Loaded seed file: %s", inp)
+                except Exception as ex:
+                    warning("Failed to load %s: %s", inp, ex)
+                    non_atomics.add(path)
+            glbl_map.copy_from(saved)
 
-        start = self._crosstest_timer.value
-        await self.perform_inference(set(self._snapshots))
-        end = self._crosstest_timer.value
-        self._batch_timeout = max(1.1 * self._batch_timeout, 2 * (end - start))
-        info(f"Increased batch timeout to {self._batch_timeout}")
+            for path, inp in inputs.items():
+                if len(inp) > 1:
+                    try:
+                        await self._explorer.reload_state()
 
-        state_to_path_mapping = {
-            i[0]: paths
-                for i in self._tracker.equivalence.states.items()
-                # remove intermediate states for which no input file exists;
-                # this occurs when an input traverses multiple snapshots,
-                # arriving at a different final snapshot (only happens when
-                # atomic==True). Without atomic==True, an input may result in
-                # terminating the target and would not generate any states. As a
-                # compromise, for such inputs, we consider the last snapshot
-                # they arrive at before termination as their final snapshot
-                # (which would otherwise be considered intermediate).
-                if (paths := [p for s in i[1] for p in self._snapshots[s]])
-        }
-        await self.export_results(state_to_path_mapping)
+                        # feed input to target and populate state machine
+                        await self._explorer.follow(inp,
+                            minimize=False, validate=False, atomic=True)
+                    except Exception as ex:
+                        pass
+                    info("Loaded atomics from seed file: %s", inp)
+                    if path in non_atomics:
+                        self._snapshots[self._explorer._last_state].append(path)
+
+            start = self._crosstest_timer.value
+            await self.perform_inference(set(self._snapshots))
+            end = self._crosstest_timer.value
+            self._batch_timeout = max(1.1 * self._batch_timeout, 2 * (end - start))
+            info(f"Increased batch timeout to {self._batch_timeout}")
+
+            state_to_path_mapping = {
+                i[0]: paths
+                    for i in self._tracker.equivalence.states.items()
+                    # remove intermediate states for which no input file exists;
+                    # this occurs when an input traverses multiple snapshots,
+                    # arriving at a different final snapshot (only happens when
+                    # atomic==True). Without atomic==True, an input may result in
+                    # terminating the target and would not generate any states. As a
+                    # compromise, for such inputs, we consider the last snapshot
+                    # they arrive at before termination as their final snapshot
+                    # (which would otherwise be considered intermediate).
+                    if (paths := [p for s in i[1] for p in self._snapshots[s]])
+            }
+            await self.export_results(state_to_path_mapping)
+        except asyncio.CancelledError:
+            await self.stop_fuzzer()
 
     @property
     @abstractmethod
@@ -219,6 +222,7 @@ class NyxNetInference(HotplugInference):
             'proftpd': 0x2371d768474e534b,
             'dcmtk': 0x5230c19e474e534b,
             'forked-daapd': 0x91129c9b474e534b,
+            'expat': 0x1870c1e5474e534b,
         }[target]
         self._sharedir = Path(f'{shared}/out-{target}-balanced-000')
         self._inputs = {}
