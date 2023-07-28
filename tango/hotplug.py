@@ -169,6 +169,7 @@ class HotplugInference(StateInferenceStrategy,
         except asyncio.CancelledError:
             if self._proc:
                 await self.stop_fuzzer(self._proc)
+            raise
 
     @property
     @abstractmethod
