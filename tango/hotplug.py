@@ -167,7 +167,8 @@ class HotplugInference(StateInferenceStrategy,
             }
             await self.export_results(state_to_path_mapping)
         except asyncio.CancelledError:
-            await self.stop_fuzzer()
+            if self._proc:
+                await self.stop_fuzzer(self._proc)
 
     @property
     @abstractmethod
