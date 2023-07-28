@@ -13,7 +13,7 @@ caps="${caps[*]}"=eip
 unset IFS
 
 if [ ! -z $TANGO_TIMEOUT ]; then
-	timeout=(timeout --foreground -sTERM $TANGO_TIMEOUT)
+	timeout=(timeout -k 1m --foreground -sTERM $TANGO_TIMEOUT)
 fi
 
 exec sudo -E capsh --caps=$caps --user=$USER --addamb=$caps --\
