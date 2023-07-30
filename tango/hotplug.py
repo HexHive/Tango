@@ -228,6 +228,7 @@ class NyxNetInference(HotplugInference):
         }[target]
         self._sharedir = Path(f'{shared}/out-{target}-balanced-000')
         self._inputs = {}
+        self._exported = set()
 
     @property
     def watch_path(self):
@@ -299,7 +300,8 @@ class NyxNetInference(HotplugInference):
 
         for snapshot in self._tracker.equivalence.mapped_snapshots:
             p = self._sharedir / 'imports' / f'{hash(snapshot)}.bin'
-            if p.exists(): continue
+            if snapshot in self._exported or p.exists():
+                continue
             inp = await self._explorer.get_reproducer(target=snapshot,
                 validate=False)
             if not p.parent.exists():
@@ -307,6 +309,7 @@ class NyxNetInference(HotplugInference):
             else:
                 assert p.parent.is_dir()
             p.write_bytes(self._pack_input(inp))
+            self._exported.add(snapshot)
 
     def _pack_input(self, input):
         graph_size = 0
