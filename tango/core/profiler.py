@@ -7,7 +7,7 @@ from tango.common import get_session_context
 from sys import gettrace as sys_gettrace
 from abc import ABC, ABCMeta, abstractmethod
 from math import trunc
-from functools import partial, wraps
+from functools import partial, wraps, lru_cache
 from time import perf_counter as timestamp
 from collections import deque
 from statistics import mean
@@ -58,6 +58,7 @@ def get_profiler(name: str, *args, **kwargs) -> AbstractProfiler:
 def get_all_profilers() -> Iterable[tuple[str, AbstractProfiler]]:
     return {name: get_profiler(name) for name in ProfiledObjects}.items()
 
+@lru_cache(maxsize=32)
 def is_profiling_active(*names: Iterable[str]) -> bool:
     if not AbstractProfilerMeta.ProfilingNOP:
         return True
