@@ -349,14 +349,14 @@ async def read_nyx_py(config, path):
     return inp
 
 async def read_nyx_bin(config, path):
-    program = Path(config['driver']['exec']['path']).name
+    program = Path(config._config['driver']['exec']['path']).name
     target = NYXBIN_TARGETS[program]
     with NyxBin(target, path) as f:
         return f.read()
 
 async def write_nyx_bin(config, path, inp):
     path = path.with_suffix(path.suffix + '.bin')
-    program = Path(config['driver']['exec']['path']).name
+    program = Path(config._config['driver']['exec']['path']).name
     target = NYXBIN_TARGETS[program]
     with NyxBin(target, path) as f:
         f.write(inp)
