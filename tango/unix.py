@@ -412,8 +412,9 @@ class PtraceChannel(AbstractChannel):
         ## Execute monitor target
         if monitor_target:
             tasks.append(monitor_target())
-
-        gather = asyncio.gather(*tasks)
+            gather = asyncio.gather(*tasks)
+        else:
+            gather, = tasks
 
         ## Wrap coroutine in timer if necessary
         if timeout is not None:
@@ -422,6 +423,9 @@ class PtraceChannel(AbstractChannel):
         ## Listen for and process syscalls
         try:
             results = await gather
+            if not monitor_target:
+                # caller might still be expecting a tuple
+                results = (results,)
         except asyncio.TimeoutError:
             warning('Ptrace event timed out')
             raise ChannelTimeoutException("Channel timeout when waiting for syscall")
