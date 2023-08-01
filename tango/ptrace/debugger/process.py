@@ -411,7 +411,17 @@ class PtraceProcess(object):
                         event.process.cont()
                 elif event_cls is ProcessExecution:
                     warning("%s called exec() while terminating", event.process)
-                    await event.process.terminate(wait_exit=False, signum=SIGKILL)
+                    await event.process.terminate(wait_exit=True, signum=SIGKILL)
+                    self.cont()
+                    # stubborn process? :')
+                    self.kill(SIGKILL)
+                elif event_cls is NewProcessEvent:
+                    warning("%s created a new process %s while terminating",
+                        self, event.process)
+                    await event.process.terminate(wait_exit=True, signum=SIGKILL)
+                    self.cont()
+                    # stubborn process? :')
+                    self.kill(SIGKILL)
                 else:
                     # Event different than a signal? Raise an exception
                     raise event
@@ -419,6 +429,8 @@ class PtraceProcess(object):
                 debug("%s received %s while waiting for exit,"
                       " but the signal could not be delivered ex=%r.",
                       event.process, event, ex)
+                if event.process is self:
+                    break
 
     async def processStatus(self, status):
         # Process exited?
