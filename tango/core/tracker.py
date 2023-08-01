@@ -258,9 +258,102 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
         if kwargs.setdefault('weight', 'transition') == 'transition':
             kwargs.setdefault('nonedge', None)
             to_input_sets = np.vectorize(lambda x: x and frozenset(x))
-            return to_input_sets(nx.to_numpy_array(self, **kwargs))
+            return to_input_sets(self.to_numpy_array(self, **kwargs))
         else:
-            return nx.to_numpy_array(self, **kwargs)
+            return self.to_numpy_array(self, **kwargs)
+
+    def to_numpy_array(self, nodelist=None, rowlist=None, collist=None,
+            dtype=None, order=None, multigraph_weight=sum, weight="weight",
+            nonedge=0.0):
+        G = self
+        if nodelist is None:
+            nodelist = list(G)
+        if rowlist is None:
+            rowlist = nodelist
+        if collist is None:
+            collist = nodelist
+
+        rlen = len(rowlist)
+        clen = len(collist)
+
+        # Input validation
+        rowset = set(rowlist)
+        if rowset - set(G):
+            raise nx.NetworkXError(f"Nodes {rowset - set(G)} in rowlist is not in G")
+        if len(rowset) < rlen:
+            raise nx.NetworkXError("rowlist contains duplicates.")
+        colset = set(collist)
+        if colset - set(G):
+            raise nx.NetworkXError(f"Nodes {colset - set(G)} in collist is not in G")
+        if len(colset) < clen:
+            raise nx.NetworkXError("collist contains duplicates.")
+
+        A = np.full((rlen, clen), fill_value=nonedge, dtype=dtype, order=order)
+
+        # Corner cases: empty nodelist or graph without any edges
+        if 0 in (rlen, clen, G.number_of_edges()):
+            return A
+
+        # If dtype is structured and weight is None, use dtype field names as
+        # edge attributes
+        edge_attrs = None  # Only single edge attribute by default
+        if A.dtype.names:
+            if weight is None:
+                edge_attrs = dtype.names
+            else:
+                raise ValueError(
+                    "Specifying `weight` not supported for structured dtypes\n."
+                    "To create adjacency matrices from structured dtypes, use `weight=None`."
+                )
+
+        # Map nodes to row/col in matrix
+        ridx = dict(zip(rowlist, range(rlen)))
+        cidx = dict(zip(collist, range(clen)))
+        if len(rowlist) < len(G) or len(collist) < len(G):
+            edges = [e for e in G.edges(rowlist) if e[1] in colset]
+            G = G.edge_subgraph(edges).copy()
+
+        # Collect all edge weights and reduce with `multigraph_weight`
+        if G.is_multigraph():
+            if edge_attrs:
+                raise nx.NetworkXError(
+                    "Structured arrays are not supported for MultiGraphs"
+                )
+            d = defaultdict(list)
+            for u, v, wt in G.edges(data=weight, default=1.0):
+                d[(ridx[u], cidx[v])].append(wt)
+            i, j = np.array(list(d.keys())).T  # indices
+            wts = [multigraph_weight(ws) for ws in d.values()]  # reduced weights
+        else:
+            i, j, wts = [], [], []
+
+            # Special branch: multi-attr adjacency from structured dtypes
+            if edge_attrs:
+                # Extract edges with all data
+                for u, v, data in G.edges(data=True):
+                    i.append(ridx[u])
+                    j.append(cidx[v])
+                    wts.append(data)
+                # Map each attribute to the appropriate named field in the
+                # structured dtype
+                for attr in edge_attrs:
+                    attr_data = [wt.get(attr, 1.0) for wt in wts]
+                    A[attr][i, j] = attr_data
+                    if not G.is_directed():
+                        A[attr][j, i] = attr_data
+                return A
+
+            for u, v, wt in G.edges(data=weight, default=1.0):
+                i.append(ridx[u])
+                j.append(cidx[v])
+                wts.append(wt)
+
+        # Set array values with advanced indexing
+        A[i, j] = wts
+        if not G.is_directed():
+            A[j, i] = wts
+
+        return A
 
     @EventProfiler('update_state')
     def update_state(self, state: AbstractState) -> tuple[AbstractState, bool]:
