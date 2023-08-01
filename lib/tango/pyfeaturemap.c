@@ -11,8 +11,7 @@ typedef uint64_t u64;
 
 #define HASH_CONST          0xa5b35705
 
-#ifndef SKIP_COUNTS
-static const u8 count_class_lookup8[256] = {
+static const u8 count_class_lookup8_bins[256] = {
   [0]           = 0,
   [1]           = 1,
   [2]           = 2,
@@ -23,23 +22,28 @@ static const u8 count_class_lookup8[256] = {
   [32 ... 127]  = 64,
   [128 ... 255] = 128
 };
-#else
 static const u8 count_class_lookup8[256] = {
   [0]           = 0,
   [1 ... 255]   = 1
 };
-#endif
 
 static inline u32 hash32(const void *key, u32 len, u32 seed);
 
 ATTRIBUTE_TARGET_POPCNT
 bool diff(u8 *set_arr, const u8 *coverage_map, u8 *set_map, \
-    const size_t map_size, u32 *set_count, u32 *map_hash, const bool inplace)
+    const size_t map_size, u32 *set_count, u32 *map_hash, const bool inplace,
+    const bool skip_counts)
 {
   u8 kls;
   *set_count = 0;
+  const u8 *kls_lut;
+  if (skip_counts)
+    kls_lut = count_class_lookup8;
+  else
+    kls_lut = count_class_lookup8_bins;
+
   for (size_t i = 0; i < map_size; ++i) {
-    kls = count_class_lookup8[coverage_map[i]];
+    kls = kls_lut[coverage_map[i]];
     set_map[i] = (set_arr[i] | kls) ^ set_arr[i];
     *set_count += Popcount1(set_map[i]);
     if (inplace)

@@ -173,10 +173,9 @@ class FeatureMap(ABC):
         return isinstance(other, type(self))
 
 class CFeatureMap(FeatureMap):
-    def __init__(self, *args, bind_lib, **kwargs):
-        if 'skip_counts' in kwargs:
-            warning("Setting 'skip_counts' is not supported with the native lib")
+    def __init__(self, *args, bind_lib, skip_counts: bool=False, **kwargs):
         super().__init__(*args, **kwargs)
+        self._skip_counts = skip_counts
         self._feature_arr = self._features.ctype()
         self.clear()
 
@@ -189,6 +188,7 @@ class CFeatureMap(FeatureMap):
             P(I), # pre-allocated feature_count output buffer
             P(I), # pre-allocated hash output buffer
             B, # boolean: apply in-place?
+            B, # boolean: skip counts
         )
         self._bind_lib.diff.restype = B # success?
 
@@ -224,7 +224,8 @@ class CFeatureMap(FeatureMap):
         mask_hash = I()
         coverage_map = self._shared_map
         res = self._bind_lib.diff(self._feature_arr, coverage_map, feature_mask,
-            self.length, byref(feature_count), byref(mask_hash), commit)
+            self.length, byref(feature_count), byref(mask_hash), commit,
+            self._skip_counts)
         return feature_mask, feature_count.value, mask_hash.value
 
     def commit(self, feature_mask: Sequence):
