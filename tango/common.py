@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from . import info, warning, critical, error
+from . import debug, info, warning, critical, error
 from functools import partial, wraps, cache
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
@@ -684,7 +684,7 @@ class ComponentTypeMeta(EnumType):
                 default = cls.FakeComponentType(value)
                 cached = cls._fake_component_cache.setdefault(value, default)
                 if cached is default:
-                    warning("Using non-standard component type `%s`", value)
+                    debug("Using non-standard component type `%s`", value)
                 return cached
 
 class ComponentType(Enum, metaclass=ComponentTypeMeta):
