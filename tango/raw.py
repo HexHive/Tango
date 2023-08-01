@@ -12,7 +12,6 @@ from tango.common import sync_to_async
 from typing import ByteString, Iterable, Mapping, Any
 from subprocess import Popen
 from dataclasses import dataclass
-from asyncstdlib.functools import cache as async_cache
 from pathlib import Path
 import errno
 import struct
@@ -92,6 +91,7 @@ class StdIOChannel(FileDescriptorChannel):
 class StdIOForkChannelFactory(StdIOChannelFactory,
         capture_paths=['fuzzer.work_dir']):
     work_dir: str
+    _cached = None
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -103,9 +103,11 @@ class StdIOForkChannelFactory(StdIOChannelFactory,
         await ch.connect()
         return ch
 
-    @async_cache
     async def _create_once(self, **kwargs):
+        if self._cached is not None:
+            return self._cached
         ch = StdIOForkChannel(**kwargs, **self.fields)
+        object.__setattr__(self, '_cached', ch)
         await ch.setup()
         return ch
 

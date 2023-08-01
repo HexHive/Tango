@@ -9,7 +9,6 @@ from tango.unix import (PtraceChannel, PtraceForkChannel, PtraceChannelFactory,
     FileDescriptorChannel, FileDescriptorChannelFactory, EventOptions)
 from tango.exceptions import ChannelBrokenException
 
-from asyncstdlib.functools import cache as async_cache
 from subprocess  import Popen
 from dataclasses import dataclass
 from pyroute2.netns import setns
@@ -456,6 +455,7 @@ class ListenerSocketState:
 class TCPForkChannelFactory(TCPChannelFactory,
         capture_paths=['channel.fork_before_accept']):
     fork_before_accept: bool = True
+    _cached = None
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -468,12 +468,14 @@ class TCPForkChannelFactory(TCPChannelFactory,
         await ch.connect((self.endpoint, self.port))
         return ch
 
-    @async_cache
     async def _create_once(self, **kwargs):
+        if self._cached is not None:
+            return self._cached
         if self.fork_before_accept:
             ch = TCPForkBeforeAcceptChannel(**kwargs)
         else:
             ch = TCPForkAfterListenChannel(**kwargs)
+        object.__setattr__(self, '_cached', ch)
         await ch.setup((self.endpoint, self.port))
         return ch
 
@@ -684,6 +686,7 @@ class UDPSocketState:
 class UDPForkChannelFactory(UDPChannelFactory,
         capture_paths=['channel.fork_before_bind']):
     fork_before_bind: bool = False
+    _cached = None
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -696,12 +699,14 @@ class UDPForkChannelFactory(UDPChannelFactory,
         await ch.connect((self.endpoint, self.port))
         return ch
 
-    @async_cache
     async def _create_once(self, **kwargs):
+        if self._cached is not None:
+            return self._cached
         if self.fork_before_bind:
             ch = UDPForkBeforeBindChannel(**kwargs)
         else:
             ch = UDPForkChannel(**kwargs)
+        object.__setattr__(self, '_cached', ch)
         await ch.setup((self.endpoint, self.port))
         return ch
 
