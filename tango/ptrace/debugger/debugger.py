@@ -7,7 +7,7 @@ from tango.ptrace.debugger import (PtraceProcess, ProcessSignal, ProcessExit,
 from tango.ptrace.binding import HAS_PTRACE_EVENTS, HAS_SIGNALFD
 from tango.ptrace.os_tools import HAS_PROC
 if HAS_PTRACE_EVENTS:
-    from tango.ptrace.binding.func import (
+    from tango.ptrace.binding.func import (set_errno,
         PTRACE_O_TRACEFORK, PTRACE_O_TRACEVFORK,
         PTRACE_O_TRACEEXEC, PTRACE_O_TRACESYSGOOD,
         PTRACE_O_TRACECLONE, PTRACE_O_TRACESECCOMP, THREAD_TRACE_FLAGS)
@@ -252,20 +252,20 @@ class PtraceDebugger(object):
         """
         Quit the debugger: terminate all processes in reverse order.
         """
-        if HAS_SIGNALFD and self._sigfd:
-            self._loop.remove_reader(self._sigfd)
-            close(self._sigfd)
-            self._sigfd = None
-
-        if not self.list:
-            return
-        debug("Quit debugger")
-        # Terminate processes in reverse order
-        # to kill children before parents
-        processes = list(self.list)
-        for process in reversed(processes):
-            await process.terminate()
-            process.detach()
+        try:
+            debug("Quit debugger")
+            # Terminate processes in reverse order
+            # to kill children before parents
+            processes = list(self.list)
+            for process in reversed(processes):
+                await process.terminate()
+                process.detach()
+        finally:
+            if HAS_SIGNALFD and self._sigfd:
+                self._loop.remove_reader(self._sigfd)
+                close(self._sigfd)
+                self._sigfd = None
+            set_errno(0)
 
     def kill_all(self):
         processes = list(self.list)
