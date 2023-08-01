@@ -77,9 +77,6 @@ class StateInferenceTracker(CoverageTracker,
 
         # properties
         self.mode = InferenceMode.Discovery
-        self.capability_matrix = np.empty((0,0), dtype=object)
-        self.subsumption_matrix = np.empty((0,0), dtype=object)
-        self.collapsed_matrix = np.empty((0,0), dtype=object)
         self.equivalence = InferenceMap()
         self.recovered_graph = RecoveredStateGraph()
 
@@ -98,9 +95,9 @@ class StateInferenceTracker(CoverageTracker,
             np.sum(self._feature_heat[self._get_snapshot_features(memb)])
             for memb in self.equivalence.members(sidx))
 
-    def reconstruct_graph(self, adj):
+    def reconstruct_graph(self):
         dt = [('transition', object)]
-        A = adj.astype(dt)
+        A = self.equivalence.collapsed_matrix.astype(dt)
 
         G = nx.empty_graph(0, self.recovered_graph)
         n, m = A.shape
@@ -126,7 +123,7 @@ class StateInferenceTracker(CoverageTracker,
         G.add_edges_from(triples)
 
     @cached_property
-    def unmapped_states(self):
+    def unmapped_snapshots(self):
         G = self.state_graph
         return G.nodes - self.equivalence.mapped_snapshots
 
@@ -134,25 +131,22 @@ class StateInferenceTracker(CoverageTracker,
             destination: AbstractState, input: AbstractInput, *,
             state_changed: bool, exc: Exception=None, **kwargs):
         if not exc and state_changed and not destination in self.state_graph:
-            self.__dict__.pop('unmapped_states', None)
+            self.__dict__.pop('unmapped_snapshots', None)
         rv = super().update_transition(source, destination, input,
             state_changed=state_changed, exc=exc, **kwargs)
         return rv
 
-    def update_equivalence(self, cap, sub, collapsed, eqv_map, nodes):
-        self.__dict__.pop('unmapped_states', None)
-        self.capability_matrix = cap
-        self.subsumption_matrix = sub
-        self.collapsed_matrix = collapsed
-        self.equivalence = InferenceMap(nodes, eqv_map, sub)
+    def update_equivalence(self, equivalence):
+        self.__dict__.pop('unmapped_snapshots', None)
+        self.equivalence = equivalence
 
     def out_edges(self, state: AbstractState) -> Iterable[Transition]:
         if state in self.state_graph:
             try:
                 node_idx = self.equivalence.index(state)
-                adj_idx, = self.capability_matrix[node_idx,:].nonzero()
+                adj_idx, = self.equivalence.capability_matrix[node_idx,:].nonzero()
                 nbrs = self.equivalence.snapshot(adj_idx)
-                edges = self.capability_matrix[node_idx, adj_idx]
+                edges = self.equivalence.capability_matrix[node_idx, adj_idx]
                 return ((state, dst, inp)
                     for dst, edge in zip(nbrs, edges)
                         for inp in edge)
@@ -262,7 +256,7 @@ class StateInferenceStrategy(SeedableStrategy,
     async def step(self, input: Optional[AbstractInput]=None):
         match self._tracker.mode:
             case InferenceMode.Discovery:
-                if len(self._tracker.unmapped_states) >= self._inference_batch:
+                if len(self._tracker.unmapped_snapshots) >= self._inference_batch:
                     self._tracker.mode = InferenceMode.CrossPollination
                     self._step_interrupted = True
                 else:
@@ -279,117 +273,156 @@ class StateInferenceStrategy(SeedableStrategy,
                         rec.energy -= 1
 
             case InferenceMode.CrossPollination:
-                await self.perform_inference()
+                while self._tracker.unmapped_snapshots:
+                    equivalence = await self.perform_inference()
+                    self._tracker.update_equivalence(equivalence)
+                    if not self._complete_inference:
+                        break
+                self._tracker.reconstruct_graph()
                 self.assign_state_energies()
                 self._tracker.mode = InferenceMode.Discovery
 
-    async def perform_inference(self,
-            limit: Optional[set[AbstractState]]=None):
-        if not self._tracker.unmapped_states:
-            return
+    async def perform_inference(self, *,
+            snapshots: Optional[frozenset[AbstractState]]=None,
+            features: Optional[frozenset[AbstractState]]=None,
+            equivalence: Optional[InferenceMap]=None) \
+            -> InferenceMap:
         self._crosstest_timer()
-        while self._tracker.unmapped_states:
-            cap, sub, collapsed, eqv_map, nodes = \
-                await self.perform_cross_pollination(limit)
-            self._tracker.update_equivalence(cap, sub, collapsed, eqv_map, nodes)
-            if not self._complete_inference:
-                break
-        self._tracker.reconstruct_graph(collapsed)
+        cap, sub, collapsed, eqv_map, snapshots, features = \
+            await self.perform_cross_pollination(snapshots, features, equivalence)
+        equivalence = InferenceMap(snapshots, features, eqv_map, collapsed, cap, sub)
         self._crosstest_timer()
         if self._auto_dump_stats:
             self._dump_profilers(get_current_session().id)
+        return equivalence
 
     @classmethod
     def _collapse_until_stable(cls, adj, eqv_map):
         last_adj = adj
         while True:
-            adj, eqv_map, node_mask, sub = cls._collapse_graph(adj, eqv_map,
+            adj, eqv_map, row_mask, col_mask, sub = cls._collapse_graph(adj, eqv_map,
                 dual_axis=True)
             # mask out collapsed nodes
-            adj = adj[~node_mask,:][:,~node_mask]
+            adj = adj[~row_mask,:][:,~col_mask]
             if adj.shape == last_adj.shape:
                 break
             last_adj = adj
         return adj, eqv_map
 
     @classmethod
-    def _collapse_graph(cls, adj, orig_eqv=None, dual_axis=False):
+    def _collapse_graph(cls, adj, orig_eqv=None, dual_axis=False, **kwargs):
         orig_eqv = orig_eqv or {i: i for i in range(adj.shape[0])}
 
         # construct equivalence sets
         stilde = cls._construct_equivalence_sets(adj, dual_axis=dual_axis)
         # remove strictly subsumed nodes
-        adj, stilde, node_mask, sub, sub_map = cls._eliminate_subsumed_nodes(adj,
+        adj, stilde, sub_mask, sub, sub_map = cls._eliminate_subsumed_nodes(adj,
             stilde, dual_axis=dual_axis)
         # collapse capability matrix where equivalence states exist
-        ext_adj, eqv_map, node_mask = cls._collapse_adj_matrix(adj, stilde,
-            node_mask, sub_map)
+        ext_adj, eqv_map, row_mask, col_mask = cls._collapse_adj_matrix(adj, stilde,
+            sub_mask, sub_map, **kwargs)
 
         # reconstruct eqv_map based on orig_eqv
         eqv_map = {i: eqv_map[s] for i, s in orig_eqv.items()}
 
-        return ext_adj, eqv_map, node_mask, sub
+        return ext_adj, eqv_map, row_mask, col_mask, sub
 
-    async def perform_cross_pollination(self, limit):
-        G = self._tracker.state_graph
-        remaining = self._inference_batch
-        pop = tuple(self._tracker.unmapped_states)
-        batch = self._entropy.sample(pop, k=min(remaining, len(pop)))
+    async def perform_cross_pollination(self, snapshots, features, equivalence):
+        equivalence = equivalence or self._tracker.equivalence
 
-        node_set = set(G.nodes) & self._tracker.equivalence.mapped_snapshots | set(batch)
-        nodes = np.array(list(node_set))
+        if snapshots is None:
+            all_snapshots = frozenset(self._tracker.state_graph.nodes)
+        else:
+            all_snapshots = frozenset(snapshots)
+        pop_snapshots = all_snapshots - equivalence.mapped_snapshots
+        rem_snapshots = self._inference_batch or len(pop_snapshots)
+        batch_snapshots = self._entropy.sample(
+            tuple(pop_snapshots), k=min(rem_snapshots, len(pop_snapshots)))
+        set_snapshots = all_snapshots & equivalence.mapped_snapshots | frozenset(batch_snapshots)
+        snapshots = np.array(tuple(set_snapshots))
 
-        new_equivalence, from_idx, to_idx, fwd_map = \
-            self._tracker.equivalence.reindex(
-                nodes, return_indices=True, return_fwd=True)
+        if features is None:
+            all_features = all_snapshots
+            pop_features = pop_snapshots
+            rem_features = rem_snapshots
+            batch_features = batch_snapshots
+            set_features = set_snapshots
+            features = snapshots
+        else:
+            all_features = frozenset(features)
+            pop_features = all_features - equivalence.feature_snapshots
+            rem_features = self._inference_batch or len(pop_features)
+            batch_features = self._entropy.sample(
+                tuple(pop_features), k=min(rem_features, len(pop_features)))
+            set_features = all_features & equivalence.feature_snapshots | frozenset(batch_features)
+            features = np.array(tuple(set_features))
 
-        if self._dt_predict and new_equivalence.mapped_labels:
+        symmetric = features is snapshots
+        if not symmetric and set_features == set_snapshots:
+            # could be that we end up with the same set anyway
+            features = snapshots
+            symmetric = True
+
+        re_equivalence, \
+                (s_from_idx, s_to_idx), (f_from_idx, f_to_idx), \
+                s_fwd_map, f_fwd_map = \
+            equivalence.reindex(
+                snapshots, features, return_indices=True, return_fwd=True)
+
+        if not pop_snapshots and not pop_features:
+            # there's nothing to be done, so we'll just return previous results
+            cap = re_equivalence.capability_matrix
+            sub = re_equivalence.subsumption_matrix
+            collapsed = re_equivalence.collapsed_matrix
+            eqv_map = re_equivalence.eqv_map
+            return cap, sub, collapsed, eqv_map, snapshots, features
+
+        if self._dt_predict and re_equivalence.mapped_labels:
             # this is at least the second round of inference, so the DT had
             # already been trained; however, it had been trained on the old
             # order. We map the old indices to the new ones
-            features = self._dt_clf.tree_.feature
-            features[...] = np.vectorize(
-                lambda u: v if (v := fwd_map.get(u)) is not None else -1,
-                otypes=(int,))(features)
+            dt_features = self._dt_clf.tree_.feature
+            dt_features[...] = np.vectorize(
+                lambda u: v if (v := f_fwd_map.get(u)) is not None else -1,
+                otypes=(int,))(dt_features)
 
         # get current adjacency matrix
-        adj = G.adjacency_matrix(nodelist=nodes)
+        adj = self._tracker.state_graph.adjacency_matrix(
+            rowlist=snapshots, collist=features)
 
         # and current capability matrix
-        cap = self._tracker.capability_matrix
+        cap = re_equivalence.capability_matrix
 
         # mask out edges which have already been cross-tested
         edge_mask = adj != None
-        mask_irow, mask_icol = np.meshgrid(to_idx, to_idx, indexing='ij')
+        mask_irow, mask_icol = np.meshgrid(s_to_idx, f_to_idx, indexing='ij')
         edge_mask[mask_irow, mask_icol] = True
 
-        root_node = self._tracker.entry_state
-        if root_node in node_set:
-            root_idx, = np.where(nodes == root_node)
+        # get a new capability matrix, overlayed with new adjacencies
+        cap = self._overlay_capabilities(cap, adj, s_to_idx, f_to_idx)
+
+        root_snapshot = self._tracker.entry_state
+        if root_snapshot in set_features:
+            root_idx, = np.where(features == root_snapshot)
             # the root node has no incident edges
             edge_mask[:, root_idx] = True
-        if limit:
-            # we exclude cross-testing anything not in the limited set
-            excludes, = np.where(np.vectorize(lambda x: x not in limit)(nodes))
-            edge_mask[excludes, :] = True
-
-        # get a new capability matrix, overlayed with new adjacencies
-        cap = self._overlay_capabilities(cap, adj, from_idx, to_idx)
 
         # get a capability matrix extended with cross-pollination
-        await self._extend_cap_matrix(cap, nodes, edge_mask, new_equivalence)
+        await self._extend_cap_matrix(
+            cap, snapshots, features, edge_mask, re_equivalence)
 
         # collapse, single-axis
-        cap, eqv_map, node_mask, sub = self._collapse_graph(cap)
+        cap, eqv_map, row_mask, col_mask, sub = self._collapse_graph(cap,
+            symmetric=symmetric)
 
-        assert len(eqv_map) == len(nodes)
+        assert len(eqv_map) == len(snapshots)
 
-        for i in np.where(node_mask)[0]:
+        for i in np.where(row_mask)[0]:
             eqv_map.setdefault(i, -1)
 
-        collapsed = cap[~node_mask,:][:,~node_mask]
-        cap = cap[node_mask,:][:,node_mask]
-        if self._recursive_collapse:
+        collapsed = cap[~row_mask,:][:,~col_mask]
+        cap = cap[row_mask,:][:,col_mask]
+        if symmetric and self._recursive_collapse:
             collapsed, eqv_map = self._collapse_until_stable(
                 collapsed, eqv_map)
 
@@ -400,22 +433,21 @@ class StateInferenceStrategy(SeedableStrategy,
             self._dt_clf.fit(X, Y)
             self._dt_fit = True
 
-        return cap, sub, collapsed, eqv_map, nodes
+        return cap, sub, collapsed, eqv_map, snapshots, features
 
     @staticmethod
-    def _overlay_capabilities(cap, adj, from_idx, to_idx):
-        from_irow, from_icol = np.meshgrid(from_idx, from_idx, indexing='ij')
-        to_irow, to_icol = np.meshgrid(to_idx, to_idx, indexing='ij')
-        adj[to_irow, to_icol] = cap[from_irow, from_icol]
+    def _overlay_capabilities(cap, adj, s_to_idx, f_to_idx):
+        to_irow, to_icol = np.meshgrid(s_to_idx, f_to_idx, indexing='ij')
+        adj[to_irow, to_icol] = cap[to_irow, to_icol]
         return adj
 
-    def _spread_crosstests(self, cap, eqvs, eqv_mask, edge_mask):
+    def _spread_crosstests(self, cap, eqvs, feature_mask, edge_mask):
         projected_done = 0
         projected_pending = 0
         for eqv in eqvs:
             if not len(eqv):
                 continue
-            idx_bc, = np.where(eqv_mask)
+            idx_bc, = np.where(feature_mask)
             grid_bc = np.meshgrid(list(eqv), idx_bc, indexing='ij')
             mixed = np.logical_or.reduce(edge_mask[*grid_bc])
 
@@ -427,7 +459,7 @@ class StateInferenceStrategy(SeedableStrategy,
             edge_mask[*grid_bc] |= mixed
             projected_done += np.count_nonzero(tmp_mask != edge_mask[*grid_bc])
 
-            untested, = np.where(~edge_mask[*grid_bc][0])
+            untested, = np.where(~mixed)
             untested_idx = np.arange(len(eqv) * len(untested))
 
             # for n untested nodes, we perform n tests in total, instead of
@@ -447,29 +479,34 @@ class StateInferenceStrategy(SeedableStrategy,
         return projected_done, projected_pending - projected_done
 
     @classmethod
-    def _broadcast_capabilities(cls, cap, eqvs, eqv_mask, edge_mask):
+    def _broadcast_capabilities(cls, cap, eqvs, feature_mask, edge_mask):
         for eqv in eqvs:
-            idx_bc, = np.where(eqv_mask)
+            idx_bc, = np.where(feature_mask)
             grid_bc = np.meshgrid(list(eqv), idx_bc, indexing='ij')
             mixed = cls.combine_transitions(cap, where=tuple(grid_bc), axis=0)
             cap[*grid_bc] = mixed[idx_bc]
             edge_mask[*grid_bc] = True
 
-    async def _extend_cap_matrix(self, cap, nodes, edge_mask, equivalence):
+    async def _extend_cap_matrix(self, cap, snapshots, features, edge_mask, equivalence):
         # we need the complete adj matrix to obtain inputs which may have been
-        # batched out
-        other_nodes = self._tracker.state_graph.nodes - set(nodes)
-        nodelist = np.concatenate((nodes, list(other_nodes)))
-        orig_adj = self._tracker.state_graph.adjacency_matrix(nodelist=nodelist)
+        # batched out;
+        # the order of rows does not matter for our use-case, because we only
+        # access feature_adj with col indices matching `features`; specifically,
+        # in `get_incident_input_vector` we use `idx` to access the matrix
+        # column-wise to check the incident edges to snapshots in `features`.
+        feature_adj = self._tracker.state_graph.adjacency_matrix(collist=features)
 
         def get_incident_input_vector(idx):
-            inputs = cap[:,idx]
-            if not np.any(inputs):
-                inputs = orig_adj[:,idx]
-                if not np.any(inputs):
-                    return
-            # we're assuming all inputs for a feature are equal
-            return inputs[inputs != None][0]
+            inputs = feature_adj[:,idx]
+            if not len(inputs):
+                return
+
+            # WARN we're assuming all inputs for a feature are equal
+            b = inputs.astype(bool)
+            res = b.argmax()
+            if not b[res]:
+                return
+            return inputs[res]
 
         init_done = np.count_nonzero(edge_mask)
         init_pending = edge_mask.size - init_done
@@ -477,24 +514,27 @@ class StateInferenceStrategy(SeedableStrategy,
             return
 
         def report_progress():
-            current_done = np.count_nonzero(edge_mask) - init_done
+            if not is_profiling_active('progress'):
+                return
+            # current_done = np.count_nonzero(edge_mask) - init_done
+            current_done = count_tests + count_skips
             progress = PercentProfiler('progress')
             progress(current_done/init_pending)
             ValueProfiler('status')(f'cross_test ({progress})')
 
         mapped_labels = np.asarray(list(equivalence.mapped_labels), dtype=int)
+        feature_labels = np.asarray(list(equivalence.feature_labels), dtype=int)
         eqvs = np.array(list(equivalence.states_as_index.values()), dtype=object)
 
-        # set up a mask for processing new nodes only in cap
-        eqv_mask = np.ones(cap.shape[0], dtype=bool)
-        eqv_mask[mapped_labels] = False
+        # set up a mask for processing new features only in cap
+        feature_mask = np.ones(cap.shape[1], dtype=bool)
+        feature_mask[feature_labels] = False
 
         # we can only apply prediction optimizations when we've performed at
         # least one round of cross-testing
-        should_predict = mapped_labels.size > 0
-        if should_predict:
-            count_skips = 0
-            count_tests = 0
+        should_predict = feature_labels.size > 0
+        count_skips = 0
+        count_tests = 0
 
         should_validate = should_predict and self._validate
         if should_validate:
@@ -513,7 +553,7 @@ class StateInferenceStrategy(SeedableStrategy,
             # this only affects quadrant B
             if should_validate:
                 init_mask = edge_mask.copy()
-            skips, tests = self._spread_crosstests(cap, eqvs, eqv_mask, edge_mask)
+            skips, tests = self._spread_crosstests(cap, eqvs, feature_mask, edge_mask)
 
             eg_count_skips += skips
             eg_count_tests += tests
@@ -548,7 +588,7 @@ class StateInferenceStrategy(SeedableStrategy,
         uidx_remaining = uidx[remaining]
         uidx = np.concatenate((uidx_existing, uidx_remaining))
         for eqv_idx in uidx:
-            eqv_node = nodes[eqv_idx]
+            eqv_node = snapshots[eqv_idx]
 
             try:
                 # with DT, we are only concerned with quadrants C and D
@@ -586,7 +626,7 @@ class StateInferenceStrategy(SeedableStrategy,
                                 shadow_mask[eqv_idx, dst_idx] = False
                                 valid_mask[eqv_idx, dst_idx] = True
 
-                            dst_node = nodes[dst_idx]
+                            dst_node = features[dst_idx]
                             inputv = get_incident_input_vector(dst_idx)
                             if (exists := await self._perform_one_cross_pollination(
                                     eqv_node, dst_node, inputv)):
@@ -625,16 +665,16 @@ class StateInferenceStrategy(SeedableStrategy,
                     vidx_untested, = np.where(~edge_mask[eqv_idx,:])
 
                     # the set of untested edges to all new snapshots (quadrant D)
-                    vidx_ungrouped = np.setdiff1d(vidx_untested, mapped_labels,
+                    vidx_ungrouped = np.setdiff1d(vidx_untested, feature_labels,
                         assume_unique=True)
 
                     # the set of edges from the capability set of the candidate
                     # (quadrant C)
                     vidx_unpredicted = np.intersect1d(
                         vidx_untested,
-                        np.intersect1d(cap_eqv, mapped_labels, assume_unique=True))
+                        np.intersect1d(cap_eqv, feature_labels, assume_unique=True))
                     dt_count_tests += vidx_unpredicted.size
-                    dt_count_skips += np.intersect1d(vidx_untested, mapped_labels,
+                    dt_count_skips += np.intersect1d(vidx_untested, feature_labels,
                         assume_unique=True).size - vidx_unpredicted.size
 
                     if self._dt_extrapolate:
@@ -669,7 +709,7 @@ class StateInferenceStrategy(SeedableStrategy,
                     shadow_mask[eqv_idx, vidx] = False
 
                 for dst_idx in vidx:
-                    dst_node = nodes[dst_idx]
+                    dst_node = features[dst_idx]
                     inputv = get_incident_input_vector(dst_idx)
                     assert inputv
 
@@ -681,8 +721,7 @@ class StateInferenceStrategy(SeedableStrategy,
                     assert not edge_mask[eqv_idx, dst_idx]
                     edge_mask[eqv_idx, dst_idx] = True
 
-                    if should_predict:
-                        count_tests += 1
+                    count_tests += 1
 
                     # report completion status
                     report_progress()
@@ -690,13 +729,12 @@ class StateInferenceStrategy(SeedableStrategy,
                 # we failed, likely at loading a state; skip
                 warning(f"Failed to cross-test {eqv_node} ({ex = })")
                 skipped_pending = np.count_nonzero(~edge_mask[eqv_idx])
-                if should_predict:
-                    count_tests += skipped_pending
+                count_tests += skipped_pending
                 edge_mask[eqv_idx] = True
                 continue
 
         if self._extend_on_groups:
-            self._broadcast_capabilities(cap, eqvs, eqv_mask, edge_mask)
+            self._broadcast_capabilities(cap, eqvs, feature_mask, edge_mask)
 
         if should_validate:
             assert np.all(edge_mask)
@@ -705,8 +743,8 @@ class StateInferenceStrategy(SeedableStrategy,
                 progress = PercentProfiler('progress')
                 progress((i+1)/len(v_uidx))
                 ValueProfiler('status')(f'validate ({progress})')
-                eqv_node = nodes[eqv_idx]
-                dst_node = nodes[dst_idx]
+                eqv_node = snapshots[eqv_idx]
+                dst_node = features[dst_idx]
 
                 inputv = get_incident_input_vector(dst_idx)
                 assert inputv
@@ -720,7 +758,7 @@ class StateInferenceStrategy(SeedableStrategy,
                 assert not valid_mask[eqv_idx, dst_idx]
                 valid_mask[eqv_idx, dst_idx] = is_valid
 
-                match (eqv_idx in mapped_labels, dst_idx in mapped_labels):
+                match (eqv_idx in mapped_labels, dst_idx in feature_labels):
                     case (True, True):
                         raise RuntimeError("Impossible situation")
                     case (True, False):
@@ -868,20 +906,24 @@ class StateInferenceStrategy(SeedableStrategy,
         is_nbr = adj != None
 
         if dual_axis:
+            assert adj.shape[0] == adj.shape[1], ( \
+                "Dual axis matching requires snapshots and features to be the"
+                " same."
+            )
             # we re-arrange is_nbr such that axis 0 returns both the
             # out-neighbors and in-neighbors
             is_nbr = np.array((is_nbr, is_nbr.T), dtype=is_nbr.dtype)
             is_nbr = np.swapaxes(is_nbr, 0, 1)
 
-        # the nodes array
+        # the snapshots array
         idx = np.array(range(adj.shape[0]))
         # get the index of the unique equivalence set each node maps to
         _, membership = np.unique(is_nbr, axis=0, return_inverse=True)
         # re-arrange eqv set indices so that members are grouped together
         order = np.argsort(membership)
-        # get the boundaries of each eqv set in the ordered nodes array
+        # get the boundaries of each eqv set in the ordered snapshots array
         _, split = np.unique(membership[order], return_index=True)
-        # split the ordered nodes array into eqv groups
+        # split the ordered snapshots array into eqv groups
         eqvs = np.split(idx[order], split[1:])
 
         for eqv in eqvs:
@@ -920,8 +962,8 @@ class StateInferenceStrategy(SeedableStrategy,
         is_nbr = adj != None
 
         # FIXME can this be done without allocating the index?
-        gridx = np.triu_indices_from(adj, k=1)
-        mask = np.zeros_like(adj, dtype=bool)
+        gridx = np.triu_indices(adj.shape[0], k=1)
+        mask = np.zeros((adj.shape[0],)*2, dtype=bool)
         mask[*gridx] = True
 
         iax = slice_along_axis = lambda arr, index, axis: \
@@ -938,11 +980,15 @@ class StateInferenceStrategy(SeedableStrategy,
         # apply subsumption logic for all node pairs (i,j)
         all_sub = row_sub = subsumes_ufn(*gridx, 0, dtype=int)
         if dual_axis:
+            assert adj.shape[0] == adj.shape[1], ( \
+                "Dual axis matching requires snapshots and features to be the"
+                " same."
+            )
             col_sub = subsumes_ufn(*gridx, 1, dtype=int)
             overlap = row_sub == col_sub
             all_sub[~overlap] = 0
 
-        sub = np.zeros_like(adj, dtype=int)
+        sub = np.zeros_like(mask, dtype=int)
         sub[mask] = all_sub
         sub[mask.T] = -sub.T[mask.T]
         sub = sub.clip(min=0).astype(bool)
@@ -953,21 +999,21 @@ class StateInferenceStrategy(SeedableStrategy,
         subbeds = np.apply_along_axis(subbed_fn, 1, subbeds)
 
         sub_map = {}
-        mask = np.zeros(len(adj), dtype=bool)
+        sub_mask = np.zeros(adj.shape[0], dtype=bool)
         for us, v in zip(subbeds, subbers):
-            if mask[v] or not us:
+            if sub_mask[v] or not us:
                 continue
             svee.add(us)
             idx = []
             for u in us:
-                if mask[u]:
+                if sub_mask[u]:
                     continue
                 idx.append(u)
                 for x, y in sub_map.items():
                     if y == u:
                         idx.append(x)
-                # idx.extend(np.where(sub[u] & ~mask))
-                mask[u] = True
+                # idx.extend(np.where(sub[u] & ~sub_mask))
+                sub_mask[u] = True
             for u in idx:
                 sub_map[u] = v
             if idx:
@@ -980,7 +1026,7 @@ class StateInferenceStrategy(SeedableStrategy,
                     adj[:,v] = in_edges
 
         stilde = [set(x) for x in stilde]
-        for u in np.where(mask)[0]:
+        for u in np.where(sub_mask)[0]:
             for eqv in stilde:
                 if sub_map[u] in eqv:
                     # we add the subsumed node to the subsumer's equivalence set
@@ -994,7 +1040,7 @@ class StateInferenceStrategy(SeedableStrategy,
         # discard the empty set if it exists
         stilde = {frozenset(x) for x in stilde}
         stilde.discard(frozenset())
-        return adj, stilde, mask, sub, sub_map
+        return adj, stilde, sub_mask, sub, sub_map
 
     @classmethod
     def combine_transitions(cls, adj, /, *, where=None, **kwargs):
@@ -1011,23 +1057,35 @@ class StateInferenceStrategy(SeedableStrategy,
                  .reduce(adj, where=axis_mask, initial=frozenset(), **kwargs)
 
     @classmethod
-    def _collapse_adj_matrix(cls, adj, stilde, mask, sub_map):
-        eqv_mask = np.concatenate((mask, np.zeros(len(stilde), dtype=bool)))
+    def _collapse_adj_matrix(cls, adj, stilde, sub_mask, sub_map, *, symmetric=True):
+        row_mask = np.concatenate((sub_mask, np.zeros(len(stilde), dtype=bool)))
         eqv_map = sub_map
         s_idx = 0
-        adj = np.pad(adj, (0, len(stilde)), constant_values=None)
-        for r, eqv in enumerate(stilde, start=mask.shape[0]):
-            idx = np.array(list(eqv))
-            adj[r,:] = cls.combine_transitions(adj, rows=idx, axis=0)
-            adj[:,r] = cls.combine_transitions(adj, cols=idx, axis=1)
-            adj[r,r] = cls.combine_transitions(adj, rows=idx, cols=idx, axis=None)
+        pad = [(0, len(stilde)), (0, 0)]
+        if symmetric:
+            pad[1] = pad[0]
+            col_mask = row_mask.copy()
+        else:
+            col_mask = np.ones(adj.shape[1], dtype=bool)
 
-            eqv_mask[idx] = True
+        rows, cols = adj.shape
+        adj = np.pad(adj, pad, constant_values=None)
+        for i, eqv in enumerate(stilde):
+            row = i + rows
+            idx = np.array(list(eqv))
+            adj[row,:] = cls.combine_transitions(adj, rows=idx, axis=0)
+            row_mask[idx] = True
+            if symmetric:
+                col = i + cols
+                adj[:,col] = cls.combine_transitions(adj, cols=idx, axis=1)
+                adj[row,col] = cls.combine_transitions(adj, rows=idx, cols=idx, axis=None)
+                col_mask[idx] = True
+
             for l in idx:
                 eqv_map[l] = s_idx
             s_idx += 1
 
-        return adj, eqv_map, eqv_mask
+        return adj, eqv_map, row_mask, col_mask
 
     def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
             **kwargs):
@@ -1156,13 +1214,20 @@ class InferenceWebDataLoader(CoverageWebDataLoader):
         src, dst, new = ret
         try:
             src = self._session._explorer.tracker.equivalence.state(src)
+        except KeyError:
+            src = None
+        try:
             dst = self._session._explorer.tracker.equivalence.state(dst)
         except KeyError:
-            return
+            dst = None
         now = utcnow()
-        if new:
-            self._edge_added[(src, dst)] = now
-        self._edge_visited[(src, dst)] = now
+        if src and dst:
+            if new:
+                self._edge_added[(src, dst)] = now
+            self._edge_visited[(src, dst)] = now
+        for n in (src, dst):
+            if n:
+                self._node_visited[n] = now
         await self.update_graph()
 
     async def update_graph(self, *args, **kwargs):
@@ -1381,6 +1446,10 @@ class ReversibleMap(ABCMapping, ABCReversible):
         return rev
 
     @cached_property
+    def as_dict(self) -> dict:
+        return self._dict
+
+    @cached_property
     def _reversed(self) -> ReversibleMap:
         return self.reverse()
 
@@ -1408,12 +1477,21 @@ class ReversibleMap(ABCMapping, ABCReversible):
 
 class InferenceMap:
     def __init__(self,
-            nodes: Sequence[AbstractState]=(), eqv_map: Mapping[int, int]={},
-            sub: NDArray[Shape["Nodes, Nodes"]]=np.empty((0,0), dtype=int)):
-        self._i2s = ReversibleMap(enumerate(nodes), ktype=int, vtype=object)
+            snapshots: Sequence[AbstractState]=(),
+            features: Sequence[AbstractState]=(),
+            eqv_map: Mapping[int, int]={},
+            collapsed: NDArray[Shape["States, Features"]]=np.empty((0,0), dtype=object),
+            cap: NDArray[Shape["Snapshots, Features"]]=np.empty((0,0), dtype=object),
+            sub: NDArray[Shape["Snapshots, Snapshots"]]=np.empty((0,0), dtype=int)):
+        self._i2s = ReversibleMap(enumerate(snapshots), ktype=int, vtype=object)
+        self._i2f = ReversibleMap(enumerate(features), ktype=int, vtype=object)
         self._i2g = ReversibleMap(eqv_map, ktype=int, vtype=int)
         # HACK force cache the reverse, but with sets as values
         self._i2g.reverse(biject=False)
+
+        self.capability_matrix = cap
+        self.subsumption_matrix = sub
+        self.collapsed_matrix = collapsed
 
         if sub.size:
             subsumers = {
@@ -1502,6 +1580,14 @@ class InferenceMap:
         return self._i2g.keys()
 
     @property
+    def feature_snapshots(self) -> Iterable[AbstractState]:
+        return reversed(self._i2f).keys()
+
+    @property
+    def feature_labels(self) -> Iterable[int]:
+        return self._i2f.keys()
+
+    @property
     def state_labels(self):
         return reversed(self._i2g).keys()
 
@@ -1512,6 +1598,10 @@ class InferenceMap:
     @property
     def states_as_index(self) -> Mapping[int, frozenset[int]]:
         return dict((s, self.members(s, as_index=True)) for s in self.state_labels)
+
+    @property
+    def eqv_map(self) -> Mapping[int, int]:
+        return self._i2g.as_dict
 
     def wrap(self, mapping: ABCMapping[T, Any], key: Callable[[U], T]=None):
         key = key or self.siblings
@@ -1534,25 +1624,50 @@ class InferenceMap:
         a_idx, b_idx = np.where(match)
         return a_idx, b_idx
 
-    def reindex(self, new_nodes: Sequence[AbstractState], *,
+    def reindex(self,
+            new_snapshots: Sequence[AbstractState],
+            new_features: Sequence[AbstractState], *,
             return_indices: bool=False,
             return_fwd: bool=False, return_rev: bool=False):
-        old_nodes = np.asarray(list(self.mapped_snapshots))
-        to_idx, from_idx = self.intersect1d_nosort(new_nodes, old_nodes)
+        old_snapshots = np.asarray(list(self.mapped_snapshots))
+        old_features = np.asarray(list(self.feature_snapshots))
+        s_to_idx, s_from_idx = self.intersect1d_nosort(
+            new_snapshots, old_snapshots)
+        f_to_idx, f_from_idx = self.intersect1d_nosort(
+            new_features, old_features)
 
-        re_nodes = old_nodes[from_idx]
-        re_eqv_map = {a: self._i2g[b] for a, b in zip(to_idx, from_idx)}
-        re_equivalence = self.__class__(new_nodes, re_eqv_map)
+        re_eqv_map = {a: self._i2g[b] for a, b in zip(s_to_idx, s_from_idx)}
+
+        from_irow, from_icol = np.meshgrid(s_from_idx, f_from_idx, indexing='ij')
+        to_irow, to_icol = np.meshgrid(s_to_idx, f_to_idx, indexing='ij')
+        re_cap = np.empty((len(new_snapshots), len(new_features)), dtype=object)
+        re_cap[to_irow, to_icol] = self.capability_matrix[from_irow, from_icol]
+
+        # WARN here we use s_*_idx for both dimensions, since the subsumption
+        # matrix is always snapshot-oriented (no features are included)
+        from_irow, from_icol = np.meshgrid(s_from_idx, s_from_idx, indexing='ij')
+        to_irow, to_icol = np.meshgrid(s_to_idx, s_to_idx, indexing='ij')
+        re_sub = np.zeros((len(new_snapshots),)*2, dtype=int)
+        re_sub[to_irow, to_icol] = self.subsumption_matrix[from_irow, from_icol]
+
+        # WARN collapsed_matrix does not need to be re-indexed, because states
+        # do not change
+        re_collapsed = self.collapsed_matrix
+
+        re_equivalence = self.__class__(
+            new_snapshots, new_features, re_eqv_map, re_collapsed, re_cap, re_sub)
 
         rv = re_equivalence,
         if return_indices:
-            rv = rv + (from_idx, to_idx)
+            rv = rv + ((s_from_idx, s_to_idx), (f_from_idx, f_to_idx))
         if return_fwd:
-            fwd_map = dict(zip(from_idx, to_idx))
-            rv = rv + (fwd_map,)
+            s_fwd_map = dict(zip(s_from_idx, s_to_idx))
+            f_fwd_map = dict(zip(f_from_idx, f_to_idx))
+            rv = rv + (s_fwd_map, f_fwd_map)
         if return_rev:
-            rev_map = dict(zip(to_idx, from_idx))
-            rv = rv + (rev_map,)
+            s_rev_map = dict(zip(s_to_idx, s_from_idx))
+            f_rev_map = dict(zip(f_to_idx, f_from_idx))
+            rv = rv + (s_rev_map, f_rev_map)
         if len(rv) > 1:
             return rv
         else:
