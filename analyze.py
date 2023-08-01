@@ -297,15 +297,15 @@ NYXBIN_HDR = '<QQQQQ'
 NYXBIN_SPEC = {
     'openssh': {
         0: lambda p: struct.pack(
-            f'>I{len(p)-4 if len(p) >=4 else 0}s', len(p) - 4, p[4:]),
+            f'>I{max(len(p),4)-4}s', max(len(p),4)-4, p[4:]),
         1: lambda p: struct.pack(
-            f'>I{len(p)-4 if len(p) >=4 else 0}s', len(p) - 4, p[4:]),
+            f'>I{max(len(p),12)-12}s', max(len(p),12)-12, p[4:]),
         2: lambda p: p,
     },
     'dcmtk': {
         # UNUSED
         -1: lambda p: p[:2] + struct.pack(
-            f'>I{len(p)-6 if len(p) >= 6 else 0}s', len(p), p[6:]),
+            f'>I{max(len(p),6)-6}s', len(p) if len(p) >= 6 else 0, p[6:]),
         0: lambda p: p,
     }
 }
