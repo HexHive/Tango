@@ -293,6 +293,22 @@ NYXBIN_TARGETS = {
     'xmlwf': 'expat',
 }
 NYXBIN_HDR = '<QQQQQ'
+# HACK use speclib to parse and use spec correctly maybe
+NYXBIN_SPEC = {
+    'openssh': {
+        0: lambda p: struct.pack(
+            f'>I{len(p)-4 if len(p) >=4 else 0}s', len(p) - 4, p[4:]),
+        1: lambda p: struct.pack(
+            f'>I{len(p)-4 if len(p) >=4 else 0}s', len(p) - 4, p[4:]),
+        2: lambda p: p,
+    },
+    'dcmtk': {
+        # UNUSED
+        -1: lambda p: p[:2] + struct.pack(
+            f'>I{len(p)-6 if len(p) >= 6 else 0}s', len(p), p[6:]),
+        0: lambda p: p,
+    }
+}
 
 async def cmd_convert_corpus(*,
         fuzzer_args, in_format, in_dir, out_format, out_dir):
@@ -333,17 +349,21 @@ async def read_nyx_py(config, path):
     return inp
 
 async def read_nyx_bin(config, path):
-    with NyxBin(path) as f:
+    program = Path(config['driver']['exec']['path']).name
+    target = NYXBIN_TARGETS[program]
+    with NyxBin(target, path) as f:
         return f.read()
 
 async def write_nyx_bin(config, path, inp):
     path = path.with_suffix(path.suffix + '.bin')
-    with NyxBin(path) as f:
-        program = Path(config['driver']['exec']['path']).name
-        f.write(inp, NYXBIN_TARGETS[program])
+    program = Path(config['driver']['exec']['path']).name
+    target = NYXBIN_TARGETS[program]
+    with NyxBin(target, path) as f:
+        f.write(inp)
 
 @dataclass
 class NyxBin:
+    target: str
     path: Path
 
     def __enter__(self):
@@ -405,12 +425,15 @@ class NyxBin:
         self.unpack_graph()
         inp = PreparedInput()
         for node_type, payload in zip(self.graph_data, self.node_data):
-            assert node_type == 0, f"Unknown node type: {node_type}"
-            inp.append(TransmitInstruction(payload))
+            assert node_type == 0 or self.target in NYXBIN_SPEC, \
+                f"Unknown node type {node_type} for {self.target}"
+            nodes = NYXBIN_SPEC.get(self.target, {0: lambda p: p})
+            conv = nodes[node_type]
+            inp.append(TransmitInstruction(conv(payload)))
         return inp
 
-    def write(self, inp, target_name):
-        self.checksum = NYXBIN_CHECKSUMS[target_name]
+    def write(self, inp):
+        self.checksum = NYXBIN_CHECKSUMS[selt.target]
         self.graph_offset = struct.calcsize(NYXBIN_HDR)
         self.graph_size = 0
         self.data_size = 0
