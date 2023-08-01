@@ -347,7 +347,7 @@ class NyxBin:
     path: Path
 
     def __enter__(self):
-        with os.open(self.path, os.O_RDWR | os.O_BINARY | os.O_CREAT) as f:
+        with os.open(self.path, os.O_RDWR | os.O_CREAT) as f:
             self.mm = mmap(f.fileno(), 0, prot=PROT_READ | PROT_WRITE)
             self.off = 0
 
