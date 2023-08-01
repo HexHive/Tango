@@ -665,6 +665,7 @@ class CoverageExplorer(BaseExplorer,
         context_input = self.get_context_input(input, **kwargs)
         try:
             await self._driver.execute_input(context_input)
+            return self._current_path.copy()
         except LoadedException as ex:
             if not self._observe_postmortem or \
                     not isinstance(ex._ex, ChannelBrokenException):

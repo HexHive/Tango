@@ -54,7 +54,7 @@ class AbstractExplorer(AsyncComponent, ABC,
         pass
 
     @abstractmethod
-    async def follow(self, input: AbstractInput):
+    async def follow(self, input: AbstractInput) -> Path:
         pass
 
 class BaseExplorer(AbstractExplorer,
@@ -221,7 +221,7 @@ class BaseExplorer(AbstractExplorer,
         raise PathNotReproducibleException("Failed to get reproducer",
             first_path)
 
-    async def follow(self, input: BaseInput, **kwargs):
+    async def follow(self, input: BaseInput, **kwargs) -> Path:
         """
         Executes the input and updates the state queues according to the
         scheduler. May need to receive information about the current state to
@@ -230,6 +230,7 @@ class BaseExplorer(AbstractExplorer,
         context_input = self.get_context_input(input, **kwargs)
         try:
             await self._driver.execute_input(context_input)
+            return self._current_path.copy()
         except LoadedException as ex:
             # the driver is un-aware of the context_input semantics; if a crash
             # occurs, we need to prepend the input accumulated by the explorer.
