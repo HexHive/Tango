@@ -557,18 +557,13 @@ class HavocMutator(BaseMutator):
             data = func(data, entropy)
         return data
 
-class RandomInputGenerator(BaseInputGenerator,
-        capture_paths=('generator.chunk_size',)):
+class RandomInputGenerator(BaseInputGenerator):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
             config['generator'].get('type') == 'random'
 
-    def __init__(self, chunk_size: Optional[int]=None, **kwargs):
-        super().__init__(**kwargs)
-        self._chunk = chunk_size
-
     def generate(self, state: AbstractState) -> AbstractInput:
         candidate = self.select_candidate(state)
         return HavocMutator(candidate, entropy=self._entropy,
-            chunk_size=self._chunk)
+            chunk_size=self._fmt.chunk_size)

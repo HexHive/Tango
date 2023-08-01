@@ -9,7 +9,7 @@ from tango.unix import (PtraceChannel, PtraceForkChannel, PtraceChannelFactory,
 from tango.exceptions import ChannelBrokenException
 from tango.common import sync_to_async
 
-from typing import ByteString, Iterable, Mapping, Any
+from typing import ByteString, Iterable, Mapping, Any, Optional
 from subprocess import Popen
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,8 +25,41 @@ __all__ = [
 ]
 
 @dataclass(kw_only=True, frozen=True)
-class StdIOChannelFactory(FileDescriptorChannelFactory):
-    fmt: FormatDescriptor = FormatDescriptor('raw')
+class RawFormatDescriptor(FormatDescriptor):
+    typ: str = 'raw'
+    chunk_size: Optional[int] = None
+
+    def __get__(self, obj, owner):
+        if obj is None:
+            return None
+        return getattr(obj, '_fmt')
+
+    def __set__(self, obj, value):
+        if not value:
+            return
+        fmt = type(self)(chunk_size=value[0])
+        object.__setattr__(obj, '_fmt', fmt)
+
+class ChunkSizeDescriptor:
+    def __get__(self, obj, owner):
+        if obj is None:
+            # default value is 0, to signify no chunking
+            return 0
+        return getattr(obj, '_chunk')
+
+    def __set__(self, obj, value: str):
+        ival = int(value)
+        object.__setattr__(obj, '_chunk', ival)
+
+@dataclass(kw_only=True, frozen=True)
+class StdIOChannelFactory(FileDescriptorChannelFactory,
+        capture_paths=('channel.chunk_size',)):
+    fmt: FormatDescriptor = RawFormatDescriptor()
+    chunk_size: ChunkSizeDescriptor = ChunkSizeDescriptor()
+
+    def __post_init__(self):
+        # implicit casting through the descriptor
+        object.__setattr__(self, 'fmt', (self.chunk_size,))
 
     async def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
         ch = StdIOChannel(pobj=pobj, **self.fields, **kwargs)
@@ -195,12 +228,14 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
             self._reconnect = False
 
 class RawInput(metaclass=SerializedInputMeta, typ='raw'):
-    CHUNKSIZE = 4
-
     def loadi(self) -> Iterable[AbstractInstruction]:
         data = self._file.read()
-        unpack_len = len(data) - (len(data) % self.CHUNKSIZE)
-        for s, in struct.iter_unpack(f'{self.CHUNKSIZE}s', data[:unpack_len]):
+        if (chunk := self._fmt.chunk_size):
+            unpack_len = len(data) - (len(data) % chunk)
+        else:
+            chunk = 0
+
+        for s, in struct.iter_unpack(f'{chunk}s', data[:unpack_len]):
             instruction = TransmitInstruction(data=s)
             yield instruction
         if unpack_len < len(data):

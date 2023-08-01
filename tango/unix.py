@@ -1327,9 +1327,8 @@ class FileDescriptorChannel(PtraceChannel):
 
 @dataclass(kw_only=True, frozen=True)
 class FileDescriptorChannelFactory(PtraceChannelFactory,
-        capture_paths=('channel.data_timeout', 'generator.chunk_size')):
+        capture_paths=('channel.data_timeout',)):
     data_timeout: float = None # seconds
-    chunk_size: Optional[int] = None
 
 class SharedMemoryObject:
     valid_chars = frozenset("-_. %s%s" % (ascii_letters, digits))

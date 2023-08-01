@@ -7,6 +7,7 @@ from tango.ptrace.syscall import PtraceSyscall, SYSCALL_REGISTER
 from tango.ptrace.debugger import PtraceProcess, ProcessEvent
 from tango.unix import (PtraceChannel, PtraceForkChannel, PtraceChannelFactory,
     FileDescriptorChannel, FileDescriptorChannelFactory, EventOptions)
+from tango.raw import ChunkSizeDescriptor, RawFormatDescriptor
 from tango.exceptions import ChannelBrokenException
 
 from subprocess  import Popen
@@ -164,7 +165,7 @@ class TransportFormatDescriptor(NetworkFormatDescriptor, _TransportFormatDescrip
     def __set__(self, obj, value):
         if not value:
             return
-        fmt = type(self)(protocol=value[0], endpoint=value[1], port=value[2])
+        fmt = type(self)(**dict(zip(('protocol', 'endpoint', 'port'), value)))
         object.__setattr__(obj, '_fmt', fmt)
 
 @dataclass(kw_only=True, frozen=True)
@@ -201,12 +202,29 @@ class TransportChannelFactory(NetworkChannelFactory,
         d = super().fields
         return self.exclude_keys(d, 'protocol')
 
+@dataclass(frozen=True)
+class TransportStreamFormatDescriptor(TransportFormatDescriptor):
+    chunk_size: Optional[int] = None
+
+    def __set__(self, obj, value):
+        if not value:
+            return
+        super().__set__(obj, value[:3])
+        object.__setattr__(obj._fmt, 'chunk_size', value[3])
+
 @dataclass(kw_only=True, frozen=True)
 class TCPChannelFactory(TransportChannelFactory,
-        capture_paths=['channel.connect_timeout']):
+        capture_paths=['channel.connect_timeout', 'channel.chunk_size']):
     connect_timeout: float = None # seconds
-
+    chunk_size: ChunkSizeDescriptor = ChunkSizeDescriptor()
+    fmt: FormatDescriptor = TransportStreamFormatDescriptor(
+        protocol=None, endpoint=None, port=None)
     protocol: str = "tcp"
+
+    def __post_init__(self):
+        # implicit casting through the descriptor
+        object.__setattr__(self, 'fmt',
+            (self.protocol, self.endpoint, self.port, self.chunk_size))
 
     async def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
         ch = TCPChannel(pobj=pobj, netns=netns, **self.fields, **kwargs)
