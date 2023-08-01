@@ -13,7 +13,7 @@ from collections import deque
 from statistics import mean
 from datetime import datetime, timedelta
 from contextvars import ContextVar
-from typing import Optional, Iterable
+from typing import Optional, Iterable, Any
 import asyncio
 import os
 
@@ -44,19 +44,23 @@ async def initialize(tg: Optional[asyncio.TaskGroup]=None):
         factory = tg or asyncio
         ProfilingTasks[idx] = factory.create_task(coro)
 
-def get_profiler(name: str, *args, **kwargs) -> AbstractProfiler:
-    if any((args, kwargs)):
-        p = ProfiledObjects.get(name, *args, **kwargs)
+def get_profiler(name: str, *default: Any) -> AbstractProfiler:
+    assert len(default) <= 1
+    if default:
+        p = ProfiledObjects.get(name, *default)
     else:
         p = ProfiledObjects[name]
     if isinstance(p, ContextVar):
         context = get_session_context()
+        if p not in context and default:
+            return default[0]
         return context[p]
     else:
         return p
 
 def get_all_profilers() -> Iterable[tuple[str, AbstractProfiler]]:
-    return {name: get_profiler(name) for name in ProfiledObjects}.items()
+    return {name: profiler for name in ProfiledObjects
+            if (profiler := get_profiler(name, None))}.items()
 
 @lru_cache(maxsize=32)
 def is_profiling_active(*names: Iterable[str]) -> bool:
@@ -78,22 +82,24 @@ class AbstractProfilerMeta(ABCMeta):
             session_local: bool=True, **kwargs):
         if not is_profiling_active(name):
             return cls.nop
-        if (p := ProfiledObjects.get(name)) is None:
+        if (var := ProfiledObjects.get(name)) is None or \
+                (session_local and not var in (context := get_session_context())):
             p = super().__call__(*args, **kwargs)
             object.__setattr__(p, 'name', name)
             if session_local:
                 context = get_session_context()
-                var = ProfiledObjects[name] = ContextVar(f'profiler[{name}]')
+                if not var:
+                    var = ProfiledObjects[name] = ContextVar(f'profiler[{name}]')
                 try:
                     context.run(var.set, p)
                 except RuntimeError:
                     var.set(p)
             else:
                 ProfiledObjects[name] = p
+        elif session_local:
+            p = context[var]
         else:
-            if session_local:
-                context = get_session_context()
-                p = context[p]
+            p = var
         return p
 
     @staticmethod
