@@ -42,7 +42,7 @@ DefaultProfilers['web'] = DefaultProfilers['minimal'] | \
 async def initialize(tg: Optional[asyncio.TaskGroup]=None):
     for idx, coro in enumerate(ProfilingTasks):
         factory = tg or asyncio
-        ProfilingTasks[idx] = factory.create_task(coro)
+        factory.create_task(coro)
 
 def get_profiler(name: str, *default: Any) -> AbstractProfiler:
     assert len(default) <= 1

@@ -449,7 +449,7 @@ class SerializedInput(PreparedInput):
     def __init__(self, *, file: str | BinaryIO, fmt: FormatDescriptor,
             load: bool=False, **kwargs):
         super().__init__(**kwargs)
-        if isinstance(file, io.RawIOBase):
+        if isinstance(file, io.IOBase):
             self._name = repr(file)
             self._file = file
         elif isinstance(file, str):
