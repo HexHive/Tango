@@ -353,6 +353,7 @@ class NyxBin:
         with os.fdopen(fd, 'r+b') as f:
             self.mm = mmap(f.fileno(), 0, prot=PROT_READ | PROT_WRITE)
             self.off = 0
+        return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self.mm.close()
