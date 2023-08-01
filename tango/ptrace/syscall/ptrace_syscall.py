@@ -56,6 +56,7 @@ class PtraceSyscall(FunctionCall):
         self.result = None
         self.result_text = None
         self.instr_pointer = None
+        self.argument_values = None
         if not regs:
             regs = self.process.getregs()
         self.readSyscall(regs)
@@ -103,6 +104,8 @@ class PtraceSyscall(FunctionCall):
         raise NotImplementedError
 
     def writeArgumentValues(self, *args):
+        if self.argument_values and tuple(self.argument_values) == args:
+            return
         regs = None
         if CPU_X86_64:
             regs = ('rdi', 'rsi', 'rdx', 'r10', 'r8', 'r9')
