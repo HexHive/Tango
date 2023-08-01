@@ -226,6 +226,8 @@ class StateInferenceStrategy(SeedableStrategy,
             record(limit=self._min_energy, energy=self._min_energy)))
 
         LambdaProfiler('strat_target')(lambda: self._target)
+        LambdaProfiler('strat_counter')(
+            lambda: self._energies[self._target].energy)
 
     async def initialize(self):
         await super().initialize()
@@ -264,15 +266,11 @@ class StateInferenceStrategy(SeedableStrategy,
                     self._tracker.mode = InferenceMode.CrossPollination
                     self._step_interrupted = True
                 else:
-                    target = self._target
-                    rec = self._energies[target]
-                    LambdaProfiler('strat_counter')(lambda: rec.energy)
                     try:
                         should_reset = False
-                        if rec.energy <= 0:
-                            old_target = target
+                        while (rec := self._energies[self._target].energy) <= 0:
                             self._target = self.recalculate_target()
-                            should_reset = (old_target != self._target)
+                            should_reset = True
                         if should_reset:
                             await self.reload_target()
                             self._step_interrupted = False
@@ -1035,7 +1033,12 @@ class StateInferenceStrategy(SeedableStrategy,
             **kwargs):
         super().update_state(state, *args, exc=exc, **kwargs)
         if state and not exc:
-            self._energies[state].energy -= 1
+            if state is not self.target_state:
+                rec = self._energies[state]
+                rec.energy = max(0, rec.energy - 1)
+                if not rec.energy:
+                    # maybe the target always ends up here
+                    self._target = self.recalculate_target()
         elif exc and self._target == state:
             self._target = self.recalculate_target()
 
