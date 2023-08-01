@@ -4,9 +4,6 @@ AR  := llvm-ar-13
 
 CFLAGS := -O3 -fPIC -I.
 PYBINDING_CFLAGS := $(CFLAGS) -fPIE -shared
-ifdef SKIP_COUNTS
-	PYBINDING_CFLAGS += -DSKIP_COUNTS
-endif
 
 TRACEPCGUARD_FLAG := trace-pc-guard
 TRACECMP_FLAG := trace-cmp
