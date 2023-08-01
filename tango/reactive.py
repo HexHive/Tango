@@ -23,13 +23,11 @@ __all__ = [
 HAVOC_MIN_WEIGHT = 1e-3
 
 class ReactiveInputGenerator(BaseInputGenerator,
-        capture_paths=('generator.chunk_size', 'generator.log_model_history',
-            'generator.log_time_step', 'generator.log_flush_buffer')):
-    def __init__(self, chunk_size: Optional[int]=None,
-            log_model_history: bool=False, log_time_step: float=60.,
+        capture_paths=('generator.log_model_history', 'generator.log_time_step',
+            'generator.log_flush_buffer')):
+    def __init__(self, log_model_history: bool=False, log_time_step: float=60.,
             log_flush_buffer: int=256, **kwargs):
         super().__init__(**kwargs)
-        self._chunk = chunk_size
         self._seen_transitions = set()
         self._state_model = dict()
 
@@ -59,7 +57,7 @@ class ReactiveInputGenerator(BaseInputGenerator,
         candidate = self.select_candidate(state)
         weights = map(lambda t: model['actions'][t][1], havoc_handlers)
         mut = HavocMutator(candidate, weights=weights, entropy=self._entropy,
-            chunk_size=self._chunk)
+            chunk_size=self._fmt.chunk_size)
         return mut
 
     def update_state(self, state: AbstractState, /, *, input: AbstractInput,
