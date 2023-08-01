@@ -338,17 +338,16 @@ async def read_nyx_bin(config, path):
 
 async def write_nyx_bin(config, path, inp):
     path = path.with_suffix(path.suffix + '.bin')
-    with NyxBin(path, mode='wb') as f:
+    with NyxBin(path) as f:
         program = Path(config['driver']['exec']['path']).name
         f.write(inp, NYXBIN_TARGETS[program])
 
 @dataclass
 class NyxBin:
     path: Path
-    mode: str = 'rb'
 
     def __enter__(self):
-        with self.path.open(self.mode) as f:
+        with os.open(self.path, os.O_RDWR | os.O_BINARY | os.O_CREAT) as f:
             self.mm = mmap(f.fileno(), 0, prot=PROT_READ | PROT_WRITE)
             self.off = 0
 
