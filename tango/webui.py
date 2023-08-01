@@ -46,6 +46,7 @@ class WebRenderer(AsyncComponent, component_type='webui',
         self._bubble_reload_period = bubble_reload_period
 
         self._webui_kwargs = kwargs | {'draw_graph': draw_graph}
+        self._handler_tasks = []
 
     def get_webui_factory(self):
         return partial(WebDataLoader, **self._webui_kwargs)
@@ -70,12 +71,12 @@ class WebRenderer(AsyncComponent, component_type='webui',
 
         if self._draw_graph:
             tg = get_session_task_group()
-            tg.create_task(
+            self._handler_tasks.append(tg.create_task(
                 update_prof.listener(
-                    period=self._bubble_update_period)(update))
-            tg.create_task(
+                    period=self._bubble_update_period)(update)))
+            self._handler_tasks.append(tg.create_task(
                 reload_prof.listener(
-                    period=self._bubble_reload_period)(update))
+                    period=self._bubble_reload_period)(update)))
 
     async def run(self):
         self.setup_counters()
@@ -84,6 +85,8 @@ class WebRenderer(AsyncComponent, component_type='webui',
             # dummy future object to await indefinitely
             await asyncio.Future()
         except asyncio.CancelledError:
+            for task in self._handler_tasks:
+                task.cancel()
             await self._http_site.stop()
 
     async def _start_http_server(self, host, port):
@@ -132,7 +135,9 @@ class WebRenderer(AsyncComponent, component_type='webui',
                 debug("Websocket handler terminated (ex=%r)", ex)
             finally:
                 gather_tasks.cancel()
-        await get_session_task_group().create_task(_handler())
+        task = get_session_task_group().create_task(_handler())
+        self._handler_tasks.append(task)
+        await task
 
 class WebDataLoader:
     NA_DATE = datetime.datetime.fromtimestamp(0)
