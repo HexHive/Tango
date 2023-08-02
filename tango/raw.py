@@ -232,12 +232,12 @@ class RawInput(metaclass=SerializedInputMeta, typ='raw'):
         data = self._file.read()
         if (chunk := self._fmt.chunk_size):
             unpack_len = len(data) - (len(data) % chunk)
+            for s, in struct.iter_unpack(f'{chunk}s', data[:unpack_len]):
+                instruction = TransmitInstruction(data=s)
+                yield instruction
         else:
             unpack_len = chunk = 0
 
-        for s, in struct.iter_unpack(f'{chunk}s', data[:unpack_len]):
-            instruction = TransmitInstruction(data=s)
-            yield instruction
         if unpack_len < len(data):
             instruction = TransmitInstruction(data=data[unpack_len:])
             yield instruction
