@@ -1490,7 +1490,7 @@ class InferenceMap:
         # HACK force cache the reverse, but with sets as values
         self._i2g.reverse(biject=False)
 
-        cap_map = {i: frozenset(np.where(cap[i,:])) for i in self.mapped_labels}
+        cap_map = {i: frozenset(*np.where(cap[i,:])) for i in self.mapped_labels}
         self._i2f = ReversibleMap(cap_map, ktype=int, vtype=object)
         # HACK force cache the reverse, but with sets as values
         self._i2f.reverse(biject=False)
