@@ -545,8 +545,9 @@ async def cmd_batch(*, fuzzer_args, batch_cmd, cmdlines, workers):
             tasks.append(loop.run_in_executor(
                 executor, run_worker, cwd, cmdfn, kwargs))
 
-        results = await asyncio.gather(*tasks)
-        return results
+        for coro in asyncio.as_completed(tasks):
+            kwargs, result = await coro
+            print({'args': kwargs, 'result': result})
     finally:
         f.close()
 
@@ -554,7 +555,7 @@ def run_worker(cwd, cmdfn, kwargs):
     os.chdir(cwd)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    return loop.run_until_complete(cmdfn(**kwargs))
+    return (kwargs, loop.run_until_complete(cmdfn(**kwargs)))
 
 ###
 
