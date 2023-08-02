@@ -79,9 +79,9 @@ class WebRenderer(AsyncComponent, component_type='webui',
                     period=self._bubble_reload_period)(update)))
 
     async def run(self):
-        self.setup_counters()
-        await self._start_http_server(self._http_host, self._http_port)
         try:
+            self.setup_counters()
+            await self._start_http_server(self._http_host, self._http_port)
             # dummy future object to await indefinitely
             await asyncio.Future()
         except asyncio.CancelledError:
