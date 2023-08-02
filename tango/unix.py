@@ -1334,6 +1334,18 @@ class FileDescriptorChannelFactory(PtraceChannelFactory,
         capture_paths=('channel.data_timeout',)):
     data_timeout: float = None # seconds
 
+class ChunkSizeDescriptor:
+    def __get__(self, obj, owner):
+        if obj is None:
+            # default value is 2**16; chunking past this seems to block the
+            # fuzzer
+            return 2 ** 16
+        return getattr(obj, '_chunk')
+
+    def __set__(self, obj, value: str):
+        ival = int(value)
+        object.__setattr__(obj, '_chunk', ival)
+
 class SharedMemoryObject:
     valid_chars = frozenset("-_. %s%s" % (ascii_letters, digits))
 

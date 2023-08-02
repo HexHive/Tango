@@ -6,8 +6,9 @@ from tango.core import (AbstractChannel, FormatDescriptor, AbstractInstruction,
 from tango.ptrace.syscall import PtraceSyscall, SYSCALL_REGISTER
 from tango.ptrace.debugger import PtraceProcess, ProcessEvent
 from tango.unix import (PtraceChannel, PtraceForkChannel, PtraceChannelFactory,
-    FileDescriptorChannel, FileDescriptorChannelFactory, EventOptions)
-from tango.raw import ChunkSizeDescriptor, RawFormatDescriptor
+    FileDescriptorChannel, FileDescriptorChannelFactory, EventOptions,
+    ChunkSizeDescriptor)
+from tango.raw import RawFormatDescriptor
 from tango.exceptions import ChannelBrokenException
 
 from subprocess  import Popen

@@ -5,7 +5,7 @@ from tango.core import (AbstractChannel, FormatDescriptor, AbstractInstruction,
 from tango.ptrace.syscall import PtraceSyscall, SYSCALL_REGISTER
 from tango.ptrace.debugger import PtraceProcess
 from tango.unix import (PtraceChannel, PtraceForkChannel, PtraceChannelFactory,
-    FileDescriptorChannel, FileDescriptorChannelFactory)
+    FileDescriptorChannel, FileDescriptorChannelFactory, ChunkSizeDescriptor)
 from tango.exceptions import ChannelBrokenException
 from tango.common import sync_to_async
 
@@ -39,17 +39,6 @@ class RawFormatDescriptor(FormatDescriptor):
             return
         fmt = type(self)(chunk_size=value[0])
         object.__setattr__(obj, '_fmt', fmt)
-
-class ChunkSizeDescriptor:
-    def __get__(self, obj, owner):
-        if obj is None:
-            # default value is 0, to signify no chunking
-            return 0
-        return getattr(obj, '_chunk')
-
-    def __set__(self, obj, value: str):
-        ival = int(value)
-        object.__setattr__(obj, '_chunk', ival)
 
 @dataclass(kw_only=True, frozen=True)
 class StdIOChannelFactory(FileDescriptorChannelFactory,
