@@ -1338,7 +1338,7 @@ class FileDescriptorChannelFactory(PtraceChannelFactory,
 class ChunkSizeDescriptor:
     def __get__(self, obj, owner):
         if obj is None:
-            return None
+            return 0
         return getattr(obj, '_chunk')
 
     def __set__(self, obj, value: str):
