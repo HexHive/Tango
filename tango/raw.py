@@ -233,7 +233,7 @@ class RawInput(metaclass=SerializedInputMeta, typ='raw'):
         if (chunk := self._fmt.chunk_size):
             unpack_len = len(data) - (len(data) % chunk)
         else:
-            chunk = 0
+            unpack_len = chunk = 0
 
         for s, in struct.iter_unpack(f'{chunk}s', data[:unpack_len]):
             instruction = TransmitInstruction(data=s)
