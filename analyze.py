@@ -527,6 +527,7 @@ async def cmd_batch(*, fuzzer_args, batch_cmd, cmdlines, workers):
         cwd = os.getcwd()
         context = mp.get_context('forkserver')
         executor = ProcessPoolExecutor(max_workers=workers, mp_context=context)
+        loop = asyncio.get_running_loop()
         tasks = []
         i = -1
         for i, cmdline in enumerate(f):
@@ -546,15 +547,15 @@ async def cmd_batch(*, fuzzer_args, batch_cmd, cmdlines, workers):
             worker_args = fuzzer_args + argspace.fuzzer_args[1:] + \
                 shlex.split(f'-o fuzzer.work_dir worker_{i}')
             kwargs = vars(argspace) | {'fuzzer_args': worker_args}
-            loop = asyncio.get_running_loop()
             tasks.append(loop.run_in_executor(
                 executor, run_worker, cwd, cmdfn, kwargs))
 
         for coro in asyncio.as_completed(tasks):
             kwargs, result = await coro
-            print({'args': kwargs, 'result': result})
+            print({'args': kwargs, 'result': result}, flush=True)
     finally:
-        f.close()
+        if cmdlines:
+            f.close()
 
 def run_worker(cwd, cmdfn, kwargs):
     os.chdir(cwd)
