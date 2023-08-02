@@ -327,8 +327,11 @@ async def cmd_convert_corpus(*,
     for path in in_paths:
         inp = await parse_fn(config, path)
         out_path = out_dir / path.stem
-        await write_fn(config, out_path, inp)
+        out_path = await write_fn(config, out_path, inp)
         logging.info(f"Processed file: {path!s}")
+        atime = path.stat().st_atime
+        mtime = path.stat().st_mtime
+        os.utime(out_path, (atime, mtime))
 
 async def read_tango(config, path):
     generator = await config.instantiate('generator')
@@ -339,6 +342,7 @@ async def write_tango(config, path, inp):
     generator = await config.instantiate('generator')
     with path.open('wb') as f:
         generator._input_kls(file=f).dump(inp, name=path.stem)
+    return path
 
 async def read_nyx_py(config, path):
     inp = PreparedInput()
@@ -360,6 +364,7 @@ async def write_nyx_bin(config, path, inp):
     target = NYXBIN_TARGETS[program]
     with NyxBin(target, path) as f:
         f.write(inp)
+    return path
 
 @dataclass
 class NyxBin:
