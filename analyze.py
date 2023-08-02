@@ -734,7 +734,8 @@ def main():
     argspace = parser.parse_args()
     configure_verbosity(argspace.verbose)
 
-    argspace.fuzzer_args = argspace.fuzzer_args[1:]
+    if '--' in argspace.fuzzer_args:
+        argspace.fuzzer_args.remove('--')
     kwargs = vars(argspace).copy()
     kwargs.pop('fn', None)
     kwargs.pop('cmd', None)
