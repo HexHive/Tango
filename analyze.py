@@ -745,8 +745,8 @@ def main():
     start_time = time.time()
     fn = ACTIONS[argspace.cmd]['fn']
     try:
-        result = asyncio.run(bootstrap(fn(**kwargs)))
-        print(result)
+        if (result := asyncio.run(bootstrap(fn(**kwargs)))):
+            print(result)
     except Exception as ex:
         logging.warning(ex)
         import ipdb
