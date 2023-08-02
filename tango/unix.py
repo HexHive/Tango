@@ -448,10 +448,8 @@ class PtraceChannel(AbstractChannel):
             self._debugger.deleteProcess(process)
 
     def __del__(self):
-        if hasattr(self, 'observed'):
-            self._del_observed()
-        if hasattr(self, '_debugger'):
-            self._debugger.kill_all()
+        self._del_observed()
+        self._debugger.kill_all()
 
 class PtraceForkChannel(PtraceChannel):
     def __init__(self, **kwargs):
@@ -1025,12 +1023,13 @@ class ForkserverCrashedException(RuntimeError):
 
 class FileDescriptorChannel(PtraceChannel):
     def __init__(self, *,
-            data_timeout: float, chunk_size: Optional[int], **kwargs):
+            data_timeout: float, chunk_size: Optional[int]=None, **kwargs):
         super().__init__(**kwargs)
         self._refcounter = dict()
         self._data_timeout = data_timeout * self._timescale if data_timeout \
             else None
-        self._chunk = chunk_size
+        # default value is 2**16; chunking past this seems to block the fuzzer
+        self._chunk = chunk_size or 2 ** 16
         self.synced = False
 
     async def process_new(self, *args, **kwargs):
@@ -1339,9 +1338,7 @@ class FileDescriptorChannelFactory(PtraceChannelFactory,
 class ChunkSizeDescriptor:
     def __get__(self, obj, owner):
         if obj is None:
-            # default value is 2**16; chunking past this seems to block the
-            # fuzzer
-            return 2 ** 16
+            return None
         return getattr(obj, '_chunk')
 
     def __set__(self, obj, value: str):
