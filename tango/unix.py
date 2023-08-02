@@ -444,13 +444,14 @@ class PtraceChannel(AbstractChannel):
         Responsibility then falls on the caller to transfer the observed to
         another debugger or ultimately terminate them.
         """
-        if hasattr(self, 'observed'):
-            for process in self.observed:
-                self._debugger.deleteProcess(process)
+        for process in self.observed:
+            self._debugger.deleteProcess(process)
 
     def __del__(self):
-        self._del_observed()
-        self._debugger.kill_all()
+        if hasattr(self, 'observed'):
+            self._del_observed()
+        if hasattr(self, '_debugger'):
+            self._debugger.kill_all()
 
 class PtraceForkChannel(PtraceChannel):
     def __init__(self, **kwargs):
