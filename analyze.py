@@ -538,7 +538,7 @@ async def cmd_batch(*, fuzzer_args, batch_cmd, cmdlines, workers):
                 parser.add_argument(*name, **cpy)
             parser.add_argument('fuzzer_args', nargs=argparse.REMAINDER)
             argspace = parser.parse_args(args)
-            worker_args = fuzzer_args + argspace.fuzzer_args + \
+            worker_args = fuzzer_args + argspace.fuzzer_args[1:] + \
                 shlex.split(f'-o fuzzer.work_dir worker_{i}')
             kwargs = vars(argspace) | {'fuzzer_args': worker_args}
             loop = asyncio.get_running_loop()
