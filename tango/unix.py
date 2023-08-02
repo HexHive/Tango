@@ -83,6 +83,7 @@ class PtraceChannel(AbstractChannel):
             on_syscall_exception: Optional[Callable[
                 ProcessEvent, PtraceSyscall, Exception]]=None,
             loop=None, **kwargs):
+        self.observed = {}
         super().__init__(**kwargs)
         self._pobj = pobj
         self._use_seccomp = use_seccomp
@@ -110,7 +111,6 @@ class PtraceChannel(AbstractChannel):
         if use_seccomp:
             self._debugger.traceSeccomp()
 
-        self.observed = {}
         self.on_syscall_exception = on_syscall_exception
 
     async def setup(self):
