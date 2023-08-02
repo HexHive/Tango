@@ -1431,6 +1431,7 @@ class ReversibleMap(ABCMapping, ABCReversible):
             if biject:
                 for k, v in self._dict.items():
                     self._dict[k] = v.pop()
+                    assert not v, "biject==True, but the set is not empty"
             else:
                 vtype = vtype and object
                 for k, v in self._dict.items():
@@ -1484,10 +1485,15 @@ class InferenceMap:
             cap: NDArray[Shape["Snapshots, Features"]]=np.empty((0,0), dtype=object),
             sub: NDArray[Shape["Snapshots, Snapshots"]]=np.empty((0,0), dtype=int)):
         self._i2s = ReversibleMap(enumerate(snapshots), ktype=int, vtype=object)
-        self._i2f = ReversibleMap(enumerate(features), ktype=int, vtype=object)
+        self._f2s = ReversibleMap(enumerate(features), ktype=int, vtype=object)
         self._i2g = ReversibleMap(eqv_map, ktype=int, vtype=int)
         # HACK force cache the reverse, but with sets as values
         self._i2g.reverse(biject=False)
+
+        cap_map = {i: frozenset(np.where(cap[i,:])) for i in self.mapped_labels}
+        self._i2f = ReversibleMap(cap_map, ktype=int, vtype=object)
+        # HACK force cache the reverse, but with sets as values
+        self._i2f.reverse(biject=False)
 
         self.capability_matrix = cap
         self.subsumption_matrix = sub
@@ -1581,11 +1587,11 @@ class InferenceMap:
 
     @property
     def feature_snapshots(self) -> Iterable[AbstractState]:
-        return reversed(self._i2f).keys()
+        return reversed(self._f2s).keys()
 
     @property
     def feature_labels(self) -> Iterable[int]:
-        return self._i2f.keys()
+        return reversed(self._i2f).keys()
 
     @property
     def state_labels(self):
@@ -1602,6 +1608,10 @@ class InferenceMap:
     @property
     def eqv_map(self) -> Mapping[int, int]:
         return self._i2g.as_dict
+
+    @property
+    def cap_map(self) -> Mapping[int, int]:
+        return self._i2f.as_dict
 
     def wrap(self, mapping: ABCMapping[T, Any], key: Callable[[U], T]=None):
         key = key or self.siblings
