@@ -399,7 +399,7 @@ class StateInferenceStrategy(SeedableStrategy,
         edge_mask[mask_irow, mask_icol] = True
 
         # get a new capability matrix, overlayed with new adjacencies
-        adj[to_irow, to_icol] = cap[to_irow, to_icol]
+        adj[mask_irow, mask_icol] = cap[mask_irow, mask_icol]
         cap = adj
 
         root_snapshot = self._tracker.entry_state
