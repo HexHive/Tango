@@ -377,7 +377,7 @@ class StateInferenceStrategy(SeedableStrategy,
             eqv_map = re_equivalence.eqv_map
             return cap, sub, collapsed, eqv_map, snapshots, features
 
-        if self._dt_predict and re_equivalence.mapped_labels:
+        if self._dt_predict and self._dt_fit:
             # this is at least the second round of inference, so the DT had
             # already been trained; however, it had been trained on the old
             # order. We map the old indices to the new ones
@@ -592,10 +592,12 @@ class StateInferenceStrategy(SeedableStrategy,
 
             try:
                 # with DT, we are only concerned with quadrants C and D
-                should_dt_predict = should_predict and eqv_idx not in mapped_labels
+                should_dt_predict = all((
+                    self._dt_predict, self._dt_fit,
+                    should_predict, eqv_idx not in mapped_labels))
 
                 vidx = None
-                if self._dt_predict and should_dt_predict:
+                if should_dt_predict:
                     # traverse the dt
                     dt = self._dt_clf.tree_
                     stack = [0]
