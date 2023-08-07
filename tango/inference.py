@@ -399,7 +399,8 @@ class StateInferenceStrategy(SeedableStrategy,
         edge_mask[mask_irow, mask_icol] = True
 
         # get a new capability matrix, overlayed with new adjacencies
-        cap = self._overlay_capabilities(cap, adj, s_to_idx, f_to_idx)
+        adj[to_irow, to_icol] = cap[to_irow, to_icol]
+        cap = adj
 
         root_snapshot = self._tracker.entry_state
         if root_snapshot in set_features:
@@ -434,12 +435,6 @@ class StateInferenceStrategy(SeedableStrategy,
             self._dt_fit = True
 
         return cap, sub, collapsed, eqv_map, snapshots, features
-
-    @staticmethod
-    def _overlay_capabilities(cap, adj, s_to_idx, f_to_idx):
-        to_irow, to_icol = np.meshgrid(s_to_idx, f_to_idx, indexing='ij')
-        adj[to_irow, to_icol] = cap[to_irow, to_icol]
-        return adj
 
     def _spread_crosstests(self, cap, eqvs, feature_mask, edge_mask):
         projected_done = 0
