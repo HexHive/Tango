@@ -18,6 +18,7 @@ import struct
 import select
 import os
 import stat
+import fcntl
 
 __all__ = [
     'StdIOChannelFactory', 'StdIOChannel', 'StdIOForkChannelFactory',
@@ -135,7 +136,7 @@ class StdIOForkChannelFactory(StdIOChannelFactory,
 
 class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
     def __init__(self, work_dir: str, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(blocking=False, **kwargs)
         self._work_dir = work_dir
         self._injected = False
         self._awaited = False
@@ -214,6 +215,11 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
     def _sync_monitor_target(self):
         if self._awaited and self._reconnect:
             self._file = open(self._fifo, 'wb', buffering=0)
+            # at this point, the pipe has been opened; we'll make it
+            # non-blocking
+            fd = self._file.fileno()
+            flag = fcntl.fcntl(fd, fcntl.F_GETFL)
+            fcntl.fcntl(fd, fcntl.F_SETFL, flag | os.O_NONBLOCK)
             self._reconnect = False
 
 class RawInput(metaclass=SerializedInputMeta, typ='raw'):

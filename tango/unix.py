@@ -1023,13 +1023,15 @@ class ForkserverCrashedException(RuntimeError):
 
 class FileDescriptorChannel(PtraceChannel):
     def __init__(self, *,
-            data_timeout: float, chunk_size: Optional[int]=None, **kwargs):
+            data_timeout: float, chunk_size: Optional[int]=None,
+            blocking: bool=True, **kwargs):
         super().__init__(**kwargs)
         self._refcounter = dict()
         self._data_timeout = data_timeout * self._timescale if data_timeout \
             else None
         # default value is 2**16; chunking past this seems to block the fuzzer
         self._chunk = chunk_size or 2 ** 16
+        self._blocking = blocking
         self.synced = False
 
     async def process_new(self, *args, **kwargs):
@@ -1321,7 +1323,7 @@ class FileDescriptorChannel(PtraceChannel):
     async def _send_monitor_target(self):
         try:
             ret = await self.write_bytes(self._send_data)
-            if ret == 0:
+            if ret == 0 and self._blocking:
                 raise ChannelBrokenException("Failed to send any data")
         except Exception:
             await self._send_barrier.abort()
