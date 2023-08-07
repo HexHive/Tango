@@ -588,8 +588,8 @@ class StateInferenceStrategy(SeedableStrategy,
             try:
                 # with DT, we are only concerned with quadrants C and D
                 should_dt_predict = all((
-                    self._dt_predict, self._dt_fit,
-                    should_predict, eqv_idx not in mapped_labels))
+                    self._dt_predict, should_predict,
+                    eqv_idx not in mapped_labels)) and self._dt_fit
 
                 vidx = None
                 if should_dt_predict:
