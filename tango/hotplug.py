@@ -147,7 +147,8 @@ class HotplugInference(StateInferenceStrategy,
                         self._snapshots[self._explorer._last_state].append(path)
 
             start = self._crosstest_timer.value
-            equivalence = await self.perform_inference(snapshots=list(self._snapshots))
+            equivalence = await self.perform_inference(
+                snapshots=self._snapshots & self._tracker.state_graph.nodes)
             self._tracker.update_equivalence(equivalence)
             end = self._crosstest_timer.value
             self._batch_timeout = max(1.1 * self._batch_timeout, 2 * (end - start))
