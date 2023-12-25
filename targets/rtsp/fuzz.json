@@ -1,39 +1,42 @@
 {
-	"exec": {
-		"path": "./live555",
-		"args": ["./live555", "8554"],
-		"cwd": "./",
-		"env": {
-			"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0",
-			"LD_PRELOAD": "../../lib/libfaketime/src/libfaketime.so.1",
-			"FAKETIME": "+0 i0",
-			"FAKETIME_NO_CACHE": "1"
-		}
+    "driver": {
+        "type": "unix",
+        "exec": {
+            "path": "./live555",
+            "args": ["./live555", "8554"],
+            "cwd": "./",
+            "env": {
+                "ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0",
+                "LD_PRELOAD": "../../lib/libfaketime/src/libfaketime.so.1",
+                "FAKETIME": "+0 i0",
+                "FAKETIME_NO_CACHE": "1"
+            }
+        },
+		"disable_aslr": true,
+		"forkserver": true
+    },
+	"loader": {
+		"type": "replay"
 	},
 	"channel": {
 		"type": "tcp",
-		"tcp": {
-			"endpoint": "127.0.0.1",
-			"port": 8554
-		}
+        "endpoint": "127.0.0.1",
+        "port": 8554,
+        "fork_before_accept": true
 	},
-	"loader": {
-		"type": "replay",
-		"forkserver": false,
-		"disable_aslr": true
-	},
-	"input": {
+	"generator": {
 		"type": "reactive"
 	},
-	"statemanager": {
-		"type": "coverage",
-		"strategy": "uniform"
+	"tracker": {
+		"type": "coverage"
+	},
+	"strategy": {
+		"type": "uniform"
 	},
 	"fuzzer": {
 		"cwd": "./targets/rtsp/",
-		"lib": "./lib/",
+		"work_dir": "./workdir/",
 		"seeds": "./seeds/",
-		"workdir": "./workdir/",
 		"resume": true
 	}
 }
