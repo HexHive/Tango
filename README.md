@@ -51,5 +51,5 @@ Then, from the repo root, start the container and watch the graph at
 http://localhost:8080.
 
 ```
-scripts/docker_run.sh expat
+./scripts/docker_run.sh expat
 ```
