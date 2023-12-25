@@ -276,6 +276,7 @@ install_clang() {
     (
         set -xe;
         LLVM_VERSION=13
+        sudo apt-get install -y curl wget
         curl -sL https://apt.llvm.org/llvm.sh | sudo bash -s $LLVM_VERSION
         sudo apt-get install -y libc++-$v-dev libc++abi-$v-dev
     )
