@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 cd $HOME/tango
-./scripts_eurosp/git_install.sh -y
+# ./scripts_eurosp/git_install.sh -y
 sudo ln -s /usr/bin/clang-13 /usr/bin/clang
 sudo ln -s /usr/bin/clang++-13 /usr/bin/clang++
 source .venv/bin/activate
@@ -17,4 +17,4 @@ pushd targets
 USE_ASAN=1 make $target/
 popd
 
-python main.py -v targets/$target/fuzz.json -o webui.http_host 0.0.0.0 $@
+python main.py -v targets/$target/fuzz.json -o driver.isolate_fs false $@

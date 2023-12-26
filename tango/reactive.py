@@ -57,7 +57,7 @@ class ReactiveInputGenerator(BaseInputGenerator,
         candidate = self.select_candidate(state)
         weights = map(lambda t: model['actions'][t][1], havoc_handlers)
         mut = HavocMutator(candidate, weights=weights, entropy=self._entropy,
-            chunk_size=self._fmt.chunk_size)
+            chunk_size=None if not hasattr(self._fmt, "chunk_size") else self._fmt.chunk_size)
         return mut
 
     def update_state(self, state: AbstractState, /, *, input: AbstractInput,
