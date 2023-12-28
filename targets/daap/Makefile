@@ -10,6 +10,7 @@ export LIBS := $(LDLIBS)
 daapd: libevent_noepoll #pth
 	rm -rf daapd_repo
 	git clone https://github.com/ejurgensen/forked-daapd.git daapd_repo
+	./preinstall.sh
 	cd daapd_repo && \
 	git checkout 2ca10d9 && \
 	patch -p1 < ../forked-daapd.patch && \

@@ -9,7 +9,9 @@
                 "ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0",
                 "LD_LIBRARY_PATH": "libevent_repo/build/lib"
             }
-        }
+        },
+		"disable_aslr": true,
+		"forkserver": true
     },
 	"loader": {
 		"type": "replay"
