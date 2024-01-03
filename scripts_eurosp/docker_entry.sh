@@ -17,4 +17,7 @@ pushd targets
 USE_ASAN=1 make $target/
 popd
 
-python main.py -v targets/$target/fuzz.json -o driver.isolate_fs false $@
+python main.py -v targets/$target/fuzz.json \
+    -o driver.isolate_fs false \
+    -o webui.http_host 0.0.0.0 \
+    $@
