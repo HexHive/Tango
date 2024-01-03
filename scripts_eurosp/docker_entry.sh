@@ -2,8 +2,6 @@
 
 cd $HOME/tango
 # ./scripts_eurosp/git_install.sh -y
-sudo ln -s /usr/bin/clang-13 /usr/bin/clang
-sudo ln -s /usr/bin/clang++-13 /usr/bin/clang++
 source .venv/bin/activate
 
 python="$(realpath "$(which python)")"
