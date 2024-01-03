@@ -9,3 +9,7 @@ __pycache__
 workdir
 stdout
 stderr
+
+.venv/
+build/
+tango.egg-info/
