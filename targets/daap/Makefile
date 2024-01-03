@@ -1,13 +1,13 @@
-.PHONY: daapd libevent_noepoll
+.PHONY: daapd # libevent_noepoll pth
 
 export CFLAGS := $(CFLAGS) -DSQLITE_CORE
-LIBEVENT_PATH := $(realpath ./libevent_repo/build/lib/)
-LIBPTH_PATH := $(realpath ./libpth_repo/.libs/)
-export LDFLAGS := $(LDFLAGS) -L$(LIBEVENT_PATH) #-L$(LIBPTH_PATH)
-export LDLIBS := $(LDLIBS) -lpth
+# LIBEVENT_PATH := $(realpath ./libevent_repo/build/lib/)
+# LIBPTH_PATH := $(realpath ./libpth_repo/.libs/)
+export LDFLAGS := $(LDFLAGS) # -L$(LIBEVENT_PATH) -L$(LIBPTH_PATH)
+export LDLIBS := $(LDLIBS)
 export LIBS := $(LDLIBS)
 
-daapd: libevent_noepoll #pth
+daapd: # libevent_noepoll pth
 	rm -rf daapd_repo
 	git clone https://github.com/ejurgensen/forked-daapd.git daapd_repo
 	./preinstall.sh
@@ -15,8 +15,7 @@ daapd: libevent_noepoll #pth
 	git checkout 2ca10d9 && \
 	patch -p1 < ../forked-daapd.patch && \
 	autoreconf -i && \
-	#LD_LIBRARY_PATH="$(LIBEVENT_PATH):$(LIBPTH_PATH)" ./configure \
-	LD_LIBRARY_PATH="$(LIBEVENT_PATH)" ./configure \
+	./configure \
 		--disable-mpd \
 		--disable-itunes \
 		--disable-lastfm \
