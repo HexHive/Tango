@@ -11,9 +11,13 @@ sudo setcap \
 
 target=$1
 shift
-pushd targets
-USE_ASAN=1 make $target/
-popd
+if [[ $target =~ "skip_build" ]]; then
+    target=${target%"_skip_build"}
+else
+    pushd targets
+    USE_ASAN=1 make $target/
+    popd
+fi
 
 python main.py -v targets/$target/fuzz.json \
     -o driver.isolate_fs false \
