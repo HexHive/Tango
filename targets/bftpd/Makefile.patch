@@ -1,0 +1,20 @@
+--- bftpd/Makefile	2021-01-10 21:27:08.000000000 +0100
++++ bftpd/Makefile_mine	2024-01-04 17:17:40.102867385 +0100
+@@ -3,7 +3,7 @@
+ CC?=gcc
+ INSTALL=/usr/bin/install -c
+ prefix=/usr
+-CFLAGS=-g -O2 -DHAVE_CONFIG_H -Wall -I. -DVERSION=\"$(VERSION)\" -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -DPREFIX=\"$(prefix)\" 
++CFLAGS:= $(CFLAGS) -g -O2 -DHAVE_CONFIG_H -Wall -I. -DVERSION=\"$(VERSION)\" -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -DPREFIX=\"$(prefix)\" 
+ LIBS= -lcrypt
+ mandir=${prefix}/man
+ sbindir=${exec_prefix}/sbin
+@@ -16,7 +16,7 @@
+ SRCS=bftpdutmp.c commands.c commands_admin.c cwd.c dirlist.c list.c login.c logging.c main.c mystring.c options.c md5.c
+ 
+ OBJS2LINK=$(OBJS) $(PAX)
+-LDFLAGS=
++LDFLAGS:= $(LDFLAGS)
+ 
+ all: bftpd
+ 
