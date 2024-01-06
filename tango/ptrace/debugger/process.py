@@ -346,7 +346,7 @@ class PtraceProcess(object):
     async def terminate(self, wait_exit=True, signum=SIGTERM):
         if not self.running or not self.was_attached:
             return True
-        debug("Terminate %s", self)
+        # debug("Terminate %s", self)
         done = False
         try:
             if self.is_stopped:
@@ -862,7 +862,7 @@ class PtraceProcess(object):
     def setoptions(self, options):
         if not HAS_PTRACE_EVENTS:
             self.notImplementedError()
-        debug("Set %s options to %i", self, options)
+        # debug("Set %s options to %i", self, options)
         ptrace_setoptions(self.pid, options)
 
     async def waitEvent(self, blocking=True):

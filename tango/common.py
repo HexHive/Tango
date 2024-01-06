@@ -1008,10 +1008,10 @@ class AsyncComponent(Component):
             reg = reg[cls]
 
     async def initialize(self):
-        info('Initializing %s', self)
+        pass
 
     async def finalize(self, owner: ComponentOwner):
-        info('Finalized %s', self)
+        pass
 
     @classmethod
     async def instantiate(cls, owner: ComponentOwner, config: dict, *args,
@@ -1043,10 +1043,6 @@ class AsyncComponent(Component):
                     f" instance of {requested_type} instead!")
             kwargs[component_type.name] = component
 
-        strargs = (str(a) for a in args)
-        strkwargs = ('='.join(str(x) for x in item) for item in kwargs.items())
-        _args = ', '.join((*strargs, *strkwargs))
-        info('Creating %s as %s(%s)', typ.name, cls.__name__, _args)
         new_component = cls(*args, **kwargs)
         owner[typ] = new_component
         if not deps:

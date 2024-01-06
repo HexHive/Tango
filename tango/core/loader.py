@@ -1,6 +1,7 @@
+from . import debug, info, warning, critical, error
 from tango.core.tracker import AbstractState, AbstractTracker
 from tango.core.types import Transition, LoadableTarget
-from tango.common import AsyncComponent, ComponentType
+from tango.common import AsyncComponent, ComponentOwner, ComponentType
 
 from abc          import ABC, abstractmethod
 from typing       import AsyncGenerator
@@ -28,3 +29,11 @@ class BaseLoader(AbstractLoader,
     def __init__(self, *, tracker: AbstractTracker, **kwargs):
         super().__init__(**kwargs)
         self._tracker = tracker
+
+    async def initialize(self):
+        debug("Done nothing")
+        return await super().initialize()
+
+    async def finalize(self, owner: ComponentOwner):
+        debug("Done nothing")
+        return await super().finalize(owner)

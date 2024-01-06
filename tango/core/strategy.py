@@ -1,4 +1,4 @@
-from . import info, warning, critical
+from . import debug, info, warning, critical
 
 from tango.core.tracker import AbstractState, IUpdateCallback
 from tango.core.input     import AbstractInput
@@ -78,6 +78,10 @@ class BaseStrategy(AbstractStrategy,
         if invalidate_on_exception:
             self._invalid_states = set()
 
+    async def initialize(self):
+        debug("Done nothing")
+        return await super().initialize()
+
     async def step(self, input: Optional[AbstractInput]=None):
         if self._step_interrupted:
             current_state = await self.reload_target()
@@ -148,7 +152,10 @@ class SeedableStrategy(BaseStrategy,
         # while loading seeds, new states may be discovered; until the session
         # takes over, we will be informing the input generator of this
         self._explorer.register_state_update_callback(self._state_update_cb)
+        debug("Registered state update callback to the explorer")
         self._explorer.register_transition_update_callback(self._transition_update_cb)
+        debug("Registered transition update callback to the explorer")
+        await super().initialize()
 
     async def finalize(self, owner: ComponentOwner):
         """
@@ -158,13 +165,15 @@ class SeedableStrategy(BaseStrategy,
         # TODO also load in existing queue if config.resume is True
         for input in self._generator.seeds:
             try:
+                info(f"Reloading states by {self._explorer}")
                 await self._explorer.reload_state()
-                # feed input to target and populate state machine
+                info(f"Feeding {input} and populating state machine by {self._explorer}")
                 await self._explorer.follow(input,
                     minimize=self._minimize_seeds, validate=self._validate_seeds)
-                info("Loaded seed file: %s", input)
+                debug(f"Loaded seed file {input}")
             except LoadedException as ex:
                 warning("Failed to load %s: %s", input, ex.exception)
+        info(f"Reloading state by {self._explorer}")
         await self._explorer.reload_state()
         await super().finalize(owner)
 
@@ -208,6 +217,10 @@ class RolloverCounterStrategy(AbstractStrategy,
         LambdaProfiler('strat_counter')(lambda: self._counter)
         LambdaProfiler('strat_target')(lambda: self._target)
 
+    async def initialize(self):
+        debug("Done nothing")
+        return await super().initialize()
+
     async def step(self, input: Optional[AbstractInput]=None):
         should_reset = False
         if self._counter == 0:
@@ -248,6 +261,10 @@ class RandomStrategy(RolloverCounterStrategy, SeedableStrategy):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+    async def initialize(self):
+        debug("Done nothing")
+        return await super().initialize()
+
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
@@ -268,6 +285,16 @@ class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._energy_map = defaultdict(lambda: 1)
+
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
+    async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
+        await super().finalize(owner)
+        debug(f"Finalized {self}")
 
     async def step(self, input: Optional[AbstractInput]=None):
         try:

@@ -1,3 +1,4 @@
+from tango.common import ComponentOwner
 from . import debug, info
 
 from tango.core import (AbstractChannel, FormatDescriptor, AbstractInstruction,
@@ -174,6 +175,14 @@ class NetworkChannelFactory(FileDescriptorChannelFactory,
         capture_paths=['channel.endpoint']):
     endpoint: str
 
+    async def initialize(self):
+        debug("Done nothing")
+        return await super().initialize()
+
+    async def finalize(self, owner: ComponentOwner):
+        debug("Done nothing")
+        return await super().finalize(owner)
+
 class PortDescriptor:
     def __get__(self, obj, owner):
         if obj is None:
@@ -192,6 +201,14 @@ class TransportChannelFactory(NetworkChannelFactory,
     port: PortDescriptor = PortDescriptor()
     fmt: FormatDescriptor = TransportFormatDescriptor(
         protocol=None, endpoint=None, port=None)
+
+    async def initialize(self):
+        debug("Done nothing")
+        return await super().initialize()
+
+    async def finalize(self, owner: ComponentOwner):
+        debug("Done nothing")
+        return await super().finalize(owner)
 
     def __post_init__(self):
         # implicit casting through the descriptor
@@ -221,6 +238,16 @@ class TCPChannelFactory(TransportChannelFactory,
     fmt: FormatDescriptor = TransportStreamFormatDescriptor(
         protocol=None, endpoint=None, port=None)
     protocol: str = "tcp"
+
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
+    async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
+        await super().finalize(owner)
+        debug(f"Finalized {self}")
 
     def __post_init__(self):
         # implicit casting through the descriptor
@@ -270,13 +297,13 @@ class TCPChannel(NetworkChannel):
         self._setup_address = address
         self._setup_accepting = False
 
-        # wait until target sets up a listening socket
+        info("Running the target and monitoring syscalls")
         await self.monitor_syscalls(None, self._setup_ignore_callback,
             self._setup_break_callback, self._setup_syscall_callback,
             fds={}, listeners=self._setup_listeners, address=address,
             timeout=self._connect_timeout)
 
-        # wait until socket begins accepting
+        info("Running the target and monitoring syscalls")
         await self.monitor_syscalls(None, self._setup_ignore_callback_accept,
             self._setup_break_callback_accept, self._setup_syscall_callback_accept,
             timeout=self._connect_timeout, break_on_entry=True,
@@ -289,15 +316,17 @@ class TCPChannel(NetworkChannel):
         self._connect_address = address
         self._sockfd = -1
         self._refcounter.clear()
+        info("Running the target and monitoring syscalls")
         self._accept_process, _ = await self.monitor_syscalls(
             self._connect_monitor_target, self._connect_ignore_callback,
             self._connect_break_callback, self._connect_syscall_callback,
             listenfd=self._listenfd, timeout=self._connect_timeout)
-        debug("Socket is now connected (sockfd=%i)!", self._sockfd)
+        info(f"Target process with {self._accept_process.pid} accepts our connecting")
 
         # wait for the next read, recv, select, or poll
         # or wait for the parent to fork, and trace child for these calls
         await self.sync()
+        info(f"Target process with {self._accept_process.pid} is waiting us")
         assert self.synced
 
     async def read_bytes(self) -> ByteString:
@@ -367,13 +396,15 @@ class TCPChannel(NetworkChannel):
             if domain != socket.AF_INET or (typ & socket.SOCK_STREAM) == 0:
                 return
             fd = syscall.result
-            fds[fd] = ListenerSocketState()
+            fds[fd] = ListenerSocketState(fd)
+            info(f"Handled socket() returned fd:{fd}")
         elif syscall.name in ('bind', 'listen'):
             fd = syscall.arguments[0].value
             if fd not in fds:
                 return
             entry = syscall.result is None
             result = fds[fd].event(process, syscall, entry=entry)
+            info(f"Handled {syscall.name}() returned fd:{fd}")
             if result is not None:
                 listeners[fd] = result
                 candidates = [x[0] for x in listeners.items() if x[1][2] == address[1]]
@@ -382,6 +413,7 @@ class TCPChannel(NetworkChannel):
                     # At this point, the target is paused just after the listen syscall that
                     # matches our condition.
                     self.cb_socket_listening(process, syscall)
+                    info(f"Handled socket listening for process {process.pid}")
 
     def _setup_ignore_callback(self, syscall):
         return syscall.name not in ('socket', 'bind', 'listen')
@@ -395,6 +427,7 @@ class TCPChannel(NetworkChannel):
             return
         self._setup_accepting = True
         self.cb_socket_accepting(process, syscall)
+        info(f"Handled socket accepting for process {process.pid}")
 
         process.syscall()
         return True
@@ -442,8 +475,10 @@ class ListenerSocketState:
     SOCKET_BOUND = 2
     SOCKET_LISTENING = 3
 
-    def __init__(self):
+    def __init__(self, fd):
+        self.fd = fd
         self._state = self.SOCKET_UNBOUND
+        debug(f"Socket {self.fd} UNBOUND")
 
     def event(self, process, syscall, entry=False):
         assert (syscall.result != -1), f"Syscall failed," \
@@ -462,11 +497,11 @@ class ListenerSocketState:
                 self._sa_family = _sa_family
                 self._sin_port = _sin_port
                 self._sin_addr = _sin_addr
-                debug("Socket bound to port %i", self._sin_port)
+                debug(f"Socket {self.fd} BOUND to {self._sin_addr}:{self._sin_port}")
         elif self._state == self.SOCKET_BOUND and syscall.name == 'listen':
             if not entry:
                 self._state = self.SOCKET_LISTENING
-                debug("Server listening on port %i", self._sin_port)
+                debug(f"Socket {self.fd} LISTENING on {self._sin_addr}:{self._sin_port}")
             return (self._sa_family, self._sin_addr, self._sin_port)
 
 
@@ -476,6 +511,16 @@ class TCPForkChannelFactory(TCPChannelFactory,
     fork_before_accept: bool = True
     _cached = None
 
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
+    async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
+        await super().finalize(owner)
+        debug(f"Finalized {self}")
+
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
@@ -484,6 +529,7 @@ class TCPForkChannelFactory(TCPChannelFactory,
     async def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
         ch = await self._create_once(
             pobj=pobj, netns=netns, **self.fields, **kwargs)
+        info(f"Connecting to {self.endpoint}:{self.port} via {ch}")
         await ch.connect((self.endpoint, self.port))
         return ch
 
@@ -494,8 +540,10 @@ class TCPForkChannelFactory(TCPChannelFactory,
             ch = TCPForkBeforeAcceptChannel(**kwargs)
         else:
             ch = TCPForkAfterListenChannel(**kwargs)
+        debug(f"Created a {ch}")
         object.__setattr__(self, '_cached', ch)
         await ch.setup((self.endpoint, self.port))
+        debug(f"Set up the {ch} with {self.endpoint}:{self.port}")
         return ch
 
     @property
@@ -504,10 +552,34 @@ class TCPForkChannelFactory(TCPChannelFactory,
         return self.exclude_keys(d, 'fork_before_accept')
 
 class TCPForkAfterListenChannel(TCPChannel, PtraceForkChannel):
+    def __init__(self, endpoint: str, port: int, connect_timeout: float, **kwargs):
+        info(f"Constructing a {self}")
+        super().__init__(endpoint, port, connect_timeout, **kwargs)
+        debug(f"Constructed a {self}")
+
     def cb_socket_listening(self, process, syscall):
         self._invoke_forkserver(process)
 
 class TCPForkBeforeAcceptChannel(TCPChannel, PtraceForkChannel):
+    """
+    Forkserver model:
+        Parent                Child
+          |
+          accept().entry
+          |
+       -> fork() -------------> accept().entry
+       |  |                     |
+       <- wait()                accept().exit (connected)
+                                | (possible non-determinism)
+                                recv() ->
+                                |       | (possible non-determinism)
+                                <-------<
+    """
+    def __init__(self, endpoint: str, port: int, connect_timeout: float, **kwargs):
+        info(f"Constructing a {self}")
+        super().__init__(endpoint, port, connect_timeout, **kwargs)
+        debug(f"Constructed a {self}")
+
     def cb_socket_accepting(self, process, syscall):
         # The syscall instruction cannot be "cancelled". Instead we replace it
         # by a call to an invalid syscall so the kernel returns immediately, and
@@ -519,6 +591,7 @@ class TCPForkBeforeAcceptChannel(TCPChannel, PtraceForkChannel):
         # listener
         syscall.name = "FORKSERVER"
         syscall.syscall = -1
+        info("Injecting forkserver")
         self._invoke_forkserver(process)
 
     def _invoke_forkserver(self, process):
@@ -540,9 +613,22 @@ class UDPChannelFactory(TransportChannelFactory,
 
     protocol: str = "udp"
 
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
+    async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
+        await super().finalize(owner)
+        debug(f"Finalized {self}")
+
     async def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
         ch = UDPChannel(pobj=pobj, netns=netns, **self.fields, **kwargs)
+        debug(f"Created a {ch}")
         await ch.setup((self.endpoint, self.port))
+        debug(f"Set up the {ch} with {self.endpoint}:{self.port}")
+        info(f"Connecting to {self.endpoint}:{self.port} via {ch}")
         await ch.connect((self.endpoint, self.port))
         return ch
 
@@ -556,11 +642,13 @@ class UDPChannel(NetworkChannel):
 
     def __init__(self, endpoint: str, port: int,
                     connect_timeout: float, **kwargs):
+        info(f"Constructing a {self}")
         super().__init__(**kwargs)
         self._connect_timeout = connect_timeout * self._timescale if connect_timeout else None
         self._bind_process = None
         self._sockconnected = False
         self._sockfd = -1
+        debug(f"Constructed a {self}")
 
     def cb_socket_binding(self, process, syscall):
         pass
@@ -575,6 +663,7 @@ class UDPChannel(NetworkChannel):
         self._setup_binds = {}
         self._setup_address = address
 
+        info("Running the target and monitoring syscalls")
         await self.monitor_syscalls(None,
             self._setup_ignore_callback,
             self._setup_break_callback, self._setup_syscall_callback,
@@ -586,12 +675,12 @@ class UDPChannel(NetworkChannel):
         self._refcounter.clear()
         self._sockconnected = False
         self._connect_address = address
+        info("Running the target and monitoring syscalls")
         self._bind_process, _ = await self.monitor_syscalls(
             self._connect_monitor_target, self._connect_ignore_callback,
             self._connect_break_callback, self._connect_syscall_callback,
             timeout=self._connect_timeout)
-
-        debug("Socket is now connected (sockfd=%i)!", self._sockfd)
+        info(f"Target process with {self._bind_process.pid} binds {self._connect_address[0]}:{self._connect_address[1]}")
 
         # wait for the next read, recv, select, or poll
         # or wait for the parent to fork, and trace child for these calls
@@ -629,19 +718,22 @@ class UDPChannel(NetworkChannel):
             if domain != socket.AF_INET or (typ & socket.SOCK_DGRAM) == 0:
                 return
             fd = syscall.result
-            fds[fd] = UDPSocketState()
+            fds[fd] = UDPSocketState(fd)
+            info(f"Handled socket() returned fd:{fd}")
         elif syscall.name == 'bind':
             fd = syscall.arguments[0].value
             if fd not in fds:
                 return
             # if syscall_entry, we'll do it again later
             result = fds[fd].event(process, syscall, entry=is_entry)
+            info(f"Handled {syscall.name}() returned fd:{fd}")
             if result is not None:
                 binds[fd] = result
                 candidates = [x[0] for x in binds.items() if x[1][2] == address[1]]
                 if candidates:
                     self._sockfd = candidates[0]
                     self.cb_socket_binding(process, syscall)
+                    info(f"Handled socket binding for process {process.pid}")
 
         if is_entry:
             process.syscall()
@@ -678,8 +770,10 @@ class UDPSocketState:
     SOCKET_UNBOUND = 1
     SOCKET_BOUND = 2
 
-    def __init__(self):
+    def __init__(self, fd):
+        self.fd = fd
         self._state = self.SOCKET_UNBOUND
+        debug(f"Socket {self.fd} UNBOUND")
 
     def event(self, process, syscall, entry=False):
         assert (syscall.result != -1), f"Syscall failed, {errno.error_code(-syscall.result)}"
@@ -697,7 +791,7 @@ class UDPSocketState:
                 self._sa_family = _sa_family
                 self._sin_port = _sin_port
                 self._sin_addr = _sin_addr
-                debug("Socket bound to port %i", self._sin_port)
+                debug(f"Socket {self.fd} BOUND to {self._sin_addr}:{self._sin_port}")
             return (_sa_family, _sin_addr, _sin_port)
 
 
@@ -706,6 +800,16 @@ class UDPForkChannelFactory(UDPChannelFactory,
         capture_paths=['channel.fork_before_bind']):
     fork_before_bind: bool = False
     _cached = None
+
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
+    async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
+        await super().finalize(owner)
+        debug(f"Finalized {self}")
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -763,6 +867,7 @@ class UDPForkBeforeBindChannel(UDPChannel, PtraceForkChannel):
         # listener
         syscall.name = "FORKSERVER"
         syscall.syscall = -1
+        info("Injecting forkserver")
         self._invoke_forkserver(process)
 
     def _invoke_forkserver(self, process):

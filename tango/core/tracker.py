@@ -361,10 +361,12 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
         if state not in self.nodes:
             self.add_node(state, node_obj=state)
             new = True
+            debug(f"Added {state} into {self}")
         else:
             # we retrieve the original state object, in case the tracker
             # returned a new state object with the same hash
             state = self.nodes[state]['node_obj']
+            debug(f"Retrieved {state} from {self}")
         return state, new
 
     @EventProfiler('update_transition')
@@ -439,7 +441,9 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
                     destination=dst_out,
                     input=minimized
                 )
+            debug(f"Stitched in/out edges along with data before deleting {state}")
         self.remove_node(state)
+        debug(f"Removed {state}")
 
     def delete_transition(self, source: AbstractState, destination: AbstractState):
         if source not in self or destination not in self \
@@ -611,8 +615,13 @@ class AbstractTracker(AsyncComponent, IUpdateCallback, ABC,
 
 
 class BaseTracker(AbstractTracker):
+    async def initialize(self):
+        debug("Done nothing")
+        return await super().initialize()
+
     async def finalize(self, owner: ComponentOwner):
         self._state_graph = BaseStateGraph(entry_state=self.entry_state)
+        debug(f"Constructed {self._state_graph} with entry state {self.entry_state}")
 
     @property
     def state_graph(self):
@@ -632,11 +641,13 @@ class BaseTracker(AbstractTracker):
             -> Optional[AbstractState]:
         if state:
             if not exc:
+                debug("Adding {state} into {self._state_graph}")
                 state, is_new = self._state_graph.update_state(state)
             elif state != self.entry_state:
-                if isinstance(exc, StateNotReproducibleException):
-                    debug("Dissolving irreproducible state=%s", state)
                 try:
+                    debug(f"Dissolving {state} due to {exc}")
+                    if isinstance(exc, StateNotReproducibleException):
+                        debug(f"Dissolving irreproducible {state}")
                     # WARN if stitch==False, this may create disconnected
                     # subgraphs that the strategy is unaware of. Conversely,
                     # stitching may consume too much time and may bring the

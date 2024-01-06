@@ -219,7 +219,7 @@ class PtraceDebugger(object):
         a new (stopped) process.
         """
         process = PtraceProcess(self, pid, is_attached, **kwargs)
-        debug("Attach %s to debugger", process)
+        # debug("Attach %s to debugger", process)
         self.traceProcess(process)
         try:
             await process.waitSignals(SIGTRAP, SIGSTOP)
@@ -253,7 +253,7 @@ class PtraceDebugger(object):
         Quit the debugger: terminate all processes in reverse order.
         """
         try:
-            debug("Quit debugger")
+            # debug("Quit debugger")
             # Terminate processes in reverse order
             # to kill children before parents
             processes = list(self.list)
@@ -399,8 +399,8 @@ class PtraceDebugger(object):
             if wanted_pid and wanted_pid != pid:
                 # subscription is catch-all but wait_status was called with a
                 # specific pid
-                debug("Re-ordering event %s, listening for %i",
-                    item, wanted_pid)
+                # debug("Re-ordering event %s, listening for %i",
+                #     item, wanted_pid)
                 del self.event_history[idx]
                 self._shift_subscriptions(idx, -1)
                 if HAS_SIGNALFD:
@@ -429,8 +429,8 @@ class PtraceDebugger(object):
                 try:
                     eid, pid, status = await self._wait_status(
                         wanted_pid, subscription, blocking=blocking)
-                    debug("wait_event(%s): subscriber to %s received event %s",
-                        wanted_pid, subscription.wanted_pid, (eid, pid, status))
+                    # debug("wait_event(%s): subscriber to %s received event %s",
+                    #    wanted_pid, subscription.wanted_pid, (eid, pid, status))
                 except OSError as err:
                     if wanted_pid and err.errno == ECHILD:
                         process = self.dict[wanted_pid]
@@ -483,8 +483,8 @@ class PtraceDebugger(object):
             for i in range(min_at - 1, -1, -1):
                 del self.event_history[i]
             self._shift_subscriptions(min_at - 1, -min_at)
-            debug("Event history too long (len=%i);"
-                  " purged %i items.", l, l - len(self.event_history))
+            # debug("Event history too long (len=%i);"
+            #      " purged %i items.", l, l - len(self.event_history))
 
         return await recipient.processStatus(status)
 
@@ -553,7 +553,7 @@ class PtraceDebugger(object):
             self.list.remove(process)
         except ValueError:
             return
-        debug("Deleted %s from debugger", process)
+        # debug("Deleted %s from debugger", process)
 
     def updateProcessOptions(self):
         for process in self:
@@ -569,7 +569,7 @@ class PtraceDebugger(object):
         self.options |= PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK
         self.trace_fork = True
         self.updateProcessOptions()
-        debug("Debugger trace forks (options=%i)", self.options)
+        # debug("Debugger trace forks (options=%i)", self.options)
 
     def traceExec(self):
         """
@@ -581,7 +581,7 @@ class PtraceDebugger(object):
         self.trace_exec = True
         self.options |= PTRACE_O_TRACEEXEC
         self.updateProcessOptions()
-        debug("Debugger trace execs (options=%i)", self.options)
+        # debug("Debugger trace execs (options=%i)", self.options)
 
     def traceClone(self):
         """
@@ -592,7 +592,7 @@ class PtraceDebugger(object):
             return
         self.trace_clone = True
         self.options |= PTRACE_O_TRACECLONE
-        debug("Debugger trace execs (options=%i)", self.options)
+        # debug("Debugger trace execs (options=%i)", self.options)
         self.updateProcessOptions()
 
     def traceSeccomp(self):
@@ -601,7 +601,7 @@ class PtraceDebugger(object):
             return
         self.trace_seccomp = True
         self.options |= PTRACE_O_TRACESECCOMP
-        debug("Debugger trace execs (options=%i)", self.options)
+        # debug("Debugger trace execs (options=%i)", self.options)
         self.updateProcessOptions()
 
     def enableSysgood(self):

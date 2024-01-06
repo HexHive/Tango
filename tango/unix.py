@@ -17,7 +17,7 @@ from tango.ptrace.func_call import FunctionCallOptions
 from tango.ptrace.syscall import PtraceSyscall, SOCKET_SYSCALL_NAMES
 from tango.ptrace.tools import signal_to_exitcode
 from tango.ptrace.linux_proc import readProcessStat
-from tango.common import ComponentType
+from tango.common import ComponentOwner, ComponentType
 from tango.exceptions import (ChannelTimeoutException, StabilityException,
     ProcessCrashedException, ProcessTerminatedException, ChannelBrokenException)
 
@@ -91,8 +91,6 @@ class PtraceChannel(AbstractChannel):
         self._process_all = False
         self._verbose = False
 
-        debug("Setting up new ptrace-enabled channel")
-
         self._syscall_options = FunctionCallOptions(
             write_types=False,
             write_argname=False,
@@ -104,11 +102,16 @@ class PtraceChannel(AbstractChannel):
         self._syscall_options.instr_pointer = False
 
         self._debugger = PtraceDebugger()
+        debug("Initialized a PtraceDebugger ")
         self._debugger.traceFork()
+        debug("Traced forks by the PtraceDebugger")
         self._debugger.traceExec()
+        debug("Traced execs by the PtraceDebugger")
         self._debugger.traceClone()
+        debug("Traced clones by the PtraceDebugger")
         if use_seccomp:
             self._debugger.traceSeccomp()
+            debug("Trace seccomps by the PtraceDebugger")
 
         self.observed = {}
         self.on_syscall_exception = on_syscall_exception
@@ -118,7 +121,9 @@ class PtraceChannel(AbstractChannel):
         self._dbgsub = self._debugger.subscribe()
         self._proc = await self._debugger.addProcess(self._pobj.pid,
             is_attached=True, subscription=self._dbgsub)
+        debug(f"Attached the debugger to process {self._proc.pid} with options {self._debugger.options}")
         self.prepare_process(self._proc, resume=True)
+        debug(f"Prepared {self._proc} with resume: True")
 
     @property
     def root(self):
@@ -149,7 +154,7 @@ class PtraceChannel(AbstractChannel):
     async def process_syscall(self, process, syscall, syscall_callback, is_entry, **kwargs) -> bool:
         # ensure that the syscall has finished successfully before callback
         if is_entry or syscall.result >= 0:
-            debug("syscall requested: [%i] %s", process.pid, syscall)
+            # debug("syscall requested: [%i] %s", process.pid, syscall)
             processed = await syscall_callback(process, syscall, **kwargs)
         else:
             processed = False
@@ -190,6 +195,7 @@ class PtraceChannel(AbstractChannel):
             self.resume_process(event.process)
             return
         elif event.signum == signal.SIGSEGV:
+            event.display()
             raise ProcessCrashedException(f"Process with {event.process.pid=} terminated abnormally with {event.signum=}", exitcode=event.signum)
         debug("Target process with pid=%i received signal with signum=%i",
             event.process.pid, event.signum)
@@ -197,7 +203,7 @@ class PtraceChannel(AbstractChannel):
 
     async def process_new(self, event, ignore_callback):
         # monitor child for syscalls as well. may be needed for multi-thread or multi-process targets
-        debug("Target process with pid=%i forked, adding child process with pid=%i to debugger",
+        info("Target process with pid=%i forked, adding child process with pid=%i to debugger",
             event.process.parent.pid, event.process.pid)
         if event.process.is_attached:
             # sometimes, child process might have been killed at creation,
@@ -236,6 +242,7 @@ class PtraceChannel(AbstractChannel):
             state = event.process.syscall_state
 
             ### DEBUG ###
+            # self._verbose = True
             if self._verbose:
                 debug("Target process with pid=%i encountered a syscall-stop",
                     event.process.pid)
@@ -345,6 +352,8 @@ class PtraceChannel(AbstractChannel):
 
         last_process = None
         monitoring = True
+
+        debug("Entered _monitor_syscalls_internal_loop")
         while monitoring:
             try:
                 if not self._debugger:
@@ -352,7 +361,7 @@ class PtraceChannel(AbstractChannel):
                         "Process was terminated while waiting for syscalls",
                         exitcode=None)
 
-                debug("Waiting for syscall...")
+                # debug("Waiting for syscall...")
                 event = await self._wait_for_syscall(process)
                 if not event:
                     continue
@@ -464,6 +473,7 @@ class PtraceForkChannel(PtraceChannel):
         await super().setup()
         # extract forkserver location
         self._symb_forkserver = resolve_symbol(self._proc, 'forkserver')
+        debug(f"Got the address of forkserver at 0x{self._symb_forkserver:016X}")
 
     @property
     def root(self):
@@ -497,7 +507,7 @@ class PtraceForkChannel(PtraceChannel):
                 # resume execution of the child process
                 self.resume_process(forked_child)
             else:
-                debug("Forkserver trapped, waiting for wake-up call")
+                info("Forkserver trapped, waiting for wake-up call")
                 self._proc_trapped = True
                 if self._proc_untrap:
                     # When the child dies unexpectedly (ForkChildKilledEvent),
@@ -563,7 +573,6 @@ class PtraceForkChannel(PtraceChannel):
         return value
 
     def _inject_forkserver(self, process: PtraceProcess, address: int):
-        debug("Injecting forkserver!")
         with process.regsctx():
             self._trap_rip = address # we need this to restore execution later
             word_offset = address % CPU_WORD_SIZE
@@ -584,8 +593,8 @@ class PtraceForkChannel(PtraceChannel):
             self._stack_push(process, 0) # some x86-64 alignment stuff
             self._stack_push(process, address)
 
-            # redirect control flow to the forkserver
             process.setreg(CPU_INSTR_POINTER, self._symb_forkserver)
+            debug(f"Redirected control flow to the forkserver at 0x{self._symb_forkserver:016X}")
 
     def _invoke_forkserver(self, process: PtraceProcess):
         address = process.getInstrPointer()
@@ -602,7 +611,7 @@ class PtraceForkChannel(PtraceChannel):
 
     async def _wakeup_forkserver(self):
         if self._proc_trapped:
-            debug("Waking up forkserver :)")
+            info("Waking up forkserver :)")
             self.resume_process(self._proc)
 
             if not self._use_seccomp:
@@ -613,6 +622,7 @@ class PtraceForkChannel(PtraceChannel):
                 for process in self._debugger:
                     process.syscall_state._ignore_callback = process.syscall_state.ignore_callback
 
+                info("Running the target and monitoring syscalls")
                 await self.monitor_syscalls(None,
                     self._wakeup_forkserver_ignore_callback,
                     self._wakeup_forkserver_break_callback,
@@ -627,6 +637,7 @@ class PtraceForkChannel(PtraceChannel):
 
     async def close(self):
         if self._forked_child:
+            info(f"Killing forked {self._forked_child}")
             await self._forked_child.terminateTree()
         if self._proc_trapped:
             # when we kill the forked_child, we wake up the forkserver from trap
@@ -659,6 +670,14 @@ class PtraceForkChannel(PtraceChannel):
 class PtraceChannelFactory(AbstractChannelFactory,
         capture_paths=('driver.use_seccomp',)):
     use_seccomp: bool = HAS_SECCOMP_FILTER
+
+    async def initialize(self):
+        debug("Done nothing")
+        return await super().initialize()
+
+    async def finalize(self, owner: ComponentOwner):
+        debug("Done nothing")
+        return await super().finalize(owner)
 
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -733,6 +752,14 @@ class ProcessDriver(BaseDriver,
             personality.argtypes = [ctypes.c_ulong]
             personality(ADDR_NO_RANDOMIZE)
 
+    async def initialize(self):
+        debug("Done nothing")
+        return await super().initialize()
+
+    async def finalize(self, owner: ComponentOwner):
+        debug("Done nothing")
+        return await super().finalize(owner)
+
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
@@ -781,7 +808,6 @@ class ProcessDriver(BaseDriver,
         netns.remove(self._netns_name)
 
     async def relaunch(self):
-        ## Kill current process, if any
         if self._pobj:
             # ensure that the channel is closed and the debugger detached
             await self._channel.close()
@@ -798,6 +824,7 @@ class ProcessDriver(BaseDriver,
                     # FIXME is safe termination necessary?
                     self._pobj.kill()
                     break
+                info(f"Killing current process {self._pobj.pid}")
                 self._pobj.terminate()
                 try:
                     self._pobj.wait(self.PROC_TERMINATE_WAIT)
@@ -805,15 +832,19 @@ class ProcessDriver(BaseDriver,
                 except TimeoutExpired:
                     retries += 1
 
-        ## Launch new process
+        info(f"Launching a new process")
         self._pobj = self._popen()
+        debug(f"Launched a new process {self._pobj.pid}")
 
-        ## Establish a connection
-        await self.create_channel()
+        info(f"Creating a channel to the new process {self._pobj.pid}")
+        channel = await self.create_channel()
+        info(f"Created a channel {channel} to the new process {self._pobj.pid}")
 
     async def create_channel(self, **kwargs):
+        info(f"Creating a channel via {self._factory}")
         self._channel = await self._factory.create(self._pobj, self._netns_name,
             **kwargs)
+        info(f"Created a channel {self._channel} via {self._factory}")
         return self._channel
 
     @property
@@ -821,6 +852,8 @@ class ProcessDriver(BaseDriver,
         return self._channel
 
     def _popen(self):
+        debug("Running {} {}".format(' '.join([ '{}={}'.format(k, v) for k, v in
+            self._exec_env.env.items()]), ' '.join(self._exec_env.args)))
         pobj = Popen(self._exec_env.args, shell=False,
             bufsize=0,
             executable = self._exec_env.path,
@@ -998,25 +1031,37 @@ class ProcessDriver(BaseDriver,
         # finally we chdir into the cwd within the new fs
         os.chdir(cwd)
 
+# TODO: rename relaunch to relauch fork
+# TODO: merge ProcessForkDriver into ProcessDriver
 class ProcessForkDriver(ProcessDriver):
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
             config['driver'].get('forkserver')
 
+    async def initialize(self):
+        debug("Done nothing")
+        return await super().initialize()
+
+    async def finalize(self, owner: ComponentOwner):
+        debug("Done nothing")
+        return await super().finalize(owner)
+
     async def relaunch(self):
         if not self._pobj:
-            ## Launch new process
+            info(f"Launching a new process")
             self._pobj = self._popen()
+            debug(f"Launched a new process {self._pobj.pid}")
         elif self._channel:
-            ## Kill current process, if any
             try:
+                info(f"Closing channel {self._channel}")
                 await self._channel.close()
             except ProcessLookupError:
                 pass
 
-        ## Establish a connection
-        await self.create_channel()
+        info(f"Creating a channel to the new process {self._pobj.pid}")
+        channel = await self.create_channel()
+        info(f"Created a channel {channel} to the new process {self._pobj.pid}")
 
 class ForkserverCrashedException(RuntimeError):
     pass
@@ -1079,6 +1124,7 @@ class FileDescriptorChannel(PtraceChannel):
             assert False # will never be called
         self.synced = False
         ignore_cb = lambda s: True
+        debug("Running the target and monitoring syscalls")
         await self.monitor_syscalls(None, ignore_cb, break_cb, syscall_cb,
             break_on_entry=False, break_on_exit=False,
             timeout=self._data_timeout)
@@ -1314,8 +1360,8 @@ class FileDescriptorChannel(PtraceChannel):
             else:
                 self._send_barrier_passed = True
         assert self._send_client_sent > 0
-        debug("client_sent=%i; server_received=%i",
-            self._send_client_sent, self._send_server_received)
+        # debug("client_sent=%i; server_received=%i",
+        #   self._send_client_sent, self._send_server_received)
         if self._send_server_received > self._send_client_sent:
             raise ChannelBrokenException("Target received too many bytes!")
         return self._send_server_received == self._send_client_sent
@@ -1336,6 +1382,14 @@ class FileDescriptorChannel(PtraceChannel):
 class FileDescriptorChannelFactory(PtraceChannelFactory,
         capture_paths=('channel.data_timeout',)):
     data_timeout: float = None # seconds
+
+    async def initialize(self):
+        debug("Done nothing")
+        return await super().initialize()
+
+    async def finalize(self, owner: ComponentOwner):
+        debug("Done nothing")
+        return await super().finalize(owner)
 
 class ChunkSizeDescriptor:
     def __get__(self, obj, owner):
@@ -1499,5 +1553,4 @@ def resolve_symbol(process: PtraceProcess, symbol: str):
         else:
             raise RuntimeError(f"Entry `{elf.header['e_type']}` not supported")
 
-        debug("symbol=%s found at 0x%016X", symbol, addr)
         return addr

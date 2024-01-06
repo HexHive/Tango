@@ -1,8 +1,9 @@
+from . import debug, info, warning, critical
 from tango.core.input import AbstractInput
 from tango.core.profiler import (FrequencyProfiler, EventProfiler,
                        ValueMeanProfiler, CountProfiler)
 from tango.core.dataio    import AbstractChannelFactory, AbstractChannel
-from tango.common import AsyncComponent, ComponentType
+from tango.common import AsyncComponent, ComponentOwner, ComponentType
 from tango.exceptions import LoadedException
 
 from abc          import ABC, abstractmethod
@@ -36,6 +37,14 @@ class BaseDriver(AbstractDriver,
     def __init__(self, channel_factory: AbstractChannelFactory, **kwargs):
         super().__init__(**kwargs)
         self._factory = channel_factory
+
+    async def initialize(self):
+        debug("Done nothing")
+        return await super().initialize()
+
+    async def finalize(self, owner: ComponentOwner):
+        debug("Done nothing")
+        return await super().finalize(owner)
 
     async def execute_input(self, input: AbstractInput):
         """

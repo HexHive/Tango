@@ -1,4 +1,4 @@
-from . import warning
+from . import debug, warning
 from tango.core.profiler import FrequencyProfiler
 from tango.core.tracker  import AbstractState, IUpdateCallback
 from tango.core.dataio   import FormatDescriptor, AbstractChannelFactory
@@ -57,6 +57,7 @@ class BaseInputGenerator(AbstractInputGenerator,
         self._seeds = []
 
     async def initialize(self):
+        debug("TBD")
         self._input_kls = Serializer.get(self._fmt)
         if self._input_kls is None:
             warning("No serializer available for `%s`!", self._fmt.typ)
@@ -75,6 +76,10 @@ class BaseInputGenerator(AbstractInputGenerator,
         for seed in seed_files:
             input = self._input_kls(file=seed, load=True)
             self._seeds.append(input)
+
+    async def finalize(self, owner: ComponentOwner):
+        debug("Done nothing")
+        return await super().finalize(owner)
 
     def select_candidate(self, state: AbstractState):
         out_edges = (inp for _,_,inp in state.out_edges)

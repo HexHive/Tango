@@ -141,10 +141,24 @@ class FeatureMap(ABC):
 
     @abstractmethod
     def extract(self, *, commit: bool) -> (Sequence, int, int):
+        """
+        If commit, update the accumualted local features immediately.
+        Return feature_mask that shows which byte is updated.
+          ARR  MAP  MASK
+            0, 0 -> 0 (unchanged)
+            0, 1 -> 1 (updated)
+            1, 0 -> 0 (unchanged)
+            1, 1 -> 0 (unchanged)
+        Return feature_count that is the number of updated bits.
+        Return mask_hash that is hash(feature_mask).
+        """
         raise NotImplementedError
 
     @abstractmethod
     def commit(self, feature_mask: Sequence):
+        """
+        Update the accumualted local features immediately.
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -319,14 +333,22 @@ class CoverageDriver(ProcessDriver,
         self._exclude_postmortem = exclude_postmortem
         self._symb_tracer = None
 
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
     async def finalize(self, owner: ComponentOwner):
         # WARN this bypasses the expected component hierarchy and would usually
         # result in cyclic dependencies, but since both components are defined
         # and confined within this module, they are expected to be tightly
         # coupled and be aware of this dependency
+        info(f"Finalizing {self}")
         self._tracker: CoverageTracker = owner['tracker']
         assert isinstance(self._tracker, CoverageTracker)
+        debug("Registered tracker in CoverageDriver")
         await super().finalize(owner)
+        debug(f"Finalized {self}")
 
     async def relaunch(self):
         await super().relaunch()
@@ -343,9 +365,11 @@ class CoverageDriver(ProcessDriver,
             async for instruction in input:
                 idx += 1
                 if self._clear_cov:
+                    debug("Clearing feature map (shmem)")
                     memset(self._tracker._features.object, 0,
                         self._tracker._features.size)
                 try:
+                    debug(f"Performing {instruction}")
                     await instruction.perform(self._channel)
                 finally:
                     # we invalidate the current_state cache
@@ -383,7 +407,15 @@ class CoverageDriver(ProcessDriver,
 
 # this class exists only to allow matching with forkserver==true
 class CoverageForkDriver(CoverageDriver, ProcessForkDriver):
-    pass
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
+    async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
+        await super().finalize(owner)
+        debug(f"Finalized {self}")
 
 class CoverageTracker(BaseTracker,
         capture_components={ComponentType.driver},
@@ -420,34 +452,50 @@ class CoverageTracker(BaseTracker,
         self._shm_uuid = os.getpid()
 
     async def initialize(self):
+        info(f"Initializing {self}")
         await super().initialize()
         if self._track_heat:
             session = get_current_session()
             loop = session.loop
             loop.add_signal_handler(signal.SIGUSR1, self._dump_pcs, session.id)
+            debug("Setup track heat")
+        debug(f"Initialized {self}")
 
     async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
         generator = owner['generator']
         startup = getattr(generator, 'startup_input', None)
 
+        info(f"Relaunching {self._driver}")
         await self._driver.relaunch()
         if startup:
+            debug(f"Sending startup input {startup} by {self._driver}")
             await self._driver.execute_input(startup)
 
+        info("Obtaining coverage map (shmem)")
         self._features = SharedMemoryObject(
             f'/tango_cov_{self._shm_uuid}', lambda s: b * (s // sizeof(b)))
-        info("Obtained coverage map size=%i", self._features._size)
+        debug("Obtained coverage map (shmem) size=%i", self._features._size)
+        info("Obtaining pcs (shmem)")
         self._pc = SharedMemoryObject(
             f'/tango_pc_{self._shm_uuid}', lambda s: S * (s // sizeof(S)))
+        debug("Obtained pcs (shmem) size=%i", self._pc._size)
 
         if self._use_cmplog:
+            info("Obtaining cmplog table")
             self._cmplog = CmpLogTables(self._shm_uuid)
+            debug("Obtained cmplog table size=%i", self._cmplog._size)
 
         # initialize feature maps
+        info("Initializing _global/_scratch/_local feature map")
         self._global = FeatureMap(self._features, **self._map_kw)
+        debug(f"Initialized _global feature map {self._global}")
         self._scratch = FeatureMap(self._features, **self._map_kw)
+        debug(f"Initialized _scratch feature map {self._scratch}")
         self._local = FeatureMap(self._features, **self._map_kw)
+        debug(f"Initialized _local feature map {self._local}")
         if self._track_heat:
+            info("Initializing _differential feature map to track heat")
             self._differential = FeatureMap(self._features, **self._map_kw)
             self._diff_state = None
             self._feature_heat = np.zeros(self._differential.length, dtype=int)
@@ -456,17 +504,19 @@ class CoverageTracker(BaseTracker,
 
         self._local_state = None
         self._current_state = None
-        # the update creates a new initial _current_state
+        info("Creating an initial _current_state")
         self.update_state(None, input=None)
+        info("Updating _entry_state to _current_state")
         self._entry_state = self._current_state
 
         await super().finalize(owner)
 
-        # initialize local map and local state
+        info("Initializing _local and _local_state")
         self.reset_state(self._current_state)
 
         LambdaProfiler('snapshot_cov')(lambda: np.sum(
             HAMMING_LUT[np.asarray(self._global._feature_arr)]))
+        debug(f"Finalized {self}")
 
     def _dump_pcs(self, sid):
         cov_idx, = self._feature_heat.nonzero()
@@ -491,12 +541,16 @@ class CoverageTracker(BaseTracker,
             parent_state: FeatureSnapshot, *, commit: bool=True,
             allow_empty: bool=False, **kwargs) -> FeatureSnapshot:
         feature_mask, feature_count, mask_hash = feature_map.extract(commit=False)
+
+        debug(f"Extraced mask/{feature_count}/hash of dirty bits in {feature_map} (not committed yet)")
         if feature_count or allow_empty:
             state = FeatureSnapshot(
                 parent_state, feature_mask, feature_count, feature_map,
                 tracker=self, state_hash=mask_hash, **kwargs)
+            debug(f"Construced {state} whose parent is {parent_state} due to new dirty bits")
             if commit:
                 feature_map.commit(feature_mask)
+                debug(f"Committed the accumualted features in {feature_map}")
             return state
 
     def update_state(self, source: FeatureSnapshot, /, *, input: AbstractInput,
@@ -507,6 +561,7 @@ class CoverageTracker(BaseTracker,
         if not exc:
             if peek_result is None:
                 next_state = self.peek(source, commit=True)
+                debug(f"Got state {next_state} by peeking {source}")
             else:
                 # if peek_result was specified, we can skip the recalculation;
                 # we reconstruct a cached version of the state
@@ -518,10 +573,12 @@ class CoverageTracker(BaseTracker,
                 # we commit the bitmaps to obtain the actual global context
                 self._global.commit(next_state._feature_context.feature_mask)
                 self._global.commit(next_state._feature_mask)
+                debug(f"Got state {next_state} by existing {peek_result}")
 
             if not next_state:
                 next_state = source
             self._current_state = next_state
+            debug(f"Updated _current_state to {next_state}")
 
             # update local coverage
             self._update_local()
@@ -531,11 +588,13 @@ class CoverageTracker(BaseTracker,
             if self._use_cmplog:
                 for torc in self._cmplog.torcs:
                     torc.object.LastIdx = torc.object.Length = 0
+                debug(f"Updated cmoplog table")
 
             return next_state
         else:
             if source:
                 self._global.invert(source._feature_mask)
+                debug(f"Inverted {source} from {self._global}")
             return source
 
     def peek(self,
@@ -548,24 +607,33 @@ class CoverageTracker(BaseTracker,
             # when the destination is not None, we use its `context_map` as a
             # basis for calculating the coverage delta
             fmap.copy_from(expected_destination._feature_context)
+            debug(f"Copied dst: {expected_destination._feature_context} to {fmap}")
             parent = expected_destination._parent
+            debug(f"Set dst: {expected_destination._parent} to parent")
         else:
             fmap.copy_from(self._global)
+            debug(f"Copied glo: {self._global} to {fmap}")
             parent = default_source
+            debug(f"Set src: {default_source} to parent")
 
         next_state = self.extract_snapshot(fmap, parent, commit=commit,
             allow_empty=parent is None, **kwargs)
         if not next_state:
             for _, next_state, _ in self._current_state.out_edges:
+                debug(f"Got {next_state} coming after {self._current_state}")
                 fmap.copy_from(next_state._feature_context)
+                debug(f"Copied nxt: {next_state._feature_context} to {fmap}")
                 parent = next_state._parent
+                debug(f"Set nxt: {next_state._parent} to parent")
                 if next_state == self.extract_snapshot(
                         fmap, parent, commit=commit, **kwargs):
+                    debug(f"Reached {next_state} again :)")
                     break
             else:
                 next_state = FeatureSnapshot(parent, default_source._feature_mask,
                     default_source._feature_count, default_source._feature_context,
                     tracker=self, state_hash=hash(default_source), **kwargs)
+                debug(f"Construced {next_state} whose parent is {parent} (seems duplicated)")
         return next_state
 
     def reset_state(self, state: FeatureSnapshot):
@@ -580,9 +648,11 @@ class CoverageTracker(BaseTracker,
 
         # reset local maps
         self._local.clear()
+        debug(f"Cleared _local feature map {self._local}")
         self.extract_snapshot(  # initialize the state of the local feature map
             self._local, None, update_cache=False)
         self._local_state = None
+        debug(f"Cleared _local_state {self._local_state}")
         if self._track_heat:
             self._differential.clear()
             self.extract_snapshot(
@@ -599,6 +669,7 @@ class CoverageTracker(BaseTracker,
         self._local_state = self.extract_snapshot(
             self._local, self._local_state,
             allow_empty=True, update_cache=False)
+        debug(f"Updated _local_state to {self._local_state}")
         if self._track_heat:
             self._diff_state = self.extract_snapshot(
                 self._differential, self._diff_state,
@@ -607,6 +678,7 @@ class CoverageTracker(BaseTracker,
             hot_features, = feature_mask.nonzero()
             # FIXME check how often this is empty...
             self._feature_heat[hot_features] += 1
+            debug(f"Updated _diff_state to {self._diff_state} to track heat")
 
 class CoverageReplayLoader(ReplayLoader,
         capture_components={'driver', 'tracker'},
@@ -615,6 +687,16 @@ class CoverageReplayLoader(ReplayLoader,
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
             config['tracker'].get('type') == 'coverage'
+
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
+    async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
+        await super().finalize(owner)
+        debug(f"Finalized {self}")
 
     def __init__(self, *, driver: CoverageDriver, tracker: CoverageTracker,
             restore_cov_map: bool=True, **kwargs):
@@ -657,6 +739,16 @@ class CoverageExplorer(BaseExplorer,
             warning("observe_postmortem currently works only with forkserver.")
             self._observe_postmortem = False
         self._observe_timeout = observe_timeout
+
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
+    async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
+        await super().finalize(owner)
+        debug(f"Finalized {self}")
 
     def get_context_input(self, input: BaseInput, **kwargs) -> BaseExplorerContext:
         return CoverageExplorerContext(input, explorer=self, **kwargs)
@@ -1086,6 +1178,7 @@ class CmpLogTables:
         self.TORC8 = SharedMemoryObject(
             f'/tango_torc8_{uuid}',
             lambda s: self.get_table_type(ctypes.c_uint64))
+        self._size = self.TORC1._size + self.TORC2._size + self.TORC4._size + self.TORC8._size
 
     @property
     def torcs(self):

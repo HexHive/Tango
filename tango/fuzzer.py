@@ -119,6 +119,7 @@ class Fuzzer:
             self._bootstrap_sigint(loop, handle=True)
             loop.add_signal_handler(
                 signal.SIGTERM, self._cleanup_and_exit, loop)
+            info("Launching all sessions")
             await self._runner
         except asyncio.CancelledError:
             pass
@@ -132,18 +133,23 @@ class Fuzzer:
     async def run_all_sessions(self):
         try:
             async with asyncio.TaskGroup() as tg:
+                info(f"Initializing profilers into {tg}")
                 await initialize_profiler(tg)
                 for i in range(self._argspace.sessions):
+                    info(f"Launching session {i} with {tg}")
                     await self.launch_session(tg, sid=i)
+                    info(f"Launched session {i} with {tg}")
         except ExceptionGroup as exg:
             import ipdb; ipdb.set_trace()
             pass
 
     async def launch_session(self, tg, *args, **kwargs):
         context = create_session_context(tg)
+        info(f"Creating and waiting task create_session with {tg}")
         session = await tg.create_task(
             self.create_session(context, *args, **kwargs),
             context=context)
+        info(f"Creating and waiting task start_current_session with {tg}")
         return await tg.create_task(
             self.start_current_session(),
             name=f'Session-{session.id}',
@@ -154,17 +160,24 @@ class Fuzzer:
         tg = get_session_task_group()
         name = asyncio.current_task().get_name()
         tg.create_task(Suspendable(session.run()).as_coroutine(), name=name)
+        info(f"Creating task {name} with {tg}")
         if is_profiling_active('webui'):
+            info(f"Instantiating webui with {session.owner}")
             webui = await session.owner.instantiate('webui')
+            info(f"Creating task webui[{name}] with {tg}")
             tg.create_task(webui.run(), name=f'webui[{name}]')
         if is_profiling_active('cli'):
+            info(f"Instantiating cli with {session.owner}")
             cli = await session.owner.instantiate('cli')
+            info(f"Creating task cli[{name}] with {tg}")
             tg.create_task(cli.run(), name=f'cli[{name}]')
 
     async def create_session(self, context, sid=0):
         if sid in self._sessions:
             raise ValueError(f"Another session exists with the same {sid=}")
+        info(f"Loading fuzzer config {self._argspace.config} with overrides")
         config = FuzzerConfig(self._argspace.config, self._overrides)
+        info(f"Instantiating FuzzerSession with {config}")
         session = await config.instantiate('session', context, sid=sid)
         self._sessions[sid] = session
         return session
@@ -228,4 +241,5 @@ class Fuzzer:
         # child watcher prints a warning when its children are reaped by
         # someone else. See FIXME in WebDataLoader
         logging.getLogger('asyncio').setLevel(logging.CRITICAL)
+        info("Bootstraping and hopefully never returning :)")
         asyncio.run(self._bootstrap())

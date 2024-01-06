@@ -1,4 +1,5 @@
-from . import debug, critical
+from tango.common import ComponentOwner
+from . import debug, info, critical
 
 from tango.core import (AbstractInstruction, TransmitInstruction,
     ReceiveInstruction, DelayInstruction, AbstractInput,
@@ -44,6 +45,16 @@ class ReactiveInputGenerator(BaseInputGenerator,
             with open(self._log_path, "w"):
                 # clear the log file
                 pass
+
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
+    async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
+        await super().finalize(owner)
+        debug(f"Finalized {self}")
 
     @classmethod
     def match_config(cls, config: dict) -> bool:

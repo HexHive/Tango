@@ -76,12 +76,17 @@ class BaseExplorer(AbstractExplorer,
         self._accumulated_input = EmptyInput()
         self._last_state = None
 
+    async def initialize(self):
+        debug("Done nothing")
+        return await super().initialize()
+
     async def finalize(self, owner: ComponentOwner):
         self._last_state = self._tracker.entry_state
         # FIXME might not be the best place to do this, but root state is not
         # propagated anywhere else
         await self._state_update_cb(self._last_state,
             breadcrumbs=[], input=None, orig_input=None)
+        debug("TBD")
         await super().finalize(owner)
 
     @property
@@ -111,16 +116,15 @@ class BaseExplorer(AbstractExplorer,
             while True:
                 try:
                     i, path = next(ipaths)
+                    debug(f"Got a path {path} to state {state}")
                     current_state = await self._arbitrate_load_state(path)
-                    if retry:
-                        info(f"Reached {state} through path {i}")
                     if retry and not current_state.preferred_path:
                         current_state.preferred_path = path
                     return current_state
                 except StopIteration:
                     break
                 except StabilityException as ex:
-                    warning("Failed to follow unstable path (reason: %s)!"
+                    warning("Failed to follow unstable path since %s!"
                             " Retrying... (%i/%i)",
                             ex.args[0], i + 1, self._reload_attempts)
                     CountProfiler('unstable')(1)
@@ -133,6 +137,7 @@ class BaseExplorer(AbstractExplorer,
                 state)
         else:
             try:
+                info(f"Loading non-AbstractState {state}")
                 return await self._arbitrate_load_state(loadable)
             except StabilityException as ex:
                 warning("Failed to follow unstable preselected path (reason = %s)!",
@@ -150,6 +155,7 @@ class BaseExplorer(AbstractExplorer,
         # clear the current path to stay consistent with the target
         self._reset_current_path()
         # deliberately not `await`ed; we exchange messages with the generator
+        info(f"Loading the path {path} with {self._loader}")
         load = self._loader.load_state(path)
         try:
             nxt = None
@@ -172,13 +178,18 @@ class BaseExplorer(AbstractExplorer,
 
         loadable = state_or_path or self._tracker.entry_state
         try:
+            info(f"Loading {loadable}")
             current_state = await self.attempt_load_state(loadable)
+            debug(f"Loaded {current_state}")
             if not dryrun:
+                info(f"Initializing _local and _local_state via {self._tracker}")
                 self._tracker.reset_state(current_state)
                 self._last_state = current_state
         except StateNotReproducibleException as ex:
             if not dryrun:
+                info(f"Updating state {ex.faulty_state} via {self._tracker}")
                 self._tracker.update_state(ex.faulty_state, input=None, exc=ex)
+            info("TBD")
             await self._state_reload_cb(loadable, exc=ex)
             raise
         return current_state

@@ -1,4 +1,4 @@
-from . import  info
+from . import debug, info, warning, error
 
 from tango.core.dataio  import AbstractChannelFactory
 from tango.core.loader  import AbstractLoader
@@ -42,21 +42,35 @@ class FuzzerConfig(ComponentOwner):
 
         cwd = self._config["fuzzer"].get("cwd", ".")
         os.chdir(cwd)
-        info("Changed current working directory to %s", cwd)
-        self.setup_workdir()
+        debug("Changed current working directory to %s", cwd)
+
+        wd = self._config["fuzzer"]["work_dir"]
+        resume = self._config["fuzzer"].get("resume", False)
+        self.setup_workdir(wd, resume)
+        debug(f"Setup workdir {wd} (resumed: {resume})")
+
+        self.valid_component_classes = self.component_classes
+        debug(f"Got {len(self.valid_component_classes)} valid component classes based on {file}")
 
     async def instantiate(self, component_type: ComponentKey, *args,
             config=None, **kwargs) -> AsyncComponent:
         component_type = ComponentType(component_type)
         config = config or self._config
-        component = await self.component_classes[component_type].instantiate(
+        component = await self.valid_component_classes[component_type].instantiate(
                     self, config, *args, initialize=False, finalize=False,
                     **kwargs)
+        strargs = (str(a) for a in args)
+        strkwargs = ('='.join(str(x) for x in item) for item in kwargs.items())
+        _args = ', '.join((*strargs, *strkwargs))
+        debug('Created %s as %s(%s)', component_type, component.__class__.__name__, _args)
 
+        # TODO: move to upper layer
         if not kwargs.get('dependants'):
             # initialization is breadth-first
+            info(f"Initializing {component.__class__.__name__}'s dependencies")
             await component.initialize_dependencies(self, self.preinitialize_cb)
             # finalization is depth-first
+            info(f"Finalizing {component.__class__.__name__}'s dependencies")
             await component.finalize_dependencies(self)
         return component
 
@@ -73,16 +87,13 @@ class FuzzerConfig(ComponentOwner):
             return d
         update(self._config, overrides)
 
-    def setup_workdir(self):
-        resume = self._config["fuzzer"].get("resume", False)
+    def setup_workdir(self, wd, resume):
         def mktree(root, tree):
             if tree:
                 for b, t in tree.items():
                     mktree(os.path.join(root, b), t)
             else:
                 Path(root).mkdir(parents=True, exist_ok=resume)
-
-        wd = self._config["fuzzer"]["work_dir"]
         tree = {
             "queue": {},
             "unstable": {},

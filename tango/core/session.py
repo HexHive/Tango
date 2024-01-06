@@ -63,14 +63,19 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
         self._strategy = strategy
 
     async def initialize(self):
+        info(f"Initializing {self}")
         await super().initialize()
         self._clear = current_session.set(self)
+        debug(f"Initialized {self}")
 
     async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
         self._explorer.register_state_reload_callback(self._state_reload_cb)
         self._explorer.register_state_update_callback(self._state_update_cb)
         self._explorer.register_transition_update_callback(self._transition_update_cb)
+        debug("Registered state reload/update, trasition update callbacks for explorer")
         await super().finalize(owner)
+        debug(f"Finalized {self}")
 
     async def _loop_forever(self):
         while True:
@@ -213,8 +218,8 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
 
     async def run(self):
         try:
-            # launch fuzzing loop
+            info("Launching fuzzing loop and hopefully never returning :)")
             await self._loop_forever()
         finally:
-            # remove the persistent reference in the session Context
+            info("Remove the persistent reference in the session Context")
             get_session_context().run(current_session.reset, self._clear)
