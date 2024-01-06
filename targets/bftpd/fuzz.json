@@ -1,0 +1,39 @@
+{
+    "driver": {
+        "type": "unix",
+        "exec": {
+            "path": "./bftpd",
+            "args": ["./bftpd", "-D", "-c", "basic.conf"],
+            "cwd": "./",
+            "stdout": "inherit",
+            "stderr": "inherit",
+            "env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
+        },
+		"disable_aslr": true,
+		"forkserver": false
+    },
+	"loader": {
+		"type": "replay"
+	},
+	"channel": {
+		"type": "tcp",
+        "endpoint": "127.0.0.1",
+        "port": 2100,
+		"fork_before_accept": false
+	},
+	"generator": {
+		"type": "reactive"
+	},
+	"tracker": {
+		"type": "coverage"
+	},
+	"strategy": {
+		"type": "uniform"
+	},
+	"fuzzer": {
+		"cwd": "./targets/bftpd/",
+		"work_dir": "./workdir/",
+		"seeds": "./seeds/",
+		"resume": true
+	}
+}
