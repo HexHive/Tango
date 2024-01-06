@@ -10,7 +10,7 @@
             "env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
         },
 		"disable_aslr": true,
-		"forkserver": false
+		"forkserver": true
     },
 	"loader": {
 		"type": "replay"
@@ -19,7 +19,7 @@
 		"type": "tcp",
         "endpoint": "127.0.0.1",
         "port": 2100,
-		"fork_before_accept": false
+		"fork_before_accept": true
 	},
 	"generator": {
 		"type": "reactive"
