@@ -242,10 +242,9 @@ class PtraceChannel(AbstractChannel):
             state = event.process.syscall_state
 
             ### DEBUG ###
-            # self._verbose = True
-            if self._verbose:
-                debug("Target process with pid=%i encountered a syscall-stop",
-                    event.process.pid)
+            if os.getenv("SHOW_SYSCALLS"):
+                # debug("Target process with pid=%i encountered a syscall-stop",
+                #     event.process.pid)
                 sc = PtraceSyscall(event.process, self._syscall_options,
                                    event.process.getregs())
                 debug("syscall traced: [%i] sc.name=%s state.name=%s state.next_event=%s",
