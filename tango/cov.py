@@ -95,11 +95,12 @@ for i in range(len(CLASS_LUT)):
 class FeatureSnapshot(BaseState):
     __slots__ = (
         '_parent', '_feature_mask', '_feature_count', '_feature_context',
-        '_raw_coverage'
+        '_raw_coverage', '_pcs'
     )
 
     def __init__(self, parent: FeatureSnapshot,
             feature_mask: Sequence, feature_count: int, feature_map: FeatureMap,
+            pcs: dict,
             **kwargs):
         super().__init__(**kwargs)
         self._parent = parent
@@ -107,6 +108,7 @@ class FeatureSnapshot(BaseState):
         self._feature_count = feature_count
         self._feature_context = feature_map.clone()
         self._raw_coverage = feature_map._features.clone_object()
+        self._pcs = pcs
 
     def __eq__(self, other):
         # return hash(self) == hash(other)
@@ -118,6 +120,16 @@ class FeatureSnapshot(BaseState):
 
     def __repr__(self):
         return f'({self._id}) +{self._feature_count}'
+
+    def get_unique_features(self):
+        # self._feature_context/self._raw_coverage stores coverage map before commit
+        # self._feature_mask is where the unique features are
+        # self._feature_count is the number of the unique features
+        unique_features = {}
+        for idx, change in enumerate(self._feature_mask):
+            if change:
+                unique_features[idx] = change
+        return unique_features
 
 class FeatureMap(ABC):
     def __new__(cls, *args, **kwargs):
@@ -476,10 +488,10 @@ class CoverageTracker(BaseTracker,
         self._features = SharedMemoryObject(
             f'/tango_cov_{self._shm_uuid}', lambda s: b * (s // sizeof(b)))
         debug("Obtained coverage map (shmem) size=%i", self._features._size)
-        info("Obtaining pcs (shmem)")
-        self._pc = SharedMemoryObject(
+        info("Obtaining pc map (shmem)")
+        self._pcs = SharedMemoryObject(
             f'/tango_pc_{self._shm_uuid}', lambda s: S * (s // sizeof(S)))
-        debug("Obtained pcs (shmem) size=%i", self._pc._size)
+        debug("Obtained pc map (shmem) size=%i", self._pcs._size)
 
         if self._use_cmplog:
             info("Obtaining cmplog table")
@@ -529,6 +541,12 @@ class CoverageTracker(BaseTracker,
                 row = f'{idx:6},{cnt:6},0x{pc:016X}\n'
                 file.write(row)
 
+    def _shrunk_pcs(self):
+        shrunked_pcs = {}
+        for idx, pc in list(enumerate(self._pcs.object)):
+            shrunked_pcs[idx] = pc
+        return shrunked_pcs
+
     @property
     def entry_state(self) -> FeatureSnapshot:
         return self._entry_state
@@ -546,6 +564,7 @@ class CoverageTracker(BaseTracker,
         if feature_count or allow_empty:
             state = FeatureSnapshot(
                 parent_state, feature_mask, feature_count, feature_map,
+                self._shrunk_pcs(),
                 tracker=self, state_hash=mask_hash, **kwargs)
             debug(f"Construced {state} whose parent is {parent_state} due to new dirty bits")
             if commit:
@@ -568,6 +587,7 @@ class CoverageTracker(BaseTracker,
                 next_state = FeatureSnapshot(
                     peek_result._parent, peek_result._feature_mask,
                     peek_result._feature_count, peek_result._feature_context,
+                    self._shrunk_pcs(),
                     tracker=self, state_hash=hash(peek_result)
                 )
                 # we commit the bitmaps to obtain the actual global context
@@ -597,19 +617,40 @@ class CoverageTracker(BaseTracker,
                 debug(f"Inverted {source} from {self._global}")
             return source
 
+    def _show_pcs(self, snapshot: FeatureSnapshot):
+        if os.getenv("SHOW_PCS"):
+            pathname = self._driver._exec_env.path
+            base_address = 0
+            for map in self._driver._channel._proc.readMappings():
+                # 0x0000555555554000-0x000055555557c000 => /home/tango/targets/sip/kamailio (r--p)
+                if map.pathname == pathname:
+                    base_address = map.start
+                    break
+            index_of_unique_features = list(snapshot.get_unique_features().keys())
+            if os.getenv("BASE_ADDRESS"):
+                base_address = int(os.getenv("BASE_ADDRESS"), 16)
+            return ['{:x}'.format(snapshot._pcs[i] - base_address) for i in index_of_unique_features]
+        return None
+
     def peek(self,
             default_source: FeatureSnapshot=None,
             expected_destination: FeatureSnapshot=None,
             commit: bool=False,
             **kwargs) -> FeatureSnapshot:
         fmap = self._scratch
+
+        debug_old_pcs = None
+        debug_new_pcs = None
         if expected_destination:
             # when the destination is not None, we use its `context_map` as a
             # basis for calculating the coverage delta
             fmap.copy_from(expected_destination._feature_context)
-            debug(f"Copied dst: {expected_destination._feature_context} to {fmap}")
+            debug(f"Copied dst: {expected_destination}._feature_context to {fmap}")
             parent = expected_destination._parent
             debug(f"Set dst: {expected_destination._parent} to parent")
+            debug_old_pcs = self._show_pcs(expected_destination)
+            if (debug_old_pcs):
+                debug(f"{len(debug_old_pcs)} unique_pcs={debug_old_pcs}")
         else:
             fmap.copy_from(self._global)
             debug(f"Copied glo: {self._global} to {fmap}")
@@ -622,7 +663,7 @@ class CoverageTracker(BaseTracker,
             for _, next_state, _ in self._current_state.out_edges:
                 debug(f"Got {next_state} coming after {self._current_state}")
                 fmap.copy_from(next_state._feature_context)
-                debug(f"Copied nxt: {next_state._feature_context} to {fmap}")
+                debug(f"Copied nxt: {next_state}._feature_context to {fmap}")
                 parent = next_state._parent
                 debug(f"Set nxt: {next_state._parent} to parent")
                 if next_state == self.extract_snapshot(
@@ -632,8 +673,27 @@ class CoverageTracker(BaseTracker,
             else:
                 next_state = FeatureSnapshot(parent, default_source._feature_mask,
                     default_source._feature_count, default_source._feature_context,
+                    self._shrunk_pcs(),
                     tracker=self, state_hash=hash(default_source), **kwargs)
                 debug(f"Construced {next_state} whose parent is {parent} (seems duplicated)")
+        debug_new_pcs = self._show_pcs(next_state)
+        if debug_new_pcs:
+            debug(f"{len(debug_new_pcs)} unique_pcs={debug_new_pcs}")
+            pathname = self._driver._exec_env.path
+            if debug_old_pcs:
+                if len(debug_new_pcs) > len(debug_old_pcs):
+                    diff_pcs = set(debug_new_pcs) - set(debug_old_pcs)
+                else:
+                    diff_pcs = set(debug_old_pcs) - set(debug_new_pcs)
+                debug(f"{len(diff_pcs)} diff_pcs={diff_pcs}")
+                # symbolize a bit
+                for pc in diff_pcs:
+                    debug(f"{os.popen('addr2line -a {} -e {} -fp'.format(pc, pathname)).read().strip()}")
+            else:
+                # symbolize a bit
+                for pc in debug_new_pcs:
+                    debug(f"{os.popen('addr2line -a {} -e {} -fp'.format(pc, pathname)).read().strip()}")
+
         return next_state
 
     def reset_state(self, state: FeatureSnapshot):

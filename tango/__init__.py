@@ -80,7 +80,8 @@ class PowerfulLogRecordFactory(logging.LogRecord):
                 ] and self.funcName in ['initialize', 'finalize']:
             indent = 2
         elif (self.className in ['BaseTracker', 'CoverageTracker'] \
-                and self.funcName in ['update_state', 'peek', 'extract_snapshot', '_update_local', 'reset_state']) \
+                and self.funcName in ['update_state', 'peek', 'extract_snapshot',
+                                      '_update_local', 'reset_state', '_show_pcs']) \
                 or (self.className in ['BaseExplorer'] \
                 and self.funcName in ['reload_state', 'attempt_load_state', '_arbitrate_load_state']):
             indent = 2

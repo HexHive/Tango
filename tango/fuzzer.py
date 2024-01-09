@@ -27,6 +27,10 @@ class Fuzzer:
         self._cleanup = False
         if self._argspace.pid:
             Path(self._argspace.pid).write_text(str(os.getpid()))
+        if self._argspace.show_pcs:
+            os.environ["SHOW_PCS"] = "1"
+        if self._argspace.base_address:
+            os.environ["BASE_ADDRESS"] = self._argspace.base_address
 
     @staticmethod
     def parse_args(args):
@@ -41,10 +45,13 @@ class Fuzzer:
             help="Save the fuzzer's process PID at the specified path.")
         parser.add_argument('--sessions', '-s', type=int, default=1,
             help="The number of concurrent fuzzing sessions to run.")
-        parser.add_argument('-v', '--verbose', action='count', default=0,
-            help=("Controls the verbosity of messages. "
-                "-v prints info. -vv prints debug. Default: warnings and higher.")
-            )
+        parser.add_argument('-v', '--verbose', action='count', default=-1,
+            help=("Control the verbosity of messages. "
+                "-v prints info. -vv prints debug. Default: warnings and higher."))
+        parser.add_argument('--show_pcs', action='store_true', default=False,
+            help="Show pcs to debug StabilityException.")
+        parser.add_argument('--base_address', type=str, default='0x0000555555554000',
+            help="Subtract the base address and show offsets.")
         return parser.parse_args(args)
 
     @staticmethod
