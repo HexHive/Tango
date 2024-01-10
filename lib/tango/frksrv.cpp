@@ -71,8 +71,51 @@ static void cleanup_fs() {
     if (r) perror("Failed to clean up tmpfs");
 }
 
+// As parent's and child's file descriptors point to the same file
+// descriptions (which stores file status and file offset) in the system
+// wide, if a child changes the file offset, the parent shall recovere it.
+// https://stackoverflow.com/questions/33899548/file-pointers-after-returning-from-a-forked-child-process
+// https://pubs.opengroup.org/onlinepubs/009695399/functions/xsh_chap02_05.html#tag_02_05_01
 #define MAX_FD 1024
-static off_t file_offset[MAX_FD];
+static off_t file_offsets[MAX_FD];
+
+ATTRIBUTE_NO_SANITIZE_ALL
+static bool save_file_offsets(void) {
+    int pid = getpid(), dfd;
+    char ppath[256];
+    sprintf(ppath, "/proc/%d/fd/", pid);
+    DIR *dir = opendir(ppath);
+    if (!dir) { perror("Failed to open fd directory"); return false; }
+    dfd = dirfd(dir);
+
+    struct dirent *entry;
+    int fd;
+    off_t pos;
+    struct stat sb;
+    for (fd = 0; fd < MAX_FD; fd++) file_offsets[fd] = (off_t)-1;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type != DT_LNK) continue;
+        fd = atoi(entry->d_name);
+        if (fd < 3) continue;
+        if (fd == dfd) continue;
+        pos = lseek(fd, 0, SEEK_CUR);
+        if (pos != (off_t)-1) file_offsets[fd] = pos;
+    }
+    closedir(dir);
+    return true;
+}
+
+ATTRIBUTE_NO_SANITIZE_ALL
+static void restore_file_offsets(void) {
+    int fd;
+    off_t pos;
+    for (fd = 0; fd < MAX_FD; fd++) {
+        pos = file_offsets[fd];
+        if (pos != (off_t)-1) {
+            lseek(fd, pos, SEEK_SET);
+        }
+    }
+}
 
 __attribute__((used))
 ATTRIBUTE_NO_SANITIZE_ALL
@@ -82,32 +125,8 @@ static void _forkserver() {
     char fifopath[PATH_MAX];
     snprintf(fifopath, PATH_MAX, "%s/%s", shared, "input.pipe");
 
-    // As parent's and child's file descriptors point to the same file
-    // descriptions (which stores file status and file offset) in the system
-    // wide, if a child changes the file offset, the parent shall recovere it.
-    // https://stackoverflow.com/questions/33899548/file-pointers-after-returning-from-a-forked-child-process
-    // https://pubs.opengroup.org/onlinepubs/009695399/functions/xsh_chap02_05.html#tag_02_05_01
-    int pid = getpid(), dfd;
-    char ppath[256];
-    sprintf(ppath, "/proc/%d/fd/", pid);
-    DIR *dir = opendir(ppath);
-    if (!dir) { perror("Failed to open fd directory"); return; }
-    dfd = dirfd(dir);
-
-    struct dirent *entry;
-    int fd;
-    off_t pos;
-    struct stat sb;
-    for (fd = 0; fd < MAX_FD; fd++) file_offset[fd] = (off_t)-1;
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_type != DT_LNK) continue;
-        fd = atoi(entry->d_name);
-        if (fd < 3) continue;
-        if (fd == dfd) continue;
-        pos = lseek(fd, 0, SEEK_CUR);
-        if (pos != (off_t)-1) file_offset[fd] = pos;
-    }
-    closedir(dir);
+    if (!save_file_offsets()) return;
+    fprintf(stderr, "hhhhhhsfjslfkjsf\n");
 
     while(1) {
         cleanup_fs();
@@ -120,13 +139,7 @@ static void _forkserver() {
             do {
                 ret = waitpid(-1, &status, WNOHANG);
             } while (ret > 0);
-            // recover file_offset
-            for (fd = 0; fd < MAX_FD; fd++) {
-                pos = file_offset[fd];
-                if (pos != (off_t)-1) {
-                    lseek(fd, pos, SEEK_SET);
-                }
-            }
+            restore_file_offsets();
         } else {
             fifofd = open(fifopath, O_RDONLY);
             if (fifofd >= 0) {
