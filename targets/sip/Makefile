@@ -10,7 +10,7 @@ kamailio:
 	cd kamailio_repo && \
 	git checkout 2648eb3 && \
 	patch -p1 < ../kamailio.patch && \
-	$(MAKE) MEMPKG=sys cfg && \
-	$(MAKE) all -j20 && \
+	$(MAKE) cfg && \
+	$(MAKE) all && \
 	cp -r ./src/modules ../ && \
 	cp ./src/kamailio ../
