@@ -18,6 +18,9 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 #include <dirent.h>
+#include <inttypes.h>
+#include <sys/queue.h>
+#include <stdio_ext.h>
 
 extern "C" {
 
@@ -117,6 +120,130 @@ static void restore_file_offsets(void) {
     }
 }
 
+typedef struct page {
+    void *va;
+    size_t sz;
+    uint8_t data[0x1000];
+    TAILQ_ENTRY(page) pages;
+} Page;
+
+TAILQ_HEAD(pagehead, page);
+typedef struct pagehead pagehead;
+pagehead *map_shared_pagehead;
+
+ATTRIBUTE_NO_SANITIZE_ALL
+static bool get_map_shared_pages(FILE *maps) {
+    char *line = NULL;
+    size_t linesz;
+    ssize_t len;
+    while ((len = getline(&line, &linesz, maps)) > 0) {
+        if (line[len - 1] == '\n') {
+            line[len - 1] = '\0';
+        }
+        uintptr_t start, end;
+        unsigned int dmajor, dminor;
+        char perm[4];
+        uint64_t ino;
+        int nread = -1;
+        // 60de1d944000-60de1d946000 r--p 00000000 103:03 14155924 /usr/bin/cat
+        if (sscanf(line, "%" PRIx64 "-%" PRIx64 " %s %*" PRIx64
+                         " %x:%x %" PRIu64 " %n",
+                &start, &end, perm, &dmajor, &dminor, &ino, &nread) < 6 || nread <= 0) {
+            free(line);
+            return false;
+        }
+
+        char *file = line + nread + strspn(line + nread, " \t");
+        if (file[0] != '/' || (ino == 0 && dmajor == 0 && dminor == 0)) {
+            /* This line doesn't indicate a file mapping.  */
+            continue;
+        }
+
+        if (perm[3] == 's') {
+            for (uintptr_t i = start; i < end; i += 0x1000) {
+                struct page *map_shared_page = (page *)calloc(1, sizeof(page));
+                map_shared_page->va = (void *)i;
+                if (i + 0x1000 > end) {
+                    map_shared_page->sz = i - end;
+                } else {
+                    map_shared_page->sz = 0x1000;
+                }
+                TAILQ_INSERT_TAIL(map_shared_pagehead, map_shared_page, pages);
+            }
+        }
+    }
+    free(line);
+    return true;
+}
+
+ATTRIBUTE_NO_SANITIZE_ALL
+static bool save_map_shared_pages(void) {
+    // We also need to handle parent's MAP_SHARED memory.
+    // Ref: https://chromium.googlesource.com/external/elfutils/+/refs/heads/master/libdwfl/linux-proc-maps.c
+    FILE *maps = fopen("/proc/self/maps", "r");
+    if (maps == NULL) { perror("Failed to open maps"); return false; }
+    (void)__fsetlocking(maps, FSETLOCKING_BYCALLER);
+
+    map_shared_pagehead = (pagehead *)calloc(1, sizeof(pagehead));
+    TAILQ_INIT(map_shared_pagehead);
+    get_map_shared_pages(maps);
+
+    page *page;
+    TAILQ_FOREACH(page, map_shared_pagehead, pages) {
+        memcpy(page->data, page->va, page->sz);
+    }
+
+    fclose(maps);
+    return true;
+}
+
+#define PAGEMAP_LENGTH 8
+
+ATTRIBUTE_NO_SANITIZE_ALL
+static bool is_dirty(uint64_t va) {
+    if (geteuid() != 0) return true;
+
+    FILE *pm = fopen("/proc/self/pagemap", "rb");
+    if (pm == NULL) { perror("Failed to open pagemap"); return 0; }
+
+    uint64_t pfn;
+    if (fseek(pm, (va / getpagesize()) * PAGEMAP_LENGTH, SEEK_SET) != 0) {
+        perror("Failed to seek pagemap");
+        return 0;
+    }
+    if (fread(&pfn, PAGEMAP_LENGTH, 1, pm) != PAGEMAP_LENGTH) {
+        perror("Failed to read pagemap");
+        return 0;
+    }
+    fclose(pm);
+
+    return pfn & (1ULL << 55);
+}
+
+ATTRIBUTE_NO_SANITIZE_ALL
+static void clear_refs_write(void) {
+    if (geteuid() != 0) return;
+
+    FILE *cr = fopen("/proc/self/clear_refs", "r+");
+    if (cr == NULL) { perror("Failed to open clear_refs"); return;}
+    fwrite("4", 2, 1, cr);
+    fclose(cr);
+}
+
+ATTRIBUTE_NO_SANITIZE_ALL
+static void restore_map_shared_pages(void) {
+    // Use soft-dirtypages to not copy all pages
+    // Ref: https://stackoverflow.com/questions/12110212/mmaped-file-determine-which-page-is-dirty
+    // Ref: https://www.kernel.org/doc/html/latest/admin-guide/mm/soft-dirty.html
+    // Ref: https://lore.kernel.org/linux-mm/20220721183338.27871-2-peterx@redhat.com/
+    page *page;
+    TAILQ_FOREACH(page, map_shared_pagehead, pages) {
+        if (is_dirty((uintptr_t)page->va)) {
+            memcpy(page->va, page->data, page->sz);
+        }
+    }
+}
+
 __attribute__((used))
 ATTRIBUTE_NO_SANITIZE_ALL
 static void _forkserver() {
@@ -125,12 +252,13 @@ static void _forkserver() {
     char fifopath[PATH_MAX];
     snprintf(fifopath, PATH_MAX, "%s/%s", shared, "input.pipe");
 
-    if (!save_file_offsets()) return;
-    fprintf(stderr, "hhhhhhsfjslfkjsf\n");
+    save_file_offsets();
+    save_map_shared_pages();
 
     while(1) {
         cleanup_fs();
         CoverageTracer.ClearMaps();
+        clear_refs_write();
         int child_pid = fork();
         if (child_pid) {
             asm("int $3"); // trap and wait until fuzzer wakes us up
@@ -140,6 +268,7 @@ static void _forkserver() {
                 ret = waitpid(-1, &status, WNOHANG);
             } while (ret > 0);
             restore_file_offsets();
+            restore_map_shared_pages();
         } else {
             fifofd = open(fifopath, O_RDONLY);
             if (fifofd >= 0) {
