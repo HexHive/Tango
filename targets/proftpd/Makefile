@@ -1,0 +1,14 @@
+.PHONY: bftpd
+
+export LDFLAGS := $(LDFLAGS) $(LDLIBS)
+
+bftpd:
+	./setup_ftpshare.sh
+	# rm -rf proftpd_repo proftpd
+	# git clone https://github.com/proftpd/proftpd.git proftpd_repo && \
+	cd proftpd_repo && \
+	# git checkout 4017eff8 && \
+	# ./configure --enable-devel=nodaemon:nofork && \
+	$(MAKE) clean && \
+	$(MAKE) all && \
+	cp proftpd ../
