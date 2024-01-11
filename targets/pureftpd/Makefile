@@ -1,8 +1,8 @@
-.PHONY: bftpd
+.PHONY: pureftpd
 
 export LDFLAGS := $(LDFLAGS) $(LDLIBS)
 
-bftpd:
+pureftpd:
 	./preinstall.sh
 	./setup_ftpshare.sh
 	rm -rf pureftpd_repo pure-ftpd 
