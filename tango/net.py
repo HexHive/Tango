@@ -511,6 +511,8 @@ class TCPForkChannelFactory(TCPChannelFactory,
     fork_before_accept: bool = True
     _cached = None
 
+    __repr__ = object.__repr__
+
     async def initialize(self):
         info(f"Initializing {self}")
         await super().initialize()
@@ -612,6 +614,8 @@ class UDPChannelFactory(TransportChannelFactory,
     connect_timeout: float = None # seconds
 
     protocol: str = "udp"
+
+    __repr__ = object.__repr__
 
     async def initialize(self):
         info(f"Initializing {self}")
@@ -800,6 +804,8 @@ class UDPForkChannelFactory(UDPChannelFactory,
         capture_paths=['channel.fork_before_bind']):
     fork_before_bind: bool = False
     _cached = None
+
+    __repr__ = object.__repr__
 
     async def initialize(self):
         info(f"Initializing {self}")

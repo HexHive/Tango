@@ -371,7 +371,7 @@ class PtraceChannel(AbstractChannel):
                     observe_cb, opts = observe_opts
                 elif event.process.root not in self._debugger and \
                         event.process.root != self.root:
-                    debug("Received rogue event (%s) for %s", event, event.process)
+                    warning("Received rogue event (%s) for %s", event, event.process)
                     continue
                 else:
                     opts = monitor_opts

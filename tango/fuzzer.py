@@ -1,5 +1,5 @@
 from . import info, warning, error
-
+from tango.exceptions import ProcessCrashedException, ProcessTerminatedException, StateNotReproducibleException
 from tango.core import (FuzzerConfig, FuzzerSession,
     initialize as initialize_profiler, TimeElapsedProfiler, is_profiling_active,
     get_current_session)
@@ -123,6 +123,7 @@ class Fuzzer:
                 signal.SIGTERM, self._cleanup_and_exit, loop)
             info("Launching all sessions")
             await self._runner
+        # all exceptions about tango go here
         except asyncio.CancelledError:
             pass
         except ExceptionGroup as exg:
@@ -130,6 +131,7 @@ class Fuzzer:
                     chr(10).join(repr(x) for x in exg.exceptions))
         except Exception as ex:
             warning("Exception raised while attempting to terminate: %s", ex)
+            import traceback; print(traceback.format_exc())
         info("Goodbye!")
 
     async def run_all_sessions(self):
@@ -142,8 +144,22 @@ class Fuzzer:
                     await self.launch_session(tg, sid=i)
                     info(f"Launched session {i} with {tg}")
         except ExceptionGroup as exg:
-            import ipdb; ipdb.set_trace()
-            pass
+            # all exceptions about the target during instantiating go here
+            # trick: disable ASAN for more debugging information
+            for ex in exg.exceptions:
+                from json import JSONDecodeError
+                if isinstance(ex, FileNotFoundError):
+                    error(f"Cannot find {ex.filename}")
+                elif isinstance(ex, JSONDecodeError):
+                    error(f"Cannot decode {ex.doc}, {ex}")
+                elif isinstance(ex, ProcessTerminatedException):
+                    if isinstance(ex, ProcessCrashedException):
+                        error(f"Run into an early crash")
+                elif isinstance(ex, StateNotReproducibleException):
+                    import ipdb; ipdb.set_trace()
+                    error(f"{ex}")
+                else:
+                    raise ex
 
     async def launch_session(self, tg, *args, **kwargs):
         context = create_session_context(tg)
