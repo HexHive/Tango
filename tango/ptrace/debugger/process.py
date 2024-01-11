@@ -696,7 +696,7 @@ class PtraceProcess(object):
                     if err.errno != EACCES:
                         error(message)
                     else:
-                        warn(message)
+                        warning(message)
                     self.readBytes = self._readBytes
                     return self.readBytes(address, size)
 
