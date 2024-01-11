@@ -3,6 +3,7 @@
 export LDFLAGS := $(LDFLAGS) $(LDLIBS)
 
 bftpd:
+	./preinstall.sh
 	./setup_ftpshare.sh
 	rm -rf pureftpd_repo pure-ftpd 
 	git clone https://github.com/jedisct1/pure-ftpd.git pureftpd_repo && \
