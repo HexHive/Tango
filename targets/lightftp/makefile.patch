@@ -1,0 +1,11 @@
+--- makefile	2024-01-11 17:41:00.730635653 +0100
++++ makefile-patched	2024-01-11 17:40:43.094727019 +0100
+@@ -28,7 +28,7 @@
+ fftp: $(OBJS) $(USER_OBJS)
+ 	@echo 'Building target: $@'
+ 	@echo 'Invoking: GCC C Linker'
+-	$(CC) $(CFLAGS)  -o "fftp" $(OBJS) $(USER_OBJS) $(LIBS)
++	$(CC) $(CFLAGS)  -o "fftp" $(OBJS) $(USER_OBJS) $(LDFLAGS) $(LIBS)
+ 	@echo 'Finished building target: $@'
+ 	@echo ' '
+ 
