@@ -7,7 +7,7 @@ from tango.common import (Suspendable,
     create_session_context, get_session_task_group)
 from tango.webui import WebRenderer
 
-from aioconsole import AsynchronousConsole, get_standard_streams
+from aioconsole import AsynchronousCli, get_standard_streams
 from ast import literal_eval
 from pathlib import Path
 import asyncio
@@ -109,15 +109,6 @@ class Fuzzer:
         loop = asyncio.get_running_loop()
         loop.set_exception_handler(self._loop_exception_handler)
 
-        self._stream_cache = {}
-        # we use an empty tuple for `streams` to prevent it being seen as None,
-        # in which case, aioconsole would generate its own streams
-        self._repl = AsynchronousConsole(streams=(), loop=loop,
-            locals=locals() | {
-                'exit': lambda code=0: self._cleanup_and_exit(loop, code),
-                'loop': loop
-            })
-
         # set up the main suspendable fuzzing task
         self._suspendable = Suspendable(self.run_all_sessions())
 
@@ -218,25 +209,22 @@ class Fuzzer:
         # suspend fuzzing sessions (and call respective suspend handlers)
         self._suspendable.suspend()
 
-        # The coroutine get_standard_streams is deliberately not awaited.
-        # AsynchronousConsole supports having an awaitable `streams` attribute
-        # that is called every time `interact` is invoked. To allow for reusing
-        # the console, we use this coroutine with a no-op cache so that streams
-        # are re-generated every time `interact` is called.
-        # interact.
-        # Unfortunately, this also means the coroutine is consumed after being
-        # awaited, and we need to recreate it again before every call.
-        self._stream_cache.clear()
-        self._repl.streams = get_standard_streams(
-            cache=self._stream_cache, use_stderr=True, loop=loop)
-        await self._repl.interact(banner="Fuzzing paused (type exit() to quit)",
-            stop=False, handle_sigint=False)
+        def shell_exit(reader, writer):
+            self._cleanup_and_exit(loop, 0)
+
+        # Spawn a shell
+        commands = {
+            "Exit": (shell_exit, argparse.ArgumentParser(description="Exit Tango.")),
+        }
+        streams = get_standard_streams(use_stderr=True, loop=loop)
+        self._cli = AsynchronousCli(commands, streams, prog="Tango")
+        await self._cli.interact(stop=False, handle_sigint=False)
 
         self._suspendable.resume()
 
         if not self._cleanup:
             # reopen stdin if it is at EOF
-            if self._repl.reader.at_eof():
+            if self._cli.reader.at_eof():
                 sys.stdin.close()
                 sys.stdin = open("/dev/tty")
 
