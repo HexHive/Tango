@@ -96,6 +96,38 @@ bool Tracer::InitializeMaps() {
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
+void Tracer::ReshapMapsUnmap(void *old_map, void *new_map) {
+    void *pObj;
+    size_t old_size;
+    pObj = (void *)((uintptr_t)old_map - sizeof(size_t));
+    old_size = *(size_t *)pObj;
+    if (munmap(pObj, old_size + sizeof(size_t)) == -1) {
+        throw std::runtime_error("Failed unmap shm region");
+    }
+}
+
+ATTRIBUTE_NO_SANITIZE_ALL
+bool Tracer::ReshapeMaps() {
+    uint8_t *feature_map_new;
+    uintptr_t *pc_map_new;
+    try {
+        ReshapMapsUnmap(feature_map, feature_map_new);
+        feature_map_new = SharedMemoryObject<uint8_t>(
+            "cov", num_guards * sizeof(uint8_t)).pMap;
+        feature_map = feature_map_new;
+
+        ReshapMapsUnmap(pc_map, pc_map_new);
+        pc_map_new = SharedMemoryObject<uintptr_t>(
+            "pc", num_guards * sizeof(uintptr_t)).pMap;
+        pc_map = pc_map_new;
+    } catch (...) {
+        disabled = true;
+        return false;
+    }
+    return true;
+}
+
+ATTRIBUTE_NO_SANITIZE_ALL
 void Tracer::ClearMaps() {
     memset(feature_map, 0, num_guards);
 
@@ -112,6 +144,16 @@ inline void Tracer::InitializeGuards(uint32_t *start, uint32_t *stop) {
     if (start == stop || *start) return;  // Initialize only once.
     for (uint32_t *x = start; x < stop; x++)
         *x = ++num_guards;  // Guards should start from 1.
+
+    // The InitializedGuards will be invoked once in the target program's
+    // call_init() and be invoked again when the target program is loading a
+    // shared object with dlopen(). If invoked multiple times, the
+    // InitializedGuards will continously increase num_guards but keeps
+    // feature_map and pc_map unchanged. So, we have to reshape the feature_map
+    // and pc_map at the same time.
+    if (initialized) {
+        assert(ReshapeMaps() && "Reshaping Maps failed.");
+    }
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL
