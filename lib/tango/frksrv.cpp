@@ -80,7 +80,11 @@ static void cleanup_fs() {
 // https://stackoverflow.com/questions/33899548/file-pointers-after-returning-from-a-forked-child-process
 // https://pubs.opengroup.org/onlinepubs/009695399/functions/xsh_chap02_05.html#tag_02_05_01
 #define MAX_FD 1024
-static off_t file_offsets[MAX_FD];
+typedef struct file_snapshot {
+    off_t file_offset;
+    off_t file_size;
+} file_snapshot;
+static file_snapshot file_snapshots[MAX_FD];
 
 ATTRIBUTE_NO_SANITIZE_ALL
 static bool save_file_offsets(void) {
@@ -95,14 +99,23 @@ static bool save_file_offsets(void) {
     int fd;
     off_t pos;
     struct stat sb;
-    for (fd = 0; fd < MAX_FD; fd++) file_offsets[fd] = (off_t)-1;
+    for (fd = 0; fd < MAX_FD; fd++) {
+        file_snapshots[fd].file_offset = (off_t)-1;
+        file_snapshots[fd].file_size = (off_t)-1;
+    }
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type != DT_LNK) continue;
         fd = atoi(entry->d_name);
         if (fd < 3) continue;
         if (fd == dfd) continue;
         pos = lseek(fd, 0, SEEK_CUR);
-        if (pos != (off_t)-1) file_offsets[fd] = pos;
+        if (pos != (off_t)-1) {
+            file_snapshots[fd].file_offset = pos;
+        }
+        fstat(fd, &sb);
+        if (sb.st_size != (off_t)-1) {
+            file_snapshots[fd].file_size = sb.st_size;
+        }
     }
     closedir(dir);
     return true;
@@ -111,11 +124,15 @@ static bool save_file_offsets(void) {
 ATTRIBUTE_NO_SANITIZE_ALL
 static void restore_file_offsets(void) {
     int fd;
-    off_t pos;
+    off_t pos, size;
     for (fd = 0; fd < MAX_FD; fd++) {
-        pos = file_offsets[fd];
+        pos = file_snapshots[fd].file_offset;
         if (pos != (off_t)-1) {
             lseek(fd, pos, SEEK_SET);
+        }
+        size = file_snapshots[fd].file_size;
+        if (size != (off_t)-1) {
+            ftruncate(fd, size);
         }
     }
 }
