@@ -49,6 +49,15 @@ class FuzzerConfig(ComponentOwner):
         self.setup_workdir(wd, resume)
         debug(f"Setup workdir {wd} (resumed: {resume})")
 
+        if "root" not in self._config["fuzzer"]:
+            self._config["fuzzer"]["root"] = False
+        root = self._config["fuzzer"]["root"]
+        if root:
+            ceuid = os.geteuid()
+            os.setuid(0); os.seteuid(0)
+            os.setgid(0); os.setegid(0)
+            debug(f"Change current user {ceuid}(tango):{ceuid}(tango) to 0(root):0(root),{ceuid}(tango)")
+
         self.valid_component_classes = self.component_classes
         debug(f"Got {len(self.valid_component_classes)} valid component classes based on {file}")
 
