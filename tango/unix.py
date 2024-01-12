@@ -794,7 +794,9 @@ class ProcessDriver(BaseDriver,
             config["env"]["TANGO_FS_LOWERDIR"] = str(lower)
             config["env"]["TANGO_FS_OVERLAY"] = str(overlay)
 
-        config["args"][0] = os.path.realpath(config["args"][0])
+        for idx, arg in enumerate(config["args"]):
+            if os.path.isfile(arg) or os.path.isdir(arg):
+                config["args"][idx] = os.path.realpath(arg)
         if not (path := config.get("path")):
             config["path"] = config["args"][0]
         else:
