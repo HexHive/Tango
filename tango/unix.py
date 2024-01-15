@@ -1310,6 +1310,8 @@ class FileDescriptorChannel(PtraceChannel):
                 if nfds <= max(fds):
                     return None
                 readfds = argv[1]
+                if readfds == 0:
+                    return None
                 fmt = '@l'
                 size = struct.calcsize(fmt)
                 for fd in fds:
