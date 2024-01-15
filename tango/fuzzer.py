@@ -1,5 +1,6 @@
 from . import info, warning, error
-from tango.exceptions import ProcessCrashedException, ProcessTerminatedException, StateNotReproducibleException
+from tango.exceptions import NotSyncedException, ProcessCrashedException, \
+    ProcessTerminatedException, StateNotReproducibleException
 from tango.core import (FuzzerConfig, FuzzerSession,
     initialize as initialize_profiler, TimeElapsedProfiler, is_profiling_active,
     get_current_session)
@@ -123,7 +124,7 @@ class Fuzzer:
                 signal.SIGTERM, self._cleanup_and_exit, loop)
             info("Launching all sessions")
             await self._runner
-        # all exceptions about tango go here
+        # all unhandled expections after the instantiating go here
         except asyncio.CancelledError:
             pass
         except ExceptionGroup as exg:
@@ -144,7 +145,7 @@ class Fuzzer:
                     await self.launch_session(tg, sid=i)
                     info(f"Launched session {i} with {tg}")
         except ExceptionGroup as exg:
-            # all exceptions about the target during instantiating go here
+            # all exceptions during instantiating go here
             # trick: disable ASAN for more debugging information
             for ex in exg.exceptions:
                 from json import JSONDecodeError
@@ -157,6 +158,8 @@ class Fuzzer:
                         error(f"Run into an early crash")
                 elif isinstance(ex, StateNotReproducibleException):
                     import ipdb; ipdb.set_trace()
+                    error(f"{ex}")
+                elif isinstance(ex, NotSyncedException):
                     error(f"{ex}")
                 else:
                     raise ex

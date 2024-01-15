@@ -18,7 +18,7 @@ from tango.ptrace.syscall import PtraceSyscall, SOCKET_SYSCALL_NAMES
 from tango.ptrace.tools import signal_to_exitcode
 from tango.ptrace.linux_proc import readProcessStat
 from tango.common import ComponentOwner, ComponentType
-from tango.exceptions import (ChannelTimeoutException, StabilityException,
+from tango.exceptions import (ChannelTimeoutException, NotSyncedException, StabilityException,
     ProcessCrashedException, ProcessTerminatedException, ChannelBrokenException)
 
 if HAS_SECCOMP_FILTER:
@@ -1144,7 +1144,8 @@ class FileDescriptorChannel(PtraceChannel):
                 except Exception as ex:
                     raise ChannelBrokenException("Failed to send data") from ex
                 await self.sync()
-                assert self.synced
+                if not self.synced:
+                    raise NotSyncedException("Failed to sync after sending data")
         else:
             unpack_len = 0
 
@@ -1154,7 +1155,8 @@ class FileDescriptorChannel(PtraceChannel):
             except Exception as ex:
                 raise ChannelBrokenException("Failed to send data") from ex
             await self.sync()
-            assert self.synced
+            if not self.synced:
+                raise NotSyncedException("Failed to sync after sending data")
 
         debug("Sent data to target: %s", data[:sent])
         return sent

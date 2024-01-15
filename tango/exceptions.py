@@ -1,3 +1,6 @@
+class NotSyncedException(RuntimeError):
+    pass
+
 class LoadedException(RuntimeError):
     def __new__(cls, ex, payload=None):
         if isinstance(ex, LoadedException):

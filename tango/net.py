@@ -10,7 +10,7 @@ from tango.unix import (PtraceChannel, PtraceForkChannel, PtraceChannelFactory,
     FileDescriptorChannel, FileDescriptorChannelFactory, EventOptions,
     ChunkSizeDescriptor)
 from tango.raw import RawFormatDescriptor
-from tango.exceptions import ChannelBrokenException
+from tango.exceptions import ChannelBrokenException, NotSyncedException
 
 from subprocess  import Popen
 from dataclasses import dataclass
@@ -327,7 +327,8 @@ class TCPChannel(NetworkChannel):
         # or wait for the parent to fork, and trace child for these calls
         await self.sync()
         info(f"Target process with {self._accept_process.pid} is waiting us")
-        assert self.synced
+        if not self.synced:
+            raise NotSyncedException("Failed to sync after the target accepts our connecting")
 
     async def read_bytes(self) -> ByteString:
         chunks = []
@@ -689,7 +690,8 @@ class UDPChannel(NetworkChannel):
         # wait for the next read, recv, select, or poll
         # or wait for the parent to fork, and trace child for these calls
         await self.sync()
-        assert self.synced
+        if not self.synced:
+            raise NotSyncedException("Failed to sync after the target binds the port")
 
     async def read_bytes(self) -> ByteString:
         try:

@@ -6,7 +6,7 @@ from tango.ptrace.syscall import PtraceSyscall, SYSCALL_REGISTER
 from tango.ptrace.debugger import PtraceProcess
 from tango.unix import (PtraceChannel, PtraceForkChannel, PtraceChannelFactory,
     FileDescriptorChannel, FileDescriptorChannelFactory, ChunkSizeDescriptor)
-from tango.exceptions import ChannelBrokenException
+from tango.exceptions import ChannelBrokenException, NotSyncedException
 from tango.common import sync_to_async
 
 from typing import ByteString, Iterable, Mapping, Any, Optional
@@ -78,7 +78,8 @@ class StdIOChannel(FileDescriptorChannel):
         # wait for the next read, recv, select, or poll
         # or wait for the parent to fork, and trace child for these calls
         await self.sync()
-        assert self.synced
+        if not self.synced:
+            raise NotSyncedException("Failed to sync after connection")
 
     async def read_bytes(self) -> ByteString:
         # FIXME for now, stdout/stderr are not piped
@@ -159,7 +160,8 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
                 self._invoke_forkserver_syscall_callback, process=self._proc)
             self._awaited = True
             await self.sync()
-            assert self.synced
+            if not self.synced:
+                raise NotSyncedException("Failed to sync after connection")
 
     def cb_stdin_polled(self, process, syscall):
         if not self._injected:
