@@ -1309,8 +1309,6 @@ class FileDescriptorChannel(PtraceChannel):
                     return None
             case 'select' | 'pselect6':
                 nfds = argv[0]
-                if nfds <= max(fds):
-                    return None
                 readfds = argv[1]
                 if readfds == 0:
                     return None
