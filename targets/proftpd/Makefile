@@ -8,6 +8,7 @@ proftd:
 	git clone https://github.com/proftpd/proftpd.git proftpd_repo && \
 	cd proftpd_repo && \
 	git checkout 4017eff8 && \
+	patch -p1 < ../scoreboard_file.patch && \
 	./configure --enable-devel=nodaemon:nofork && \
 	$(MAKE) clean && \
 	$(MAKE) all && \

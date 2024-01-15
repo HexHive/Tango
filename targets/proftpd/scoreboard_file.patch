@@ -1,0 +1,17 @@
+diff --git a/src/scoreboard.c b/src/scoreboard.c
+index f644bf449..36ee9f531 100644
+--- a/src/scoreboard.c
++++ b/src/scoreboard.c
+@@ -531,11 +531,11 @@ int pr_open_scoreboard(int flags) {
+ 
+   pr_log_debug(DEBUG7, "opening scoreboard '%s'", scoreboard_file);
+ 
+-  scoreboard_fd = open(scoreboard_file, flags|O_CREAT, PR_SCOREBOARD_MODE);
++  scoreboard_fd = open(scoreboard_file, flags|O_CREAT|O_TRUNC, PR_SCOREBOARD_MODE);
+   while (scoreboard_fd < 0) {
+     if (errno == EINTR) {
+       pr_signals_handle();
+-      scoreboard_fd = open(scoreboard_file, flags|O_CREAT, PR_SCOREBOARD_MODE);
++      scoreboard_fd = open(scoreboard_file, flags|O_CREAT|O_TRUNC, PR_SCOREBOARD_MODE);
+       continue;
+     }
