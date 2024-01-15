@@ -30,8 +30,6 @@ class Fuzzer:
             Path(self._argspace.pid).write_text(str(os.getpid()))
         if self._argspace.show_pcs:
             os.environ["SHOW_PCS"] = "1"
-        if self._argspace.base_address:
-            os.environ["BASE_ADDRESS"] = self._argspace.base_address
         if self._argspace.show_syscalls:
             os.environ["SHOW_SYSCALLS"] = "1"
 
@@ -53,8 +51,6 @@ class Fuzzer:
                 "-v prints info. -vv prints debug. Default: warnings and higher."))
         parser.add_argument('--show_pcs', action='store_true', default=False,
             help="Show pcs to debug StabilityException.")
-        parser.add_argument('--base_address', type=str, default='0x0000555555554000',
-            help="Subtract the base address and show offsets.")
         parser.add_argument('--show_syscalls', action='store_true', default=False,
             help="Show syscalls to understand the target.")
         return parser.parse_args(args)

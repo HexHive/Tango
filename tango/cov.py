@@ -627,8 +627,6 @@ class CoverageTracker(BaseTracker,
                     base_address = map.start
                     break
             index_of_unique_features = list(snapshot.get_unique_features().keys())
-            if os.getenv("BASE_ADDRESS"):
-                base_address = int(os.getenv("BASE_ADDRESS"), 16)
             return ['{:x}'.format(snapshot._pcs[i] - base_address) for i in index_of_unique_features]
         return None
 
