@@ -20,6 +20,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_svg import FigureCanvasSVG
 from matplotlib.colors import LogNorm
 import seaborn as sns
+from elftools.elf.elffile import ELFFile
 
 from abc import ABC, abstractmethod
 from typing       import Sequence, Callable, Optional
@@ -620,12 +621,16 @@ class CoverageTracker(BaseTracker,
     def _show_pcs(self, snapshot: FeatureSnapshot):
         if os.getenv("SHOW_PCS"):
             pathname = self._driver._exec_env.path
+            with open(pathname, "rb") as file:
+                elf = ELFFile(file)
             base_address = 0
-            for map in self._driver._channel._proc.readMappings():
-                # 0x0000555555554000-0x000055555557c000 => /home/tango/targets/sip/kamailio (r--p)
-                if map.pathname == pathname:
-                    base_address = map.start
-                    break
+            if elf.header["e_type"] == "ET_DYN":
+                for map in self._driver._channel._proc.readMappings():
+                    # 0x0000555555554000-0x000055555557c000 => /home/tango/targets/sip/kamailio (r--p)
+                    if map.pathname == pathname:
+                        base_address = map.start
+                        debug(f"Got base address 0x{base_address:x} ({map})")
+                        break
             index_of_unique_features = list(snapshot.get_unique_features().keys())
             return ['{:x}'.format(snapshot._pcs[i] - base_address) for i in index_of_unique_features]
         return None
