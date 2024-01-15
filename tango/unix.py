@@ -1084,6 +1084,7 @@ class FileDescriptorChannel(PtraceChannel):
         await super().process_new(*args, **kwargs)
         for fd in self._refcounter:
             self._refcounter[fd] += 1
+            debug(f"Increase the refcount of fd {fd} in the fd refcounter")
 
     async def monitor_syscalls(self,
             monitor_target: Callable,
@@ -1100,6 +1101,15 @@ class FileDescriptorChannel(PtraceChannel):
         new_ignore_callback = partial(
             self._tracer_ignore_callback, ignore_callback)
         new_syscall_callback = self._tracer_syscall_callback
+        #           monitor_target ----> monitor_targets
+        #  _tracer_ignore_callback ->
+        #                            |-> ignore_callback
+        #          ignore_callback ->
+        #           break_callback ----> break_callback
+        # _tracer_syscall_callback ----> syscall_callback
+        #          ignore_callback ->
+        #                            |-> kw
+        #         syscall_callback ->
         return await super().monitor_syscalls(
             monitor_target, new_ignore_callback,
             break_callback, new_syscall_callback, timeout=timeout,
@@ -1125,7 +1135,7 @@ class FileDescriptorChannel(PtraceChannel):
             assert False # will never be called
         self.synced = False
         ignore_cb = lambda s: True
-        debug("Running the target and monitoring syscalls")
+        debug("Syncing: running the target and monitoring syscalls")
         await self.monitor_syscalls(None, ignore_cb, break_cb, syscall_cb,
             break_on_entry=False, break_on_exit=False,
             timeout=self._data_timeout)
@@ -1191,15 +1201,17 @@ class FileDescriptorChannel(PtraceChannel):
 
     def dup_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
         self._refcounter[syscall.result] = 1
-        debug("File descriptor duplicated in dup_fd=%i", syscall.result)
+        debug(f"Added {syscall.result} into fd refcounter due to dup()")
 
     def close_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
         if syscall.result != 0:
             return
         fd = syscall.arguments[0].value
         self._refcounter[fd] -= 1
+        debug(f"Decrease the refcount of fd {fd} in the fd refcounter")
         if not self._refcounter[fd]:
             self._refcounter.pop(fd)
+            debug(f"Remove fd {fd} from the fd refcounter")
         if sum(self._refcounter.values()) == 0:
             raise ChannelBrokenException(
                 "Channel closed while waiting for server to read")

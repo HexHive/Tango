@@ -99,6 +99,7 @@ class StdIOChannel(FileDescriptorChannel):
         self._refcounter.clear()
         self._stdinfd = 0
         self._refcounter[0] = 1
+        debug(f"Clear the fd refcounter")
 
     async def shutdown(self):
         if self._file is not None and not self._file.closed:

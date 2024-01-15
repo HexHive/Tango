@@ -316,6 +316,7 @@ class TCPChannel(NetworkChannel):
         self._connect_address = address
         self._sockfd = -1
         self._refcounter.clear()
+        debug("Clear the fd refcounter")
         info("Running the target and monitoring syscalls")
         self._accept_process, _ = await self.monitor_syscalls(
             self._connect_monitor_target, self._connect_ignore_callback,
@@ -446,6 +447,7 @@ class TCPChannel(NetworkChannel):
                 and syscall.result >= 0:
             self._sockfd = syscall.result
             self._refcounter[self._sockfd] = 1
+            debug(f"Added new fd {self._sockfd} into fd refcounter")
             self.cb_socket_accepted(process, syscall)
 
     def _connect_ignore_callback(self, syscall):
@@ -678,6 +680,7 @@ class UDPChannel(NetworkChannel):
     async def connect(self, address: tuple):
         self._socket = self.nssocket(socket.AF_INET, socket.SOCK_DGRAM)
         self._refcounter.clear()
+        debug("Clear the fd refcounter")
         self._sockconnected = False
         self._connect_address = address
         info("Running the target and monitoring syscalls")
@@ -756,6 +759,7 @@ class UDPChannel(NetworkChannel):
                 and syscall.arguments[0].value == self._sockfd \
                 and syscall.result == 0:
             self._refcounter[self._sockfd] = 1
+            debug(f"Added new fd {self._sockfd} into fd refcounter")
             self._sockconnected = True
             self.cb_socket_bound(process, syscall)
 

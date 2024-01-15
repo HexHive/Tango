@@ -153,7 +153,6 @@ class Fuzzer:
                     if isinstance(ex, ProcessCrashedException):
                         error(f"Run into an early crash")
                 elif isinstance(ex, StateNotReproducibleException):
-                    import ipdb; ipdb.set_trace()
                     error(f"{ex}")
                 elif isinstance(ex, NotSyncedException):
                     error(f"{ex}")
