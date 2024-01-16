@@ -5,9 +5,7 @@
             "path": "./proftpd",
             "args": ["./proftpd", "-n", "-c", "./basic.conf", "-X"],
             "cwd": "./",
-            "env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"},
-            "stdout": "inherit",
-            "stderr": "inherit"
+            "env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
         },
 		"disable_aslr": true,
 		"forkserver": true
