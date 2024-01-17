@@ -3,7 +3,7 @@
         "type": "unix",
         "exec": {
             "path": "./fftp",
-            "args": ["./fftp", "fftp.conf", "2100"],
+            "args": ["./fftp", "./fftp.conf", "2100"],
             "cwd": "./",
             "env": {"ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0"}
         },
@@ -16,7 +16,8 @@
 	"channel": {
 		"type": "tcp",
         "endpoint": "127.0.0.1",
-        "port": 2100
+        "port": 2100,
+		"fork_before_accept": true
 	},
 	"generator": {
 		"type": "reactive"
