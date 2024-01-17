@@ -116,22 +116,16 @@ class PtraceChannel(AbstractChannel):
         self.observed = {}
         self.on_syscall_exception = on_syscall_exception
 
+        self.root = None
+
     async def setup(self):
         # we setup a catch-all subscription
         self._dbgsub = self._debugger.subscribe()
-        self._proc = await self._debugger.addProcess(self._pobj.pid,
+        self.root = await self._debugger.addProcess(self._pobj.pid,
             is_attached=True, subscription=self._dbgsub)
-        debug(f"Attached the debugger to process {self._proc.pid} with options {self._debugger.options}")
-        self.prepare_process(self._proc, resume=True)
-        debug(f"Prepared {self._proc} with resume: True")
-
-    @property
-    def root(self):
-        return self._proc
-
-    @root.setter
-    def root(self, value):
-        self._proc = value
+        debug(f"Attached the debugger to process {self.root.pid} with options {self._debugger.options}")
+        self.prepare_process(self.root, resume=True)
+        debug(f"Prepared {self.root} with resume: True")
 
     def prepare_process(self, process, *,
             ignore_callback=None, mask=None, resume=True):
@@ -203,8 +197,12 @@ class PtraceChannel(AbstractChannel):
 
     async def process_new(self, event, ignore_callback):
         # monitor child for syscalls as well. may be needed for multi-thread or multi-process targets
-        info("Target process with pid=%i forked, adding child process with pid=%i to debugger",
-            event.process.parent.pid, event.process.pid)
+        if not event.process.is_thread:
+            info("Target process with pid=%i forked, adding child process with pid=%i to debugger",
+                event.process.parent.pid, event.process.pid)
+        else:
+            info("Target process with pid=%i cloned, adding child thread with pid=%i to debugger",
+                event.process.parent.pid, event.process.pid)
         if event.process.is_attached:
             # sometimes, child process might have been killed at creation,
             # so the debugger detaches it; we check for that here
@@ -463,6 +461,7 @@ class PtraceForkChannel(PtraceChannel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        self._proc = None
         self._proc_trapped = False
         self._proc_untrap = False
         self._wait_for_proc = False
@@ -471,16 +470,8 @@ class PtraceForkChannel(PtraceChannel):
     async def setup(self):
         await super().setup()
         # extract forkserver location
-        self._symb_forkserver = resolve_symbol(self._proc, 'forkserver')
+        self._symb_forkserver = resolve_symbol(self.root, 'forkserver')
         debug(f"Got the address of forkserver at 0x{self._symb_forkserver:016X}")
-
-    @property
-    def root(self):
-        return self._forked_child
-
-    @root.setter
-    def root(self, value):
-        self._forked_child = value
 
     async def process_exit(self, event):
         try:
@@ -525,7 +516,7 @@ class PtraceForkChannel(PtraceChannel):
             raise event
         except NewProcessEvent as event:
             await self.process_new(event, ignore_callback)
-            if event.process.parent == self._proc and event.process.is_attached:
+            if self._proc and event.process.parent == self._proc and event.process.is_attached:
                 # pause children and queue up syscalls until forkserver traps
                 self._wait_for_proc = True
         except ForkChildKilledEvent as event:

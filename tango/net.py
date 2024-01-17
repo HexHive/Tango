@@ -598,6 +598,7 @@ class TCPForkBeforeAcceptChannel(TCPChannel, PtraceForkChannel):
         syscall.syscall = -1
         info("Injecting forkserver")
         self._invoke_forkserver(process)
+        self._proc = process
 
     def _invoke_forkserver(self, process):
         address = process.getInstrPointer() - 2
@@ -881,6 +882,7 @@ class UDPForkBeforeBindChannel(UDPChannel, PtraceForkChannel):
         syscall.syscall = -1
         info("Injecting forkserver")
         self._invoke_forkserver(process)
+        self._proc = process
 
     def _invoke_forkserver(self, process):
         address = process.getInstrPointer() - 2

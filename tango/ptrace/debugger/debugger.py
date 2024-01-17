@@ -455,8 +455,17 @@ class PtraceDebugger(object):
                                           " a traced process (parent=%s)",
                                           pid, parent)
                                 else:
-                                    debug("Ignoring signal for unknown pid=%i",
-                                        pid)
+                                    for old_pid, old_process in self.dict.items():
+                                        parent = readProcessStat(old_pid).ppid
+                                        if stat.ppid == parent:
+                                            republish = True
+                                            debug("Received premature signal for"
+                                                " a thread with pid=%i of"
+                                                " a traced process (%s)",
+                                                stat.pid, old_process)
+                                            break
+                                    else:
+                                        debug("Ignoring signal for unknown pid=%i", pid)
                             except ProcError:
                                 debug("Process with pid=%i died before"
                                       " its signal could be processed", pid)

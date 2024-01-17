@@ -374,6 +374,9 @@ class PtraceProcess(object):
                     # WARN it seems necessary to wait for the child to exit,
                     # otherwise the forkserver may misbehave, and the fuzzer
                     # will receive a lot of ForkChildKilledEvents
+
+                    for p in self.children:
+                        await p.terminateTree(**kwargs)
                     await self.terminate(**kwargs)
                     break
                 except PtraceError as ex:
@@ -386,8 +389,6 @@ class PtraceProcess(object):
         finally:
             if self in self.debugger:
                 self.deleteFromDebugger()
-        for p in self.children:
-            await p.terminateTree(**kwargs)
 
     async def waitExit(self):
         while True:

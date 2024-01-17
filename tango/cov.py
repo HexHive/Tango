@@ -369,7 +369,7 @@ class CoverageDriver(ProcessDriver,
             # FIXME we only resolve it once; this may be problematic when not
             # using the forkserver and ASLR is enabled
             assert self._disable_aslr, "ASLR must be disabled with disable_aslr"
-            process = self._channel._proc
+            process = self._channel.root
             self._symb_tracer = resolve_symbol(process, 'CoverageTracer')
 
     async def execute_input(self, input: AbstractInput):
