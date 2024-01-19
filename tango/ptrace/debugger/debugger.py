@@ -219,7 +219,7 @@ class PtraceDebugger(object):
         a new (stopped) process.
         """
         process = PtraceProcess(self, pid, is_attached, **kwargs)
-        # debug("Attach %s to debugger", process)
+        debug("Attached %s to debugger", process)
         self.traceProcess(process)
         try:
             await process.waitSignals(SIGTRAP, SIGSTOP)
@@ -562,7 +562,7 @@ class PtraceDebugger(object):
             self.list.remove(process)
         except ValueError:
             return
-        # debug("Deleted %s from debugger", process)
+        debug("Deleted %s from debugger", process)
 
     def updateProcessOptions(self):
         for process in self:

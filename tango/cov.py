@@ -365,6 +365,8 @@ class CoverageDriver(ProcessDriver,
 
     async def relaunch(self):
         await super().relaunch()
+        # TODO: self._symb_tracer should be resolved before ch.connect()
+        # otherwise self._symb will be None if a connection is broken
         if self._exclude_postmortem and not self._symb_tracer:
             # FIXME we only resolve it once; this may be problematic when not
             # using the forkserver and ASLR is enabled

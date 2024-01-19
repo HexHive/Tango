@@ -93,7 +93,7 @@ class PowerfulLogRecordFactory(logging.LogRecord):
                 'UDPChannel', 'UDPForkChannelFactory',
                 'ListenerSocketState', 'UDPSocketState',
                 'FileDescriptorChannel',
-                'PtraceChannel', 'PtraceForkChannel',
+                'PtraceChannel', 'PtraceForkChannel', 'PtraceDebugger',
                 'ProcessDriver', 'ProcessForkDriver',
                 'BaseStateGraph', 'FeatureMap']:
             indent = 2
