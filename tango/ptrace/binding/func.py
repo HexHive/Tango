@@ -199,7 +199,16 @@ if HAS_PROC:
             pass
     else:
         import zlib
-        config = zlib.decompress(configz)
+        for wbits in (-zlib.MAX_WBITS, zlib.MAX_WBITS, zlib.MAX_WBITS | 16):
+            try:
+                config = zlib.decompress(configz, wbits)
+                if not isinstance(config, str):
+                    config = config.decode()
+                break
+            except zlib.error:
+                pass
+        else:
+            raise RuntimeError("Failed to read /proc/config.gz")
     if config:
         if 'CONFIG_SECCOMP_FILTER=y' in config:
             HAS_SECCOMP_FILTER = True
