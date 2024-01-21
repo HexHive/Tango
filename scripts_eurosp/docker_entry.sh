@@ -15,7 +15,11 @@ if [[ $target =~ "skip_build" ]]; then
     target=${target%"_skip_build"}
 else
     pushd targets
-    USE_ASAN=1 make $target/
+    if [[ $target == "pureftpd" ]]; then
+        make $target/
+    else
+        USE_ASAN=1 make $target/
+    fi
     popd
 fi
 
