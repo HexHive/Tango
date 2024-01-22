@@ -11,3 +11,7 @@ sudo apt-get install -y \
     libasound2-dev libmxml-dev libgcrypt20-dev libavahi-client-dev zlib1g-dev \
     libevent-dev libplist-dev libsodium-dev libjson-c-dev libwebsockets-dev \
     libcurl4-openssl-dev avahi-daemon
+sudo /etc/init.d/dbus start
+sudo /etc/init.d/avahi-daemon start
+sudo chown tango:root forked-daapd.log
+sudo chown tango:root forked-daapd.pid

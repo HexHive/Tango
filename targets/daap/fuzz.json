@@ -11,7 +11,7 @@
             }
         },
 		"disable_aslr": true,
-		"forkserver": true
+		"forkserver": false
     },
 	"loader": {
 		"type": "replay"
