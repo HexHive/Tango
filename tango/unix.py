@@ -12,6 +12,7 @@ from tango.ptrace.binding.cpu import CPU_INSTR_POINTER, CPU_STACK_POINTER
 from tango.ptrace.debugger import   (PtraceDebugger, PtraceProcess,
     ProcessEvent, ProcessExit, ProcessSignal, NewProcessEvent, ProcessExecution,
     ForkChildKilledEvent)
+from tango.ptrace.ctypes_tools import formatAddress
 from tango.ptrace import PtraceError
 from tango.ptrace.func_call import FunctionCallOptions
 from tango.ptrace.syscall import PtraceSyscall, SOCKET_SYSCALL_NAMES
@@ -91,15 +92,26 @@ class PtraceChannel(AbstractChannel):
         self._process_all = False
         self._verbose = False
 
-        self._syscall_options = FunctionCallOptions(
-            write_types=False,
-            write_argname=False,
-            string_max_length=300,
-            replace_socketcall=True,
-            write_address=False,
-            max_array_count=20,
-        )
-        self._syscall_options.instr_pointer = False
+        if os.getenv("SHOW_SYSCALLS"):
+            self._syscall_options = FunctionCallOptions(
+                write_types=False,
+                write_argname=True,
+                string_max_length=300,
+                replace_socketcall=True,
+                write_address=False,
+                max_array_count=20,
+            )
+            self._syscall_options.instr_pointer = False
+        else:
+            self._syscall_options = FunctionCallOptions(
+                write_types=False,
+                write_argname=False,
+                string_max_length=300,
+                replace_socketcall=True,
+                write_address=False,
+                max_array_count=20,
+            )
+            self._syscall_options.instr_pointer = False
 
         self._debugger = PtraceDebugger()
         debug("Initialized a PtraceDebugger ")
@@ -155,6 +167,12 @@ class PtraceChannel(AbstractChannel):
         return processed
 
     async def process_exit(self, event):
+        if os.getenv("SHOW_SYSCALLS"):
+            # Display syscall which has not exited
+            state = event.process.syscall_state
+            if (state.next_event == "exit") and state.syscall:
+                self.displaySyscall(state.syscall)
+
         debug("Process with pid=%i exited, deleting from debugger", event.process.pid)
         debug("Reason: %s", event)
         event.process.deleteFromDebugger()
@@ -227,6 +245,17 @@ class PtraceChannel(AbstractChannel):
         except ProcessExecution as event:
             await self.process_exec(event)
 
+    def displaySyscall(self, syscall):
+        text = syscall.format()
+        if syscall.result is not None:
+            text = "%-40s = %s" % (text, syscall.result_text)
+        prefix = []
+        prefix.append("[%s]" % syscall.process.pid)
+        # prefix.append("[%s]" % formatAddress(syscall.instr_pointer))
+        if prefix:
+            text = ''.join(prefix) + ' ' + text
+        debug(text)
+
     async def process_event(self, event: ProcessEvent, opts: EventOptions,
             **kwargs):
         if event is None:
@@ -240,16 +269,22 @@ class PtraceChannel(AbstractChannel):
             state = event.process.syscall_state
 
             ### DEBUG ###
-            if os.getenv("SHOW_SYSCALLS"):
+            # if os.getenv("SHOW_SYSCALLS"):
                 # debug("Target process with pid=%i encountered a syscall-stop",
                 #     event.process.pid)
-                sc = PtraceSyscall(event.process, self._syscall_options,
-                                   event.process.getregs())
-                debug("syscall traced: [%i] sc.name=%s state.name=%s state.next_event=%s",
-                    event.process.pid, sc.name, state.name, state.next_event)
+                # sc = PtraceSyscall(event.process, self._syscall_options,
+                #                    event.process.getregs())
+                # syscall traced: [13338] sc.name=read state.name=None state.next_event=enter
+                # syscall traced: [13338] sc.name=read state.name=read state.next_event=exit
+                # debug("syscall traced: [%i] sc.name=%s state.name=%s state.next_event=%s",
+                #     event.process.pid, sc.name, state.name, state.next_event)
             #############
 
             syscall = await state.event(self._syscall_options)
+            ### DEBUG ###
+            if os.getenv("SHOW_SYSCALLS") and syscall:
+                self.displaySyscall(syscall)
+            #############
             is_entry = state.next_event == 'exit'
             is_exit = not is_entry
 
