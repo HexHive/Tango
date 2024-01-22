@@ -83,7 +83,9 @@ class PowerfulLogRecordFactory(logging.LogRecord):
                 and self.funcName in ['update_state', 'peek', 'extract_snapshot',
                                       '_update_local', 'reset_state', '_show_pcs']) \
                 or (self.className in ['BaseExplorer'] \
-                and self.funcName in ['reload_state', 'attempt_load_state', '_arbitrate_load_state']):
+                and self.funcName in ['reload_state', 'attempt_load_state', '_arbitrate_load_state']) \
+                or (self.className in ['PtraceProcess'] \
+                and self.funcName in ['kill', 'terminateTree', 'waitExit']):
             indent = 2
         elif self.className in ['ReplayLoader'] \
                 and self.funcName in ['load_state', 'load_path', 'apply_transition']:

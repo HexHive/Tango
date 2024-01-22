@@ -380,8 +380,7 @@ class PtraceProcess(object):
                     await self.terminate(**kwargs)
                     break
                 except PtraceError as ex:
-                    critical("Attempted to terminate non-existent process (%s)",
-                        ex)
+                    critical("Attempted to terminate non-existent process (%s)", ex)
                     break
                 except ProcessExit as ex:
                     debug("%s exited while terminating %s", ex.process, self)
@@ -427,11 +426,12 @@ class PtraceProcess(object):
                     # Event different than a signal? Raise an exception
                     raise event
             except PtraceError as ex:
-                debug("%s received %s while waiting for exit,"
-                      " but the signal could not be delivered ex=%r.",
-                      event.process, event, ex)
-                if event.process is self:
-                    break
+                raise ex
+                # debug("%s received %s while waiting for exit,"
+                #       " but the signal could not be delivered ex=%r.",
+                #       event.process, event, ex)
+                # if event.process is self:
+                #     break
 
     async def processStatus(self, status):
         # Process exited?
