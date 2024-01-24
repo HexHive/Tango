@@ -620,7 +620,7 @@ class CoverageTracker(BaseTracker,
                 debug(f"Inverted {source} from {self._global}")
             return source
 
-    def _show_pcs(self, snapshot: FeatureSnapshot):
+    def _get_pcs(self, snapshot: FeatureSnapshot):
         if os.getenv("SHOW_PCS"):
             pathname = self._driver._exec_env.path
             with open(pathname, "rb") as file:
@@ -633,8 +633,10 @@ class CoverageTracker(BaseTracker,
                         base_address = map.start
                         debug(f"Got base address 0x{base_address:x} ({map})")
                         break
-            index_of_unique_features = list(snapshot.get_unique_features().keys())
-            return ['{:x}'.format(snapshot._pcs[i] - base_address) for i in index_of_unique_features]
+            _pcs = {}
+            for idx, count in snapshot.get_unique_features().items():
+                _pcs['{:x}'.format(snapshot._pcs[idx] - base_address)] = count
+            return _pcs
         return None
 
     def peek(self,
@@ -653,7 +655,7 @@ class CoverageTracker(BaseTracker,
             debug(f"Copied dst: {expected_destination}._feature_context to {fmap}")
             parent = expected_destination._parent
             debug(f"Set dst: {expected_destination._parent} to parent")
-            debug_old_pcs = self._show_pcs(expected_destination)
+            debug_old_pcs = self._get_pcs(expected_destination)
             if (debug_old_pcs):
                 debug(f"{len(debug_old_pcs)} unique_pcs={debug_old_pcs}")
         else:
@@ -681,23 +683,21 @@ class CoverageTracker(BaseTracker,
                     self._shrunk_pcs(),
                     tracker=self, state_hash=hash(default_source), **kwargs)
                 debug(f"Construced {next_state} whose parent is {parent} (seems duplicated)")
-        debug_new_pcs = self._show_pcs(next_state)
+        debug_new_pcs = self._get_pcs(next_state)
         if debug_new_pcs:
             debug(f"{len(debug_new_pcs)} unique_pcs={debug_new_pcs}")
             pathname = self._driver._exec_env.path
             if debug_old_pcs:
-                if len(debug_new_pcs) > len(debug_old_pcs):
-                    diff_pcs = set(debug_new_pcs) - set(debug_old_pcs)
-                else:
-                    diff_pcs = set(debug_old_pcs) - set(debug_new_pcs)
-                debug(f"{len(diff_pcs)} diff_pcs={diff_pcs}")
-                # symbolize a bit
-                for pc in diff_pcs:
-                    debug(f"{os.popen('addr2line -a {} -e {} -fp'.format(pc, pathname)).read().strip()}")
+                for k, v in debug_new_pcs.items():
+                    if k not in debug_old_pcs:
+                        debug(f"RCT {os.popen('addr2line -a {} -e {} -fp'.format(k, pathname)).read().strip()} {v}")
+                for k, v in debug_old_pcs.items():
+                    if k not in debug_new_pcs:
+                        debug(f"FST {os.popen('addr2line -a {} -e {} -fp'.format(k, pathname)).read().strip()} {v}")
             else:
                 # symbolize a bit
-                for pc in debug_new_pcs:
-                    debug(f"{os.popen('addr2line -a {} -e {} -fp'.format(pc, pathname)).read().strip()}")
+                for pc, count in debug_new_pcs.items():
+                    debug(f"{os.popen('addr2line -a {} -e {} -fp'.format(pc, pathname)).read().strip()} {count}")
 
         return next_state
 
