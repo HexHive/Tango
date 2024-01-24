@@ -855,6 +855,7 @@ class UDPForkChannel(UDPChannel, PtraceForkChannel):
     def cb_socket_bound(self, process, syscall):
         info("Injecting forkserver")
         self._invoke_forkserver(process)
+        self._proc = process
 
     async def connect(self, address: tuple):
         if not self._sockconnected:
