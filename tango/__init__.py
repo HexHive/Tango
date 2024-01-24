@@ -91,8 +91,8 @@ class PowerfulLogRecordFactory(logging.LogRecord):
                 and self.funcName in ['load_state', 'load_path', 'apply_transition']:
             indent = 2
         elif self.className in [
-                'TCPChannel', 'TCPForkChannelFactory', 'TCPForkBeforeAcceptChannel',
-                'UDPChannel', 'UDPForkChannelFactory',
+                'TCPChannel', 'TCPForkChannelFactory', 'TCPForkBeforeAcceptChannel', 'TCPForkAfterListenChannel',
+                'UDPChannel', 'UDPForkChannel', 'UDPForkBeforeBindChannel', 'UDPForkChannelFactory',
                 'ListenerSocketState', 'UDPSocketState',
                 'FileDescriptorChannel',
                 'PtraceChannel', 'PtraceForkChannel', 'PtraceDebugger',

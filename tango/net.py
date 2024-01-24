@@ -853,6 +853,7 @@ class UDPForkChannelFactory(UDPChannelFactory,
 
 class UDPForkChannel(UDPChannel, PtraceForkChannel):
     def cb_socket_bound(self, process, syscall):
+        info("Injecting forkserver")
         self._invoke_forkserver(process)
 
     async def connect(self, address: tuple):
