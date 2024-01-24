@@ -176,7 +176,7 @@ static bool get_map_shared_pages(FILE *maps) {
             continue;
         }
 
-        if (perm[3] == 's') {
+        if (perm[3] == 's' && (strstr(file, "/dev/shm/tango_") == NULL)) {
             for (uintptr_t i = start; i < end; i += 0x1000) {
                 struct page *map_shared_page = (page *)calloc(1, sizeof(page));
                 map_shared_page->va = (void *)i;
