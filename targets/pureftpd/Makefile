@@ -1,5 +1,7 @@
 .PHONY: pureftpd
 
+export LDFLAGS := $(filter-out -fPIE,$(LDFLAGS))
+export LDFLAGS := $(filter-out -pie,$(LDFLAGS))
 export LDFLAGS := $(LDFLAGS) $(LDLIBS)
 
 pureftpd:
