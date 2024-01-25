@@ -225,7 +225,7 @@ async def load_corpus(session, corpus):
             features.add(explorer._last_state)
             logging.info("Loaded seed file: %s", path)
         except ProcessCrashedException as pc:
-            import ipdb; ipdb.set_trace()
+            # import ipdb; ipdb.set_trace()
             pass
         except Exception as ex:
             logging.warning("Failed to load %s: %s", path, ex)

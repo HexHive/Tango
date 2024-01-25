@@ -129,8 +129,7 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
             except Exception as ex:
                 # everything else, we probably need to debug
                 critical("Encountered weird exception ex=%r", ex)
-                import ipdb; ipdb.set_trace()
-                raise
+                raise ex
 
     async def _state_reload_cb(self,
             loadable: LoadableTarget, /, *, exc: Optional[Exception]=None):

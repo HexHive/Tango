@@ -232,7 +232,7 @@ class ReactiveInputGenerator(BaseInputGenerator,
             try:
                 w_tp = w_t * exp(amortized_reward / p_t * gamma)
             except OverflowError:
-                import ipdb; ipdb.set_trace()
+                # import ipdb; ipdb.set_trace()
                 # in case of overflow, we just assign some higher weight value
                 w_tp = w_t * 10
             # we keep p_t since actions may be repeated

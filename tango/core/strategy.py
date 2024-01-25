@@ -114,9 +114,8 @@ class BaseStrategy(AbstractStrategy,
                 # they only concern the loader/channel
                 raise
             except Exception as ex:
-                critical("Encountered exception while reloading target! ex=%r",
-                    ex)
-                import ipdb; ipdb.set_trace()
+                critical("Encountered exception while reloading target! ex=%r", ex)
+                # import ipdb; ipdb.set_trace()
                 pass
 
     def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
