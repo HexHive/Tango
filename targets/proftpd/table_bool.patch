@@ -1,0 +1,1786 @@
+diff --git a/ChangeLog b/ChangeLog
+index 2e936ee93..89ab321a5 100644
+--- a/ChangeLog
++++ b/ChangeLog
+@@ -14721,7 +14721,7 @@
+ 	* contrib/mod_sftp/mod_sftp.c, modules/mod_core.c, src/main.c: I
+ 	don't know why, but the ServerIdent configuration handler would
+ 	parse the Boolean parameter, but store it in the config_rec by using
+-	"!bool", inverting the value.  It make for confusing reading of the
++	"!_bool", inverting the value.  It make for confusing reading of the
+ 	code which handles that config_rec.  Avoid this confusion in the future, and simply store the parsed
+ 	Boolean value in the config_rec as is.
+ 
+diff --git a/contrib/mod_ctrls_admin.c b/contrib/mod_ctrls_admin.c
+index bd66ed12e..636eb0a4d 100644
+--- a/contrib/mod_ctrls_admin.c
++++ b/contrib/mod_ctrls_admin.c
+@@ -461,7 +461,7 @@ static int ctrls_handle_debug(pr_ctrls_t *ctrl, int reqargc,
+ 
+ static int ctrls_handle_dns(pr_ctrls_t *ctrl, int reqargc,
+     char **reqargv) {
+-  int bool;
++  int _bool;
+ 
+   /* Check the dns ACL */
+   if (!pr_ctrls_check_acl(ctrl, ctrls_admin_acttab, "dns")) {
+@@ -495,19 +495,19 @@ static int ctrls_handle_dns(pr_ctrls_t *ctrl, int reqargc,
+     pr_ctrls_add_response(ctrl, "dns: netaddr cache cleared");
+     
+   } else {
+-    bool = pr_str_is_boolean(reqargv[0]);
+-    if (bool == -1) {
++    _bool = pr_str_is_boolean(reqargv[0]);
++    if (_bool == -1) {
+       pr_ctrls_add_response(ctrl,
+         "dns: error: expected Boolean parameter: '%s'", reqargv[0]);
+       return -1;
+     }
+ 
+-    ServerUseReverseDNS = bool;
++    ServerUseReverseDNS = _bool;
+ 
+     pr_ctrls_log(MOD_CTRLS_ADMIN_VERSION, "dns: UseReverseDNS set to '%s'",
+-      bool ? "on" : "off");
++      _bool ? "on" : "off");
+     pr_ctrls_add_response(ctrl, "dns: UseReverseDNS set to '%s'",
+-      bool ? "on" : "off");
++      _bool ? "on" : "off");
+   }
+ 
+   return 0;
+@@ -1537,16 +1537,16 @@ MODRET set_adminctrlsacls(cmd_rec *cmd) {
+ 
+ /* usage: AdminControlsEngine on|off|actions */
+ MODRET set_adminctrlsengine(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT);
+ 
+-  if ((bool = get_boolean(cmd, 1)) != -1) {
+-    /* If bool is TRUE, there's no need to do anything.  If FALSE,
++  if ((_bool = get_boolean(cmd, 1)) != -1) {
++    /* If _bool is TRUE, there's no need to do anything.  If FALSE,
+      * then unregister all the controls of this module.
+      */
+-    if (!bool) {
++    if (!_bool) {
+       register unsigned int i = 0;
+ 
+       for (i = 0; ctrls_admin_acttab[i].act_action; i++) {
+diff --git a/contrib/mod_deflate.c b/contrib/mod_deflate.c
+index 974472846..766aafbde 100644
+--- a/contrib/mod_deflate.c
++++ b/contrib/mod_deflate.c
+@@ -794,20 +794,20 @@ static int deflate_netio_write_cb(pr_netio_stream_t *nstrm, char *buf,
+ 
+ /* usage: DeflateEngine on|off */
+ MODRET set_deflateengine(cmd_rec *cmd) {
+-  int bool;
++  int _bool;
+   config_rec *c;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned int));
+-  *((unsigned int *) c->argv[0]) = bool;
++  *((unsigned int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/contrib/mod_dnsbl/mod_dnsbl.c b/contrib/mod_dnsbl/mod_dnsbl.c
+index 028d1b6b3..01d514561 100644
+--- a/contrib/mod_dnsbl/mod_dnsbl.c
++++ b/contrib/mod_dnsbl/mod_dnsbl.c
+@@ -317,19 +317,19 @@ MODRET set_dnsbldomain(cmd_rec *cmd) {
+ 
+ /* usage: DNSBLEngine on|off */
+ MODRET set_dnsblengine(cmd_rec *cmd) {
+-  int bool;
++  int _bool;
+   config_rec *c;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned int));
+-  *((unsigned int *) c->argv[0]) = bool;
++  *((unsigned int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/contrib/mod_geoip.c b/contrib/mod_geoip.c
+index 99e82e123..70e05c869 100644
+--- a/contrib/mod_geoip.c
++++ b/contrib/mod_geoip.c
+@@ -1271,19 +1271,19 @@ MODRET set_geoipfilter(cmd_rec *cmd) {
+ 
+ /* usage: GeoIPEngine on|off */
+ MODRET set_geoipengine(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/contrib/mod_log_forensic.c b/contrib/mod_log_forensic.c
+index a5cbf3df5..60e0e590d 100644
+--- a/contrib/mod_log_forensic.c
++++ b/contrib/mod_log_forensic.c
+@@ -768,19 +768,19 @@ MODRET set_forensiclogcriteria(cmd_rec *cmd) {
+ /* usage: ForensicLogEngine on|off */
+ MODRET set_forensiclogengine(cmd_rec *cmd) {
+   config_rec *c;
+-  int bool;
++  int _bool;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = palloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/contrib/mod_quotatab.c b/contrib/mod_quotatab.c
+index 7166b2f6f..c938d4737 100644
+--- a/contrib/mod_quotatab.c
++++ b/contrib/mod_quotatab.c
+@@ -1587,19 +1587,19 @@ MODRET set_quotadisplayunits(cmd_rec *cmd) {
+ 
+ /* usage: QuotaEngine <on|off> */
+ MODRET set_quotaengine(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected boolean argument");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = (unsigned char) bool;
++  *((unsigned char *) c->argv[0]) = (unsigned char) _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+@@ -1702,19 +1702,19 @@ MODRET set_quotaoptions(cmd_rec *cmd) {
+ 
+ /* usage: QuotaShowQuotas <on|off> */
+ MODRET set_quotashowquotas(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected boolean argument");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = (unsigned char) bool;
++  *((unsigned char *) c->argv[0]) = (unsigned char) _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/contrib/mod_ratio.c b/contrib/mod_ratio.c
+index c80f75e55..993e7d8bf 100644
+--- a/contrib/mod_ratio.c
++++ b/contrib/mod_ratio.c
+@@ -883,20 +883,20 @@ add_ratiodata (cmd_rec * cmd)
+ }
+ 
+ MODRET set_ratios(cmd_rec *cmd) {
+-  int bool;
++  int _bool;
+   config_rec *c;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON|CONF_DIR);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+   c->flags |= CF_MERGEDOWN;
+ 
+   return PR_HANDLED(cmd);
+diff --git a/contrib/mod_rewrite.c b/contrib/mod_rewrite.c
+index e73ed6a6a..aa4750ca4 100644
+--- a/contrib/mod_rewrite.c
++++ b/contrib/mod_rewrite.c
+@@ -2324,14 +2324,14 @@ MODRET set_rewritecondition(cmd_rec *cmd) {
+ 
+ /* usage: RewriteEngine on|off */
+ MODRET set_rewriteengine(cmd_rec *cmd) {
+-  int bool = 0;
++  int _bool = 0;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expecting boolean argument");
+ 
+   /* Check for duplicates */
+@@ -2341,7 +2341,7 @@ MODRET set_rewriteengine(cmd_rec *cmd) {
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/contrib/mod_sftp/channel.c b/contrib/mod_sftp/channel.c
+index fdaf95e3f..d72be882b 100644
+--- a/contrib/mod_sftp/channel.c
++++ b/contrib/mod_sftp/channel.c
+@@ -869,12 +869,12 @@ static int handle_env_channel(struct ssh2_channel *chan,
+ static int handle_signal_channel(struct ssh2_channel *chan,
+     struct ssh2_packet *pkt, unsigned char **buf, uint32_t *buflen) {
+   int res;
+-  char bool, *sig_name;
++  char _bool, *sig_name;
+ 
+-  bool = sftp_msg_read_bool(pkt->pool, buf, buflen);
+-  if (bool != FALSE) {
++  _bool = sftp_msg_read_bool(pkt->pool, buf, buflen);
++  if (_bool != FALSE) {
+     (void) pr_log_writefile(sftp_logfd, MOD_SFTP_VERSION,
+-      "malformed 'signal' request (bool must be FALSE)");
++      "malformed 'signal' request (_bool must be FALSE)");
+   }
+ 
+   sig_name = sftp_msg_read_string(pkt->pool, buf, buflen);
+diff --git a/contrib/mod_sftp/mod_sftp.c b/contrib/mod_sftp/mod_sftp.c
+index cc4cde18b..0739d998b 100644
+--- a/contrib/mod_sftp/mod_sftp.c
++++ b/contrib/mod_sftp/mod_sftp.c
+@@ -879,7 +879,7 @@ MODRET set_sftpclientmatch(cmd_rec *cmd) {
+ /* usage: SFTPCompression on|off|delayed */
+ MODRET set_sftpcompression(cmd_rec *cmd) {
+   config_rec *c;
+-  int bool;
++  int _bool;
+ 
+   if (cmd->argc != 2) {
+     CONF_ERROR(cmd, "Wrong number of parameters");
+@@ -888,23 +888,23 @@ MODRET set_sftpcompression(cmd_rec *cmd) {
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+ #ifdef HAVE_ZLIB_H
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     if (strncasecmp(cmd->argv[1], "delayed", 8) != 0) {
+       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+         "unknown compression setting: ", cmd->argv[1], NULL));
+     }
+ 
+-    bool = 2;
++    _bool = 2;
+   }
+ #else
+   pr_log_debug(DEBUG0, MOD_SFTP_VERSION ": platform lacks zlib support, ignoring SFTPCompression");
+-  bool = 0;
++  _bool = 0;
+ #endif /* !HAVE_ZLIB_H */
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+@@ -974,19 +974,19 @@ MODRET set_sftpdisplaybanner(cmd_rec *cmd) {
+ 
+ /* usage: SFTPEngine on|off */
+ MODRET set_sftpengine(cmd_rec *cmd) {
+-  int bool = 1;
++  int _bool = 1;
+   config_rec *c;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/contrib/mod_sftp/msg.c b/contrib/mod_sftp/msg.c
+index b0ed9552c..5f0e60a40 100644
+--- a/contrib/mod_sftp/msg.c
++++ b/contrib/mod_sftp/msg.c
+@@ -83,7 +83,7 @@ char sftp_msg_read_byte(pool *p, unsigned char **buf, uint32_t *buflen) {
+ }
+ 
+ uint32_t sftp_msg_read_bool2(pool *p, unsigned char **buf, uint32_t *buflen,
+-    int *bool) {
++    int *_bool) {
+   char byte = 0;
+   uint32_t len;
+ 
+@@ -94,21 +94,21 @@ uint32_t sftp_msg_read_bool2(pool *p, unsigned char **buf, uint32_t *buflen,
+     return 0;
+   }
+ 
+-  *bool = byte;
++  *_bool = byte;
+   return len;
+ }
+ 
+ int sftp_msg_read_bool(pool *p, unsigned char **buf, uint32_t *buflen) {
+-  int bool = 0;
++  int _bool = 0;
+   uint32_t len;
+ 
+-  len = sftp_msg_read_bool2(p, buf, buflen, &bool);
++  len = sftp_msg_read_bool2(p, buf, buflen, &_bool);
+   if (len == 0) {
+     pr_log_stacktrace(sftp_logfd, MOD_SFTP_VERSION);
+     SFTP_DISCONNECT_CONN(SFTP_SSH2_DISCONNECT_BY_APPLICATION, NULL);
+   }
+ 
+-  if (bool == 0) {
++  if (_bool == 0) {
+     return FALSE;
+   }
+ 
+@@ -469,8 +469,8 @@ uint32_t sftp_msg_write_byte(unsigned char **buf, uint32_t *buflen, char byte) {
+   return len;
+ }
+ 
+-uint32_t sftp_msg_write_bool(unsigned char **buf, uint32_t *buflen, char bool) {
+-  return sftp_msg_write_byte(buf, buflen, bool == 0 ? 0 : 1);
++uint32_t sftp_msg_write_bool(unsigned char **buf, uint32_t *buflen, char _bool) {
++  return sftp_msg_write_byte(buf, buflen, _bool == 0 ? 0 : 1);
+ }
+ 
+ uint32_t sftp_msg_write_data(unsigned char **buf, uint32_t *buflen,
+diff --git a/contrib/mod_shaper.c b/contrib/mod_shaper.c
+index 2cdd0bf85..f654abd26 100644
+--- a/contrib/mod_shaper.c
++++ b/contrib/mod_shaper.c
+@@ -1923,19 +1923,19 @@ MODRET set_shaperctrlsacls(cmd_rec *cmd) {
+ 
+ /* usage: ShaperEngine on|off */
+ MODRET set_shaperengine(cmd_rec *cmd) {
+-  int bool;
++  int _bool;
+   config_rec *c;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned int));
+-  *((unsigned int *) c->argv[0]) = bool;
++  *((unsigned int *) c->argv[0]) = _bool;
+   c->flags |= CF_MERGEDOWN;
+ 
+   return PR_HANDLED(cmd);
+diff --git a/contrib/mod_site_misc.c b/contrib/mod_site_misc.c
+index 4da189901..e88f36a1b 100644
+--- a/contrib/mod_site_misc.c
++++ b/contrib/mod_site_misc.c
+@@ -531,18 +531,18 @@ static time_t site_misc_mktime(unsigned int year, unsigned int month,
+ /* usage: SiteMiscEngine on|off */
+ MODRET set_sitemiscengine(cmd_rec *cmd) {
+   config_rec *c;
+-  int bool;
++  int _bool;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned int));
+-  *((unsigned int *) c->argv[0]) = bool;
++  *((unsigned int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/contrib/mod_snmp/mod_snmp.c b/contrib/mod_snmp/mod_snmp.c
+index be5053b8c..6dc84c927 100644
+--- a/contrib/mod_snmp/mod_snmp.c
++++ b/contrib/mod_snmp/mod_snmp.c
+@@ -1969,19 +1969,19 @@ MODRET set_snmpenable(cmd_rec *cmd) {
+ 
+ /* usage: SNMPEngine on|off */
+ MODRET set_snmpengine(cmd_rec *cmd) {
+-  int bool = 1;
++  int _bool = 1;
+   config_rec *c;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/contrib/mod_sql.c b/contrib/mod_sql.c
+index 4c4f669fc..825ff3f0a 100644
+--- a/contrib/mod_sql.c
++++ b/contrib/mod_sql.c
+@@ -4550,19 +4550,19 @@ MODRET set_sqlratiostats(cmd_rec * cmd)
+ }
+ 
+ MODRET set_sqlnegativecache(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected a Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/contrib/mod_sql_mysql.c b/contrib/mod_sql_mysql.c
+index 18aa178cc..4a517e4aa 100644
+--- a/contrib/mod_sql_mysql.c
++++ b/contrib/mod_sql_mysql.c
+@@ -498,7 +498,7 @@ MODRET cmd_open(cmd_rec *cmd) {
+    */
+   if (!(pr_sql_opts & SQL_OPT_NO_RECONNECT)) {
+ #if MYSQL_VERSION_ID >= 80000
+-    bool reconnect = true;
++    _bool reconnect = true;
+ #else
+     my_bool reconnect = TRUE;
+ #endif
+diff --git a/contrib/mod_sql_passwd.c b/contrib/mod_sql_passwd.c
+index 557b25c62..5e2ecd778 100644
+--- a/contrib/mod_sql_passwd.c
++++ b/contrib/mod_sql_passwd.c
+@@ -1382,19 +1382,19 @@ MODRET set_sqlpasswdencoding(cmd_rec *cmd) {
+ 
+ /* usage: SQLPasswordEngine on|off */
+ MODRET set_sqlpasswdengine(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/contrib/mod_unique_id.c b/contrib/mod_unique_id.c
+index 96dacbec1..96d351dc4 100644
+--- a/contrib/mod_unique_id.c
++++ b/contrib/mod_unique_id.c
+@@ -56,19 +56,19 @@ static unsigned int host_ipaddr = 0;
+ 
+ /* usage: UniqueIDEngine on|off */
+ MODRET set_uniqueidengine(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/contrib/mod_wrap2/mod_wrap2.c b/contrib/mod_wrap2/mod_wrap2.c
+index 867cf3715..9f44daf8d 100644
+--- a/contrib/mod_wrap2/mod_wrap2.c
++++ b/contrib/mod_wrap2/mod_wrap2.c
+@@ -1414,19 +1414,19 @@ MODRET set_wrapmsg(cmd_rec *cmd) {
+ 
+ /* usage: WrapEngine on|off */
+ MODRET set_wrapengine(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expecting Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/doc/mod_sample.c b/doc/mod_sample.c
+index 36918d57c..507c4030b 100644
+--- a/doc/mod_sample.c
++++ b/doc/mod_sample.c
+@@ -135,7 +135,7 @@ MODRET sample_xfoo(cmd_rec *cmd) {
+  */
+ 
+ MODRET set_foobardirective(cmd_rec *cmd) {
+-  int bool = 1;
++  int _bool = 1;
+   config_rec *c = NULL;
+ 
+   /* The CHECK_ARGS macro checks the number of arguments passed to the
+@@ -154,8 +154,8 @@ MODRET set_foobardirective(cmd_rec *cmd) {
+   CHECK_CONF(cmd, CONF_ANON|CONF_LIMIT);
+ 
+   /* Get the Boolean value of the first directive parameter. */
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+ 
+     /* The get_boolean() function returns -1 if the parameter was not a
+      * recognized Boolean parameter.
+@@ -175,7 +175,7 @@ MODRET set_foobardirective(cmd_rec *cmd) {
+    * that space.
+    */
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   /* By adding the CF_MERGEDOWN flag to the parameter we just created
+    * we are telling proftpd that this parameter should be copied and
+diff --git a/modules/mod_auth.c b/modules/mod_auth.c
+index 6bfe6423e..d1bb56bc7 100644
+--- a/modules/mod_auth.c
++++ b/modules/mod_auth.c
+@@ -3012,19 +3012,19 @@ MODRET set_anonallowrobots(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_anonrequirepassword(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ANON);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+@@ -3098,44 +3098,44 @@ MODRET set_anonrejectpasswords(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_authaliasonly(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   c->flags |= CF_MERGEDOWN;
+   return PR_HANDLED(cmd);
+ }
+ 
+ MODRET set_authusingalias(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ANON);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+ 
+ MODRET set_createhome(cmd_rec *cmd) {
+-  int bool = -1, start = 2;
++  int _bool = -1, start = 2;
+   mode_t mode = (mode_t) 0700, dirmode = (mode_t) 0711;
+   char *skel_path = NULL;
+   config_rec *c = NULL;
+@@ -3149,16 +3149,16 @@ MODRET set_createhome(cmd_rec *cmd) {
+ 
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+-  /* No need to process the rest if bool is FALSE. */
+-  if (bool == FALSE) {
++  /* No need to process the rest if _bool is FALSE. */
++  if (_bool == FALSE) {
+     c = add_config_param(cmd->argv[0], 1, NULL);
+     c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-    *((unsigned char *) c->argv[0]) = bool;
++    *((unsigned char *) c->argv[0]) = _bool;
+ 
+     return PR_HANDLED(cmd);
+   }
+@@ -3301,7 +3301,7 @@ MODRET set_createhome(cmd_rec *cmd) {
+     NULL, NULL, NULL, NULL);
+ 
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+   c->argv[1] = pcalloc(c->pool, sizeof(mode_t));
+   *((mode_t *) c->argv[1]) = mode;
+   c->argv[2] = pcalloc(c->pool, sizeof(mode_t));
+@@ -3733,19 +3733,19 @@ MODRET set_maxpasswordsize(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_requirevalidshell(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+   c->flags |= CF_MERGEDOWN;
+ 
+   return PR_HANDLED(cmd);
+@@ -3753,37 +3753,37 @@ MODRET set_requirevalidshell(cmd_rec *cmd) {
+ 
+ /* usage: RewriteHome on|off */
+ MODRET set_rewritehome(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+ 
+ MODRET set_rootlogin(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd,1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = (unsigned char) bool;
++  *((unsigned char *) c->argv[0]) = (unsigned char) _bool;
+   c->flags |= CF_MERGEDOWN;
+ 
+   return PR_HANDLED(cmd);
+@@ -3954,19 +3954,19 @@ MODRET set_timeoutsession(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_useftpusers(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+   c->flags |= CF_MERGEDOWN;
+ 
+   return PR_HANDLED(cmd);
+@@ -3975,19 +3975,19 @@ MODRET set_useftpusers(cmd_rec *cmd) {
+ /* usage: UseLastlog on|off */
+ MODRET set_uselastlog(cmd_rec *cmd) {
+ #ifdef PR_USE_LASTLOG
+-  int bool;
++  int _bool;
+   config_rec *c;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ #else
+@@ -4024,19 +4024,19 @@ MODRET set_useralias(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_userdirroot(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ANON);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/modules/mod_auth_pam.c b/modules/mod_auth_pam.c
+index f39acc7e7..c658f69bf 100644
+--- a/modules/mod_auth_pam.c
++++ b/modules/mod_auth_pam.c
+@@ -602,19 +602,19 @@ MODRET pam_auth(cmd_rec *cmd) {
+  */
+ 
+ MODRET set_authpam(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/modules/mod_cap.c b/modules/mod_cap.c
+index fe34943fa..65f2105e6 100644
+--- a/modules/mod_cap.c
++++ b/modules/mod_cap.c
+@@ -262,19 +262,19 @@ MODRET set_caps(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_capengine(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expecting Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/modules/mod_core.c b/modules/mod_core.c
+index f5f68a942..3bd32a502 100644
+--- a/modules/mod_core.c
++++ b/modules/mod_core.c
+@@ -665,16 +665,16 @@ MODRET set_serveradmin(cmd_rec *cmd) {
+ /* usage: UseIPv6 on|off */
+ MODRET set_useipv6(cmd_rec *cmd) {
+ #ifdef PR_USE_IPV6
+-  int bool = -1;
++  int _bool = -1;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+-  if (bool == 0) {
++  if (_bool == 0) {
+     pr_log_debug(DEBUG2, "disabling runtime support for IPv6 connections");
+     pr_netaddr_disable_ipv6();
+ 
+@@ -690,17 +690,17 @@ MODRET set_useipv6(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_usereversedns(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+-  ServerUseReverseDNS = bool;
+-  pr_netaddr_set_reverse_dns(bool);
++  ServerUseReverseDNS = _bool;
++  pr_netaddr_set_reverse_dns(_bool);
+ 
+   return PR_HANDLED(cmd);
+ }
+@@ -758,14 +758,14 @@ MODRET set_scoreboardmutex(cmd_rec *cmd) {
+ 
+ /* usage: ScoreboardScrub "on"|"off"|secs */
+ MODRET set_scoreboardscrub(cmd_rec *cmd) {
+-  int bool = -1, nsecs = 0;
++  int _bool = -1, nsecs = 0;
+   config_rec *c;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT);
+  
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     /* If this is the case, try handling the parameter as the number of
+      * seconds, as the scrub frequency.
+      */
+@@ -785,7 +785,7 @@ MODRET set_scoreboardscrub(cmd_rec *cmd) {
+   } else {
+     c = add_config_param(cmd->argv[0], 1, NULL);
+     c->argv[0] = pcalloc(c->pool, sizeof(int));
+-    *((int *) c->argv[0]) = bool;
++    *((int *) c->argv[0]) = _bool;
+   }
+ 
+   return PR_HANDLED(cmd);
+@@ -891,19 +891,19 @@ MODRET set_serverident(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_defaultserver(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   server_rec *s = NULL;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+-  if (!bool) {
++  if (!_bool) {
+     return PR_HANDLED(cmd);
+   }
+ 
+@@ -916,7 +916,7 @@ MODRET set_defaultserver(cmd_rec *cmd) {
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+@@ -1102,16 +1102,16 @@ MODRET set_timeoutlinger(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_socketbindtight(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+-  SocketBindTight = bool;
++  SocketBindTight = _bool;
+   return PR_HANDLED(cmd);
+ }
+ 
+@@ -1263,20 +1263,20 @@ MODRET set_socketoptions(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_multilinerfc2228(cmd_rec *cmd) {
+-  int bool;
++  int _bool;
+   config_rec *c;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+  
+   return PR_HANDLED(cmd);
+ }
+@@ -1311,20 +1311,20 @@ MODRET set_tcpbacklog(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_tcpnodelay(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+@@ -2004,20 +2004,20 @@ MODRET set_syslogfacility(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_timesgmt(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   c->flags |= CF_MERGEDOWN;
+   return PR_HANDLED(cmd);
+@@ -2196,22 +2196,22 @@ MODRET set_pathdenyfilter(cmd_rec *cmd) {
+ 
+ /* usage: AllowForeignAddress on|off|class */
+ MODRET set_allowforeignaddress(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+   char *class_name = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     /* Not a boolean?  Assume it's a <Class> name, then. */
+     class_name = cmd->argv[1];
+   }
+ 
+   c = add_config_param(cmd->argv[0], 2, NULL, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+   c->argv[1] = pstrdup(c->pool, class_name);
+ 
+   c->flags |= CF_MERGEDOWN;
+@@ -2512,20 +2512,20 @@ MODRET set_hidefiles(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_hidenoaccess(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ANON|CONF_DIR);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+   c->flags |= CF_MERGEDOWN;
+ 
+   return PR_HANDLED(cmd);
+@@ -2602,7 +2602,7 @@ MODRET add_userowner(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_allowoverride(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+   unsigned int precedence = 0;
+ 
+@@ -2621,8 +2621,8 @@ MODRET set_allowoverride(cmd_rec *cmd) {
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON|CONF_DIR);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+@@ -2645,7 +2645,7 @@ MODRET set_allowoverride(cmd_rec *cmd) {
+ 
+   c = add_config_param(cmd->argv[0], 2, NULL, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+   c->argv[1] = pcalloc(c->pool, sizeof(unsigned int));
+   *((unsigned int *) c->argv[1]) = precedence;
+   c->flags |= CF_MERGEDOWN_MULTI;
+@@ -3213,20 +3213,20 @@ MODRET end_limit(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_ignorehidden(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_LIMIT);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+@@ -3234,7 +3234,7 @@ MODRET set_ignorehidden(cmd_rec *cmd) {
+ /* usage: DisplayChdir path [on|off] */
+ MODRET set_displaychdir(cmd_rec *cmd) {
+   config_rec *c = NULL;
+-  int bool = FALSE;
++  int _bool = FALSE;
+ 
+   if (cmd->argc-1 < 1 ||
+       cmd->argc-1 > 2) {
+@@ -3244,8 +3244,8 @@ MODRET set_displaychdir(cmd_rec *cmd) {
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON|CONF_DIR);
+ 
+   if (cmd->argc-1 == 2) {
+-    bool = get_boolean(cmd, 2);
+-    if (bool < 0) {
++    _bool = get_boolean(cmd, 2);
++    if (_bool < 0) {
+       CONF_ERROR(cmd, "expected Boolean parameter");
+     }
+   }
+@@ -3253,7 +3253,7 @@ MODRET set_displaychdir(cmd_rec *cmd) {
+   c = add_config_param(cmd->argv[0], 2, NULL, NULL);
+   c->argv[0] = pstrdup(c->pool, cmd->argv[1]);
+   c->argv[1] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[1]) = bool;
++  *((int *) c->argv[1]) = _bool;
+ 
+   c->flags |= CF_MERGEDOWN;
+   return PR_HANDLED(cmd);
+@@ -5327,9 +5327,9 @@ MODRET core_chdir(cmd_rec *cmd, char *ndir) {
+     time_t prev = 0;
+ 
+     char *display = c->argv[0];
+-    int bool = *((int *) c->argv[1]);
++    int _bool = *((int *) c->argv[1]);
+ 
+-    if (bool) {
++    if (_bool) {
+    
+       /* XXX Get rid of this CONF_USERDATA instance; it's the only
+        * occurrence of it in the source.  Use the session.notes table instead.
+@@ -5355,7 +5355,7 @@ MODRET core_chdir(cmd_rec *cmd, char *ndir) {
+ 
+     if (pr_fsio_stat(display, &st) != -1 &&
+         !S_ISDIR(st.st_mode) &&
+-        (bool ? st.st_mtime > prev : TRUE)) {
++        (_bool ? st.st_mtime > prev : TRUE)) {
+ 
+       if (pr_display_file(display, session.cwd, R_250, 0) < 0) {
+         pr_log_debug(DEBUG3, "error displaying '%s': %s", display,
+@@ -6479,20 +6479,20 @@ MODRET core_post_pass(cmd_rec *cmd) {
+  */
+ 
+ MODRET set_deferwelcome(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/modules/mod_ctrls.c b/modules/mod_ctrls.c
+index 8efd8b401..ddc2b132c 100644
+--- a/modules/mod_ctrls.c
++++ b/modules/mod_ctrls.c
+@@ -991,17 +991,17 @@ MODRET set_ctrlsauthfreshness(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_ctrlsengine(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+-  ctrls_engine = bool;
++  ctrls_engine = _bool;
+   return PR_HANDLED(cmd);
+ }
+ 
+diff --git a/modules/mod_delay.c b/modules/mod_delay.c
+index 6d385f23c..9250ccadb 100644
+--- a/modules/mod_delay.c
++++ b/modules/mod_delay.c
+@@ -1430,18 +1430,18 @@ MODRET set_delayctrlsacls(cmd_rec *cmd) {
+ /* usage: DelayEngine on|off */
+ MODRET set_delayengine(cmd_rec *cmd) {
+   config_rec *c;
+-  int bool;
++  int _bool;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned int));
+-  *((unsigned int *) c->argv[0]) = bool;
++  *((unsigned int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/modules/mod_facts.c b/modules/mod_facts.c
+index e9f463027..e5cddc1fe 100644
+--- a/modules/mod_facts.c
++++ b/modules/mod_facts.c
+@@ -1886,19 +1886,19 @@ MODRET facts_opts_mlst(cmd_rec *cmd) {
+ 
+ /* usage: FactsAdvertise on|off */
+ MODRET set_factsadvertise(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/modules/mod_ident.c b/modules/mod_ident.c
+index 51a107bcc..da7ca9bdb 100644
+--- a/modules/mod_ident.c
++++ b/modules/mod_ident.c
+@@ -294,19 +294,19 @@ static char *ident_lookup(pool *p, conn_t *conn) {
+ 
+ /* usage: IdentLookups on|off */
+ MODRET set_identlookups(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(int));
+-  *((int *) c->argv[0]) = bool;
++  *((int *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/modules/mod_log.c b/modules/mod_log.c
+index 6deb5d6b5..2744b27b6 100644
+--- a/modules/mod_log.c
++++ b/modules/mod_log.c
+@@ -277,19 +277,19 @@ MODRET set_extendedlog(cmd_rec *cmd) {
+ 
+ /* Syntax: AllowLogSymlinks <on|off> */
+ MODRET set_allowlogsymlinks(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+ 
+   return PR_HANDLED(cmd);
+ }
+diff --git a/modules/mod_ls.c b/modules/mod_ls.c
+index 45a3187bd..fbfde5ff7 100644
+--- a/modules/mod_ls.c
++++ b/modules/mod_ls.c
+@@ -3395,7 +3395,7 @@ MODRET ls_post_pass(cmd_rec *cmd) {
+  */
+ 
+ MODRET set_dirfakeusergroup(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   char *as = "ftp";
+   config_rec *c = NULL;
+ 
+@@ -3408,12 +3408,12 @@ MODRET set_dirfakeusergroup(cmd_rec *cmd) {
+       " on|off [<id to display>]", NULL));
+   }
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+      CONF_ERROR(cmd, "expected boolean argument");
+   }
+ 
+-  if (bool == TRUE) {
++  if (_bool == TRUE) {
+     /* Use the configured ID to display rather than the default "ftp". */
+     if (cmd->argc > 2) {
+       as = cmd->argv[2];
+@@ -3559,38 +3559,38 @@ MODRET set_listoptions(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_showsymlinks(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON);
+ 
+-  if ((bool = get_boolean(cmd, 1)) == -1)
++  if ((_bool = get_boolean(cmd, 1)) == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+   c->flags |= CF_MERGEDOWN;
+ 
+   return PR_HANDLED(cmd);
+ }
+ 
+ MODRET set_useglobbing(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1) {
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1) {
+     CONF_ERROR(cmd, "expected Boolean parameter");
+   }
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+   c->flags |= CF_MERGEDOWN;
+ 
+   return PR_HANDLED(cmd);
+diff --git a/modules/mod_xfer.c b/modules/mod_xfer.c
+index c926dde17..2195dcd23 100644
+--- a/modules/mod_xfer.c
++++ b/modules/mod_xfer.c
+@@ -3394,40 +3394,40 @@ MODRET xfer_post_pass(cmd_rec *cmd) {
+  */
+ 
+ MODRET set_allowoverwrite(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON|
+     CONF_DIR|CONF_DYNDIR);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = (unsigned char) bool;
++  *((unsigned char *) c->argv[0]) = (unsigned char) _bool;
+   c->flags |= CF_MERGEDOWN;
+ 
+   return PR_HANDLED(cmd);
+ }
+ 
+ MODRET set_allowrestart(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON|
+     CONF_DIR|CONF_DYNDIR);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+   c->flags |= CF_MERGEDOWN;
+ 
+   return PR_HANDLED(cmd);
+@@ -3451,20 +3451,20 @@ MODRET set_defaulttransfermode(cmd_rec *cmd) {
+ }
+ 
+ MODRET set_deleteabortedstores(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   config_rec *c = NULL;
+ 
+   CHECK_ARGS(cmd, 1);
+   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL|CONF_ANON|
+     CONF_DIR|CONF_DYNDIR);
+ 
+-  bool = get_boolean(cmd, 1);
+-  if (bool == -1)
++  _bool = get_boolean(cmd, 1);
++  if (_bool == -1)
+     CONF_ERROR(cmd, "expected Boolean parameter");
+ 
+   c = add_config_param(cmd->argv[0], 1, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+   c->flags |= CF_MERGEDOWN;
+ 
+   return PR_HANDLED(cmd);
+@@ -3994,7 +3994,7 @@ MODRET set_transferrate(cmd_rec *cmd) {
+ 
+ /* usage: UseSendfile on|off|"len units"|percentage"%" */
+ MODRET set_usesendfile(cmd_rec *cmd) {
+-  int bool = -1;
++  int _bool = -1;
+   off_t sendfile_len = 0;
+   float sendfile_pct = -1.0;
+   config_rec *c;
+@@ -4005,8 +4005,8 @@ MODRET set_usesendfile(cmd_rec *cmd) {
+     /* Is the given parameter a boolean, or a percentage?  Try parsing it a
+      * boolean first.
+      */
+-    bool = get_boolean(cmd, 1);
+-    if (bool == -1) {
++    _bool = get_boolean(cmd, 1);
++    if (_bool == -1) {
+       char *arg;
+       size_t arglen;
+ 
+@@ -4033,7 +4033,7 @@ MODRET set_usesendfile(cmd_rec *cmd) {
+           }
+ 
+           sendfile_pct /= 100.0;
+-          bool = TRUE;
++          _bool = TRUE;
+ 
+       } else {
+         CONF_ERROR(cmd, "expected Boolean parameter");
+@@ -4049,7 +4049,7 @@ MODRET set_usesendfile(cmd_rec *cmd) {
+     }
+ 
+     sendfile_len = nbytes;
+-    bool = TRUE;
++    _bool = TRUE;
+   
+   } else {
+     CONF_ERROR(cmd, "wrong number of parameters");
+@@ -4057,7 +4057,7 @@ MODRET set_usesendfile(cmd_rec *cmd) {
+ 
+   c = add_config_param(cmd->argv[0], 3, NULL, NULL, NULL);
+   c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
+-  *((unsigned char *) c->argv[0]) = bool;
++  *((unsigned char *) c->argv[0]) = _bool;
+   c->argv[1] = pcalloc(c->pool, sizeof(off_t));
+   *((off_t *) c->argv[1]) = sendfile_len;
+   c->argv[2] = pcalloc(c->pool, sizeof(float));
+diff --git a/src/fsio.c b/src/fsio.c
+index 953f3295b..e6185570f 100644
+--- a/src/fsio.c
++++ b/src/fsio.c
+@@ -3302,16 +3302,16 @@ void pr_fs_clean_path(const char *path, char *buf, size_t buflen) {
+   pr_fs_clean_path2(path, buf, buflen, PR_FSIO_CLEAN_PATH_FL_MAKE_ABS_PATH);
+ }
+ 
+-int pr_fs_use_encoding(int bool) {
++int pr_fs_use_encoding(int _bool) {
+   int curr_setting = use_encoding;
+ 
+-  if (bool != TRUE &&
+-      bool != FALSE) {
++  if (_bool != TRUE &&
++      _bool != FALSE) {
+     errno = EINVAL;
+     return -1;
+   }
+ 
+-  use_encoding = bool;
++  use_encoding = _bool;
+   return curr_setting;
+ }
+ 
+diff --git a/src/log.c b/src/log.c
+index 4f114a43a..9751c53fa 100644
+--- a/src/log.c
++++ b/src/log.c
+@@ -745,8 +745,8 @@ void pr_log_auth(int priority, const char *fmt, ...) {
+  * or disassociation from controlling tty.  After disabling stderr
+  * logging, all messages go to syslog.
+  */
+-void log_stderr(int bool) {
+-  logstderr = bool;
++void log_stderr(int _bool) {
++  logstderr = _bool;
+ }
+ 
+ /* Set the debug logging level; see log.h for constants.  Higher
+diff --git a/src/response.c b/src/response.c
+index 95633a048..86efc310d 100644
+--- a/src/response.c
++++ b/src/response.c
+@@ -126,10 +126,10 @@ void pr_response_register_handler(char *(*handler_cb)(pool *, const char *,
+   resp_handler_cb = handler_cb;
+ }
+ 
+-int pr_response_block(int bool) {
+-  if (bool == TRUE ||
+-      bool == FALSE) {
+-    resp_blocked = bool;
++int pr_response_block(int _bool) {
++  if (_bool == TRUE ||
++      _bool == FALSE) {
++    resp_blocked = _bool;
+     return 0;
+   }
+ 
+diff --git a/src/table.c b/src/table.c
+index fd4e72e31..5ec33ffd2 100644
+--- a/src/table.c
++++ b/src/table.c
+@@ -1275,10 +1275,10 @@ void pr_table_dump(void (*dumpf)(const char *fmt, ...), pr_table_t *tab) {
+   return;
+ }
+ 
+-int table_handling_signal(int bool) {
+-  if (bool == TRUE ||
+-      bool == FALSE) {
+-    handling_signal = bool;
++int table_handling_signal(int _bool) {
++  if (_bool == TRUE ||
++      _bool == FALSE) {
++    handling_signal = _bool;
+     return 0;
+   }
+ 
