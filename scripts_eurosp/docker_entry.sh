@@ -17,10 +17,16 @@ else
     pushd targets
     if [[ $target == "pureftpd" ]]; then
         make $target/
+    elif [[ $target == "daap" ]]; then
+        make $target/
     else
         USE_ASAN=1 make $target/
     fi
     popd
+fi
+
+if [ -f targets/$target/postinstall.sh ]; then
+    ./targets/$target/postinstall.sh
 fi
 
 python main.py -v targets/$target/fuzz.json \

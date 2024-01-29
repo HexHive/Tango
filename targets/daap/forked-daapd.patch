@@ -1,3 +1,16 @@
+diff --git a/sqlext/Makefile.am b/sqlext/Makefile.am
+index 74155a6f..24108644 100644
+--- a/sqlext/Makefile.am
++++ b/sqlext/Makefile.am
+@@ -1,7 +1,7 @@
+ pkglib_LTLIBRARIES = forked-daapd-sqlext.la
+ 
+ forked_daapd_sqlext_la_SOURCES = sqlext.c
+-forked_daapd_sqlext_la_LDFLAGS = -avoid-version -module -shared
++forked_daapd_sqlext_la_LDFLAGS = -avoid-version -module
+ AM_CPPFLAGS += \
+ 	$(COMMON_CPPFLAGS)
+ 
 diff --git a/src/Makefile.am b/src/Makefile.am
 index 157fe5bc..ab1500b9 100644
 --- a/src/Makefile.am
@@ -35,10 +48,42 @@ index 25ec6673..d76212da 100644
      {
        if (errmsg)
 diff --git a/src/httpd.c b/src/httpd.c
-index ffb03d87..edaa980c 100644
+index ffb03d87..b441b3db 100644
 --- a/src/httpd.c
 +++ b/src/httpd.c
-@@ -1430,6 +1430,9 @@ httpd_send_reply(struct evhttp_request *req, int code, const char *reason, struc
+@@ -71,6 +71,7 @@
+ #ifdef HAVE_LIBWEBSOCKETS
+ # include "websocket.h"
+ #endif
++#include <semaphore.h>
+ 
+ 
+ #define STREAM_CHUNK_SIZE (64 * 1024)
+@@ -751,9 +752,14 @@ stream_fail_cb(struct evhttp_connection *evcon, void *arg)
+ 
+ /* ---------------------------- MAIN HTTPD THREAD --------------------------- */
+ 
++extern sem_t sem_http;
++extern sem_t sem_worker;
++
+ static void *
+ httpd(void *arg)
+ {
++  sem_wait(&sem_http);
++
+   int ret;
+ 
+   ret = db_perthread_init();
+@@ -764,6 +770,8 @@ httpd(void *arg)
+       pthread_exit(NULL);
+     }
+ 
++  sem_post(&sem_worker);
++  sem_wait(&sem_http);
+   event_base_dispatch(evbase_httpd);
+ 
+   if (!httpd_exit)
+@@ -1430,6 +1438,9 @@ httpd_send_reply(struct evhttp_request *req, int code, const char *reason, struc
    if (allow_origin)
      evhttp_add_header(output_headers, "Access-Control-Allow-Origin", allow_origin);
  
@@ -61,11 +106,88 @@ index 37721c40..65698e1b 100644
    current_rev = 2;
    update_requests = NULL;
  
+diff --git a/src/input.c b/src/input.c
+index a890a909..21c3e1a4 100644
+--- a/src/input.c
++++ b/src/input.c
+@@ -41,6 +41,7 @@
+ #include "conffile.h"
+ #include "commands.h"
+ #include "input.h"
++#include <semaphore.h>
+ 
+ // Disallow further writes to the buffer when its size exceeds this threshold.
+ // The below gives us room to buffer 2 seconds of 48000/16/2 audio.
+@@ -627,10 +628,13 @@ input_wait(void)
+ 
+ /* ---------------------------------- MAIN ---------------------------------- */
+ /*                                Thread: input                               */
++extern sem_t sem_input;
++extern sem_t sem_player;
+ 
+ static void *
+ input(void *arg)
+ {
++  sem_wait(&sem_input);
+   int ret;
+ 
+   ret = db_perthread_init();
+@@ -642,6 +646,7 @@ input(void *arg)
+ 
+   input_initialized = true;
+ 
++  sem_post(&sem_player);
+   event_base_dispatch(evbase_input);
+ 
+   if (input_initialized)
+diff --git a/src/library.c b/src/library.c
+index 98d37f7d..4546f632 100644
+--- a/src/library.c
++++ b/src/library.c
+@@ -47,6 +47,7 @@
+ #include "misc.h"
+ #include "listener.h"
+ #include "player.h"
++#include <semaphore.h>
+ 
+ #define LIBRARY_MAX_CALLBACKS 16
+ 
+@@ -774,9 +775,14 @@ library_exec_async(command_function func, void *arg)
+   return commands_exec_async(cmdbase, func, arg);
+ }
+ 
++extern sem_t sem_library;
++extern sem_t sem_input;
++
+ static void *
+ library(void *arg)
+ {
++  sem_wait(&sem_library);
++
+   int ret;
+ 
+ #ifdef __linux__
+@@ -804,6 +810,7 @@ library(void *arg)
+ 
+   initscan();
+ 
++  sem_post(&sem_input);
+   event_base_dispatch(evbase_lib);
+ 
+   if (!scan_exit)
 diff --git a/src/main.c b/src/main.c
-index 58f12f56..d83e45b4 100644
+index 58f12f56..7aae8a94 100644
 --- a/src/main.c
 +++ b/src/main.c
-@@ -235,7 +235,7 @@ register_services(char *ffid, bool no_web, bool no_rsp, bool no_daap, bool no_mp
+@@ -75,6 +75,7 @@ GCRY_THREAD_OPTION_PTHREAD_IMPL;
+ #ifdef LASTFM
+ # include "lastfm.h"
+ #endif
++#include <semaphore.h>
+ 
+ #define PIDFILE   STATEDIR "/run/" PACKAGE ".pid"
+ #define WEB_ROOT  DATADIR "/htdocs"
+@@ -235,7 +236,7 @@ register_services(char *ffid, bool no_web, bool no_rsp, bool no_daap, bool no_mp
    int i;
    int ret;
  
@@ -74,6 +196,95 @@ index 58f12f56..d83e45b4 100644
  
    lib = cfg_getsec(cfg, "library");
  
+@@ -476,6 +477,12 @@ ffmpeg_lockmgr(void **pmutex, enum AVLockOp op)
+ }
+ #endif
+ 
++sem_t sem_http;
++sem_t sem_player;
++sem_t sem_library;
++sem_t sem_input;
++sem_t sem_worker;
++
+ int
+ main(int argc, char **argv)
+ {
+@@ -600,6 +607,18 @@ main(int argc, char **argv)
+ 	}
+     }
+ 
++  ret = sem_init(&sem_http, 0, 0);
++  ret = sem_init(&sem_player, 0, 0);
++  ret = sem_init(&sem_library, 0, 0);
++  ret = sem_init(&sem_input, 0, 0);
++  ret = sem_init(&sem_worker, 0, 0);
++
++  if (ret != 0)
++    {
++      fprintf(stderr, "Could not initialize a semaphore due to %s\n", strerror(errno));
++      goto sem_fail;
++    }
++
+   ret = logger_init(NULL, NULL, (loglevel < 0) ? E_LOG : loglevel);
+   if (ret != 0)
+     {
+@@ -706,6 +725,7 @@ main(int argc, char **argv)
+   DPRINTF(E_DBG, L_MAIN, "Initialized with gcrypt %s\n", gcry_version);
+ 
+   /* Block signals for all threads except the main one */
++  /*
+   sigemptyset(&sigs);
+   sigaddset(&sigs, SIGINT);
+   sigaddset(&sigs, SIGHUP);
+@@ -720,6 +740,7 @@ main(int argc, char **argv)
+       ret = EXIT_FAILURE;
+       goto signal_block_fail;
+     }
++  */
+ 
+   /* Daemonize and drop privileges */
+   ret = daemonize(background, pidfile);
+@@ -1000,5 +1021,12 @@ main(int argc, char **argv)
+   conffile_unload();
+   logger_deinit();
+ 
++sem_fail:
++  sem_destroy(&sem_http);
++  sem_destroy(&sem_player);
++  sem_destroy(&sem_library);
++  sem_destroy(&sem_input);
++  sem_destroy(&sem_worker);
++
+   return ret;
+ }
+diff --git a/src/mdns_avahi.c b/src/mdns_avahi.c
+index 11a0e122..33d1c84d 100644
+--- a/src/mdns_avahi.c
++++ b/src/mdns_avahi.c
+@@ -53,6 +53,7 @@
+ 
+ #include "logger.h"
+ #include "mdns.h"
++#include <semaphore.h>
+ 
+ #define MDNSERR avahi_strerror(avahi_client_errno(mdns_client))
+ 
+@@ -813,6 +814,7 @@ browse_callback(AvahiServiceBrowser *b, AvahiIfIndex intf, AvahiProtocol proto,
+     }
+ }
+ 
++extern sem_t sem_http;
+ 
+ static void
+ entry_group_callback(AvahiEntryGroup *g, AvahiEntryGroupState state, AVAHI_GCC_UNUSED void *userdata)
+@@ -824,6 +826,7 @@ entry_group_callback(AvahiEntryGroup *g, AvahiEntryGroupState state, AVAHI_GCC_U
+     {
+       case AVAHI_ENTRY_GROUP_ESTABLISHED:
+         DPRINTF(E_DBG, L_MDNS, "Successfully added mDNS services\n");
++        sem_post(&sem_http);
+         break;
+ 
+       case AVAHI_ENTRY_GROUP_COLLISION:
 diff --git a/src/misc.c b/src/misc.c
 index 737cda81..e7166d18 100644
 --- a/src/misc.c
@@ -135,6 +346,55 @@ index 3eebf9d9..b97f9820 100644
  
    // Setup AES
    gc_err = gcry_cipher_open(&raop_aes_ctx, GCRY_CIPHER_AES, GCRY_CIPHER_MODE_CBC, 0);
+diff --git a/src/player.c b/src/player.c
+index f1e294f9..8b13801b 100644
+--- a/src/player.c
++++ b/src/player.c
+@@ -93,6 +93,7 @@
+ #ifdef LASTFM
+ # include "lastfm.h"
+ #endif
++#include <semaphore.h>
+ 
+ // The interval between each tick of the playback clock in ms. This means that
+ // we read 10 ms frames from the input and pass to the output, so the clock
+@@ -3494,10 +3495,14 @@ player_raop_verification_kickoff(char **arglist)
+ 
+ 
+ /* ---------------------------- Thread: player ------------------------------ */
++extern sem_t sem_player;
++extern sem_t sem_http;
+ 
+ static void *
+ player(void *arg)
+ {
++  sem_wait(&sem_player);
++
+   struct output_device *device;
+   int ret;
+ 
+@@ -3509,6 +3514,7 @@ player(void *arg)
+       pthread_exit(NULL);
+     }
+ 
++  sem_post(&sem_http);
+   event_base_dispatch(evbase_player);
+ 
+   if (!player_exit)
+diff --git a/src/rng.c b/src/rng.c
+index 00d0e5ce..17d5de75 100644
+--- a/src/rng.c
++++ b/src/rng.c
+@@ -59,7 +59,8 @@ rng_init(struct rng_ctx *ctx)
+   int32_t val;
+   int i;
+ 
+-  gcry_randomize(&ctx->seed, sizeof(ctx->seed), GCRY_STRONG_RANDOM);
++  // gcry_randomize(&ctx->seed, sizeof(ctx->seed), GCRY_STRONG_RANDOM);
++  ctx->seed = 0;
+ 
+   /* Load the shuffle array - first 8 iterations discarded */
+   for (i = sizeof(ctx->iv) / sizeof(ctx->iv[0]) + 7; i >= 0; i--)
 diff --git a/src/transcode.c b/src/transcode.c
 index 293a72d3..defd44ec 100644
 --- a/src/transcode.c
@@ -147,16 +407,38 @@ index 293a72d3..defd44ec 100644
  
    if (type == AVMEDIA_TYPE_AUDIO)
      {
-diff --git a/sqlext/Makefile.am b/sqlext/Makefile.am
-index 74155a6f..24108644 100644
---- a/sqlext/Makefile.am
-+++ b/sqlext/Makefile.am
-@@ -1,7 +1,7 @@
- pkglib_LTLIBRARIES = forked-daapd-sqlext.la
+diff --git a/src/worker.c b/src/worker.c
+index 354a1f92..2f01f22f 100644
+--- a/src/worker.c
++++ b/src/worker.c
+@@ -40,6 +40,7 @@
+ #include "logger.h"
+ #include "worker.h"
+ #include "commands.h"
++#include <semaphore.h>
  
- forked_daapd_sqlext_la_SOURCES = sqlext.c
--forked_daapd_sqlext_la_LDFLAGS = -avoid-version -module -shared
-+forked_daapd_sqlext_la_LDFLAGS = -avoid-version -module
- AM_CPPFLAGS += \
- 	$(COMMON_CPPFLAGS)
  
+ struct worker_arg
+@@ -102,10 +103,14 @@ execute(void *arg, int *retval)
+ 
+ /* --------------------------------- MAIN --------------------------------- */
+ /*                              Thread: worker                              */
++extern sem_t sem_worker;
++extern sem_t sem_library;
+ 
+ static void *
+ worker(void *arg)
+ {
++  sem_wait(&sem_worker);
++
+   int ret;
+ 
+   ret = db_perthread_init();
+@@ -117,6 +122,7 @@ worker(void *arg)
+ 
+   g_initialized = 1;
+ 
++  sem_post(&sem_library);
+   event_base_dispatch(evbase_worker);
+ 
+   if (g_initialized)
