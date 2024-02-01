@@ -81,7 +81,7 @@ class PowerfulLogRecordFactory(logging.LogRecord):
             indent = 2
         elif (self.className in ['BaseTracker', 'CoverageTracker'] \
                 and self.funcName in ['update_state', 'peek', 'extract_snapshot',
-                                      '_update_local', 'reset_state', '_show_pcs']) \
+                                      '_update_local', 'reset_state', '_show_pcs', '_get_pcs']) \
                 or (self.className in ['BaseStrategy'] \
                 and self.funcName in ['reload_target']) \
                 or (self.className in ['CoverageDriver'] \

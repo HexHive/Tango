@@ -691,9 +691,15 @@ class CoverageTracker(BaseTracker,
                 for k, v in debug_new_pcs.items():
                     if k not in debug_old_pcs:
                         debug(f"RCT {os.popen('addr2line -a {} -e {} -fp'.format(k, pathname)).read().strip()} {v}")
+                    else:
+                        if v != debug_old_pcs[k]:
+                            debug(f"RCT {os.popen('addr2line -a {} -e {} -fp'.format(k, pathname)).read().strip()} {v}")
                 for k, v in debug_old_pcs.items():
                     if k not in debug_new_pcs:
                         debug(f"FST {os.popen('addr2line -a {} -e {} -fp'.format(k, pathname)).read().strip()} {v}")
+                    else:
+                        if v != debug_new_pcs[k]:
+                            debug(f"FST {os.popen('addr2line -a {} -e {} -fp'.format(k, pathname)).read().strip()} {v}")
             else:
                 # symbolize a bit
                 for pc, count in debug_new_pcs.items():

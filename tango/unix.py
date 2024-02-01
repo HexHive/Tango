@@ -269,15 +269,11 @@ class PtraceChannel(AbstractChannel):
             state = event.process.syscall_state
 
             ### DEBUG ###
-            # if os.getenv("SHOW_SYSCALLS"):
-                # debug("Target process with pid=%i encountered a syscall-stop",
-                #     event.process.pid)
-                # sc = PtraceSyscall(event.process, self._syscall_options,
-                #                    event.process.getregs())
-                # syscall traced: [13338] sc.name=read state.name=None state.next_event=enter
-                # syscall traced: [13338] sc.name=read state.name=read state.next_event=exit
-                # debug("syscall traced: [%i] sc.name=%s state.name=%s state.next_event=%s",
-                #     event.process.pid, sc.name, state.name, state.next_event)
+            if os.getenv("SHOW_SYSCALLS"):
+                sc = PtraceSyscall(event.process, self._syscall_options,
+                                   event.process.getregs())
+                debug("[%i] sc.name=%s state.name=%s state.next_event=%s",
+                    event.process.pid, sc.name, state.name, state.next_event)
             #############
 
             syscall = await state.event(self._syscall_options)
@@ -474,6 +470,7 @@ class PtraceChannel(AbstractChannel):
 
     async def close(self):
         if self.root:
+            info(f"Killing {self.root}")
             await self.root.terminateTree()
         self._debugger.unsubscribe(self._dbgsub)
         await self._debugger.quit()
@@ -542,6 +539,7 @@ class PtraceForkChannel(PtraceChannel):
                 self._wait_for_proc = False
         elif event.signum == signal.SIGCHLD and event.process == self._proc:
             # when the forkserver receives SIGCHLD, we ignore it
+            info(f"Resuming {event.process}")
             self.resume_process(event.process)
         else:
             await super().process_signal(event)
@@ -636,7 +634,7 @@ class PtraceForkChannel(PtraceChannel):
 
     async def _wakeup_forkserver(self):
         if self._proc_trapped:
-            info("Waking up forkserver :)")
+            info(f"Waking up forkserver in {self._proc} :)")
             self.resume_process(self._proc)
 
             if not self._use_seccomp:
@@ -851,7 +849,6 @@ class ProcessDriver(BaseDriver,
                     # FIXME is safe termination necessary?
                     self._pobj.kill()
                     break
-                info(f"Killing current process {self._pobj.pid}")
                 self._pobj.terminate()
                 try:
                     self._pobj.wait(self.PROC_TERMINATE_WAIT)
@@ -1058,8 +1055,6 @@ class ProcessDriver(BaseDriver,
         # finally we chdir into the cwd within the new fs
         os.chdir(cwd)
 
-# TODO: rename relaunch to relauch fork
-# TODO: merge ProcessForkDriver into ProcessDriver
 class ProcessForkDriver(ProcessDriver):
     @classmethod
     def match_config(cls, config: dict) -> bool:
@@ -1075,6 +1070,7 @@ class ProcessForkDriver(ProcessDriver):
         return await super().finalize(owner)
 
     async def relaunch(self):
+        # self._pobj (main thread) is only launched once and is never killed.
         if not self._pobj:
             info(f"Launching a new process")
             self._pobj = self._popen()
@@ -1086,9 +1082,9 @@ class ProcessForkDriver(ProcessDriver):
             except ProcessLookupError:
                 pass
 
-        info(f"Creating a channel to the new process {self._pobj.pid}")
+        info(f"Creating a channel to the process {self._pobj.pid}")
         channel = await self.create_channel()
-        info(f"Created a channel {channel} to the new process {self._pobj.pid}")
+        info(f"Created a channel {channel} to the process {self._pobj.pid}")
 
 class ForkserverCrashedException(RuntimeError):
     pass

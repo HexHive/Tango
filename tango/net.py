@@ -596,7 +596,7 @@ class TCPForkBeforeAcceptChannel(TCPChannel, PtraceForkChannel):
         # listener
         syscall.name = "FORKSERVER"
         syscall.syscall = -1
-        info("Injecting forkserver")
+        info(f"Injecting forkserver to {process}")
         self._invoke_forkserver(process)
         self._proc = process
 
@@ -853,7 +853,7 @@ class UDPForkChannelFactory(UDPChannelFactory,
 
 class UDPForkChannel(UDPChannel, PtraceForkChannel):
     def cb_socket_bound(self, process, syscall):
-        info("Injecting forkserver")
+        info(f"Injecting forkserver to {process}")
         self._invoke_forkserver(process)
         self._proc = process
 
@@ -882,7 +882,7 @@ class UDPForkBeforeBindChannel(UDPChannel, PtraceForkChannel):
         # listener
         syscall.name = "FORKSERVER"
         syscall.syscall = -1
-        info("Injecting forkserver")
+        info(f"Injecting forkserver to {process}")
         self._invoke_forkserver(process)
         self._proc = process
 
