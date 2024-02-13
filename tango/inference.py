@@ -270,7 +270,7 @@ class StateInferenceStrategy(SeedableStrategy,
                             self._step_interrupted = False
                         await super().step(input)
                     finally:
-                        rec.energy -= 1
+                        rec -= 1
 
             case InferenceMode.CrossPollination:
                 while self._tracker.unmapped_snapshots:
