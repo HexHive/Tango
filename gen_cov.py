@@ -61,10 +61,12 @@ def parse_args():
     top = argparse.ArgumentParser(description=(
         "Dumps the raw data from a Tango input."
     ))
-    top.add_argument('config',
+    top.add_argument('-C', '--config', required=True,
         help="The path to the TangoFuzz fuzz.json file.")
-    top.add_argument('workdir',
-        help="The path to the workdir to be analyzed.")
+    top.add_argument('-W', '--workdir', required=True,
+        help="The absolute path to the workdir to be analyzed.")
+    top.add_argument('-c', '--cwd', required=True,
+        help="The cwd for fuzzer.cwd in the fuzz.json")
     top.add_argument('-v', '--verbose', action='count', default=0,
         help=("Controls the verbosity of messages. "
             "-v prints info. -vv prints debug. Default: warnings and higher.")
@@ -118,7 +120,7 @@ async def task(args, workdir, file):
         file_name = file.split("/")[-1]
 
         config = FuzzerConfig(args.config, {
-            'fuzzer': {'resume': True, 'work_dir': workdir},
+            'fuzzer': {'resume': True, 'work_dir': args.workdir, 'cwd': args.cwd},
             'driver': {'forkserver': False},
         })
         config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += \
