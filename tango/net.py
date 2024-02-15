@@ -913,6 +913,7 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
     }
 
     DELAY_THRESHOLD = None
+    conf.layers.filter([Ether, IP, UDP, TCP])
 
     @classmethod
     def _try_identify_endpoints(cls, packet: Packet) -> Tuple:
@@ -944,9 +945,10 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
                 if endpoint not in endpoints:
                     endpoints.append(endpoint)
         if len(endpoints) != 2:
-            raise RuntimeError(
-                f"PCAP file has {len(endpoints)} endpoints (expected 2)"
-            )
+            # raise RuntimeError(
+            #     f"PCAP file has {len(endpoints)} endpoints (expected 2)"
+            # )
+            return
 
         plist = [p for p in plist if not isinstance(p[layer].payload, NoPayload)]
         if not plist:
