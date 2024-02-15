@@ -123,8 +123,10 @@ async def task(args, workdir, file):
         })
         config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += \
                         ":coverage=1:handle_segv=2"
+        # config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += \
+        #                 ":coverage_dir=/shared/{}_sancov_dir".format(process_seed_name(file_name))
         config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += \
-                        ":coverage_dir=/shared/{}_sancov_dir".format(process_seed_name(file_name))
+                        ":coverage_dir={}/fs/shared/{}_sancov_dir".format(args.workdir, process_seed_name(file_name))
         # config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] = ""
         # config._config["driver"]["exec"]["stdout"] = "inherit"
         # config._config["driver"]["exec"]["stderr"] = "inherit"
@@ -172,16 +174,14 @@ def process_seed_name(name):
     new_name = new_name.replace(":", "_")
     return new_name
 
-def diff_old_new_sancov(workdir, file_name):
-    old_sancov = os.path.join(workdir, "fs/shared", "{}_sancov".format(file_name))
-    new_sancov_dir_path = os.path.join(workdir, "fs/shared", "{}_sancov_dir".format(process_seed_name(file_name)))
-    if not os.listdir(new_sancov_dir_path):
-        return
-    new_sancov = os.path.join(new_sancov_dir_path, os.listdir(new_sancov_dir_path)[0])
-    os.system("diff {} {}".format(old_sancov, new_sancov))
+# def diff_old_new_sancov(workdir, file_name):
+#     old_sancov = os.path.join(workdir, "fs/shared", "{}_sancov".format(file_name))
+#     new_sancov_dir_path = os.path.join(workdir, "fs/shared", "{}_sancov_dir".format(process_seed_name(file_name)))
+#     if not os.listdir(new_sancov_dir_path):
+#         return
+#     new_sancov = os.path.join(new_sancov_dir_path, os.listdir(new_sancov_dir_path)[0])
+#     os.system("diff {} {}".format(old_sancov, new_sancov))
 
-import glob, json
-# from tqdm import tqdm
 from datetime import datetime
 def main():
     args = parse_args()
