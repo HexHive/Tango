@@ -1,6 +1,25 @@
 # we disable profiling before importing tango
 import os
 os.environ['TANGO_NO_PROFILE'] = 'y'
+os.environ['TANGO_PROFILE_time_elapsed'] = 'y'
+os.environ['TANGO_PROFILE_time_crosstest'] = 'y'
+os.environ['TANGO_PROFILE_snapshots'] = 'y'
+os.environ['TANGO_PROFILE_states'] = 'y'
+os.environ['TANGO_PROFILE_inferred_snapshots'] = 'y'
+os.environ['TANGO_PROFILE_total_savings'] = 'y'
+os.environ['TANGO_PROFILE_total_misses'] = 'y'
+os.environ['TANGO_PROFILE_total_hits'] = 'y'
+os.environ['TANGO_PROFILE_eg_savings'] = 'y'
+os.environ['TANGO_PROFILE_eg_misses'] = 'y'
+os.environ['TANGO_PROFILE_eg_hits'] = 'y'
+os.environ['TANGO_PROFILE_dt_savings'] = 'y'
+os.environ['TANGO_PROFILE_dt_misses'] = 'y'
+os.environ['TANGO_PROFILE_dt_hits'] = 'y'
+os.environ['TANGO_PROFILE_dtex_savings'] = 'y'
+os.environ['TANGO_PROFILE_dtex_misses'] = 'y'
+os.environ['TANGO_PROFILE_dtex_hits'] = 'y'
+os.environ['TANGO_PROFILE_snapshot_cov'] = 'y'
+os.environ['TANGO_PROFILE_total_cov'] = 'y'
 
 from tango.fuzzer import Fuzzer
 from tango.common import create_session_context
@@ -26,19 +45,19 @@ async def run_inference(session, *, outfile=None):
     strat = await session.owner.instantiate('strategy')
     tracker = await session.owner.instantiate('tracker')
     while True:
-        while (rem := len(tracker.unmapped_states)) >= strat._inference_batch:
+        while (rem := len(tracker.unmapped_snapshots)) >= strat._inference_batch:
             logging.info(f"Remaining snapshots: {rem}")
             await strat.step()
         if rem == 0:
             break
         # flush the remaining nodes
         strat._inference_batch = rem
-    groupings = {str(k): v for k, v in tracker.equivalence_states.items()}
-    dump = json.dumps(groupings, cls=NumpyEncoder)
-    if outfile:
-        outfile.write_text(dump)
-    else:
-        print(dump)
+    # groupings = {str(k): v for k, v in tracker.equivalence_states.items()}
+    # dump = json.dumps(groupings, cls=NumpyEncoder)
+    # if outfile:
+    #     outfile.write_text(dump)
+    # else:
+    #     print(dump)
     logging.info("Done!")
 
 async def infer(fuzzer, **kwargs):
@@ -62,6 +81,9 @@ def main():
         'strategy.dt_extrapolate': True,
         'tracker.native_lib': False,
         'tracker.skip_counts': True,
+        'strategy.dump_stats': True,
+        'strategy.validate': True,
+        'driver.isolate_fs': False,
         'explorer.observe_postmortem': False,
     }
     fuzzer = Fuzzer(args=rest, overrides=overrides)
