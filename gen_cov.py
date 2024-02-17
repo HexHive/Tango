@@ -114,14 +114,14 @@ async def send_eof(channel):
     await channel._proc.waitExit()
 
 tango_folder = os.getcwd()
-async def task(args, workdir, file):
+async def task(args, file):
     try:
         # file name
         file_name = file.split("/")[-1]
 
         config = FuzzerConfig(args.config, {
             'fuzzer': {'resume': True, 'work_dir': args.workdir, 'cwd': args.cwd},
-            'driver': {'forkserver': False, "isolate_fs": False},
+            'driver': {'forkserver': False},
         })
         config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += \
                         ":coverage=1:handle_segv=2"
@@ -130,8 +130,8 @@ async def task(args, workdir, file):
         config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += \
                         ":coverage_dir={}/fs/shared/{}_sancov_dir".format(args.workdir, process_seed_name(file_name))
         # config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] = ""
-        config._config["driver"]["exec"]["stdout"] = "inherit"
-        config._config["driver"]["exec"]["stderr"] = "inherit"
+        # config._config["driver"]["exec"]["stdout"] = "inherit"
+        # config._config["driver"]["exec"]["stderr"] = "inherit"
         config._config['generator'] = {'type': config._config['generator']['type']}
         config._config['strategy'] = {'type': config._config['strategy']['type']}
         config._config['tracker'] = {'type': 'empty'}
@@ -157,7 +157,7 @@ async def task(args, workdir, file):
     finally:
         os.chdir(tango_folder)
 
-
+# This function is needed only when we need to remove the fodler path before workdir.
 def rm_target_dir(file_path):
     folders = []
     for folder in file_path.split("/"):
@@ -189,7 +189,7 @@ def main():
     args = parse_args()
     configure_verbosity(args.verbose)
 
-    workdir = rm_target_dir(args.workdir)
+    # workdir = rm_target_dir(args.workdir)
     cov_info_dict = {}
     cov_files = []
 
@@ -220,7 +220,7 @@ def main():
         # continue
         try:
             print("current file is", file)
-            asyncio.run(task(args, workdir, file))
+            asyncio.run(task(args, file))
             # find the generated sancov file
             # sancov_file = os.path.join(args.workdir, glob.glob("**/*.sancov", root_dir=args.workdir, recursive=True)[0])
             # print(glob.glob("**/*.sancov", root_dir=args.workdir, recursive=True))
@@ -230,7 +230,7 @@ def main():
             # os.rename(sancov_file, os.path.join(args.workdir, "fs/shared", file_name + "_sancov"))
         except Exception as ex:
             #import ipdb; ipdb.set_trace()
-            print("!!!!!!!!!!crashing file is {}: {}!!!!!!!!!!".format(workdir, file_name))
+            print("!!!!!!!!!!crashing file is: {}!!!!!!!!!!".format(file_name))
             # if any sancov file has been generated along with the error, delete it
             if os.listdir(sancov_dir):
                 os.system("rm {}/*".format(sancov_dir))
