@@ -128,6 +128,13 @@ class PtraceChannel(AbstractChannel):
         self.observed = {}
         self.on_syscall_exception = on_syscall_exception
 
+        # pid management
+        ## PtraceChannel and PtraceForkChanne
+        ### self.root is always the first process (main thread) (PtraceChannel and PtraceForkChannel)
+        ### self._forked_child is the child of the thread accepting our connection (PtraceForkChannel)
+
+        ## ProcessDriver and ProcessForkDriver
+        ### self._pobj is always the first process
         self.root = None
 
     async def setup(self):
@@ -209,6 +216,10 @@ class PtraceChannel(AbstractChannel):
         elif event.signum == signal.SIGSEGV:
             event.display()
             raise ProcessCrashedException(f"Process with {event.process.pid=} terminated abnormally with {event.signum=}", exitcode=event.signum)
+        elif event.signum == signal.SIGILL:
+            event.display()
+            self.resume_process(event.process)
+            return
         debug("Target process with pid=%i received signal with signum=%i",
             event.process.pid, event.signum)
         self.resume_process(event.process, event.signum)
@@ -522,12 +533,19 @@ class PtraceForkChannel(PtraceChannel):
             # die. We will wake it up when we kill the forked_child.
             # Otherwise, the child trapped and we resume its execution
             if event.process != self._proc:
-                forked_child = event.process
-                self._forked_child = forked_child.root = forked_child
-                # restore correct trap byte and registers
-                self._cleanup_forkserver(forked_child)
-                # resume execution of the child process
-                self.resume_process(forked_child)
+                info(f"{event.process} != {self._proc}")
+                if event.process == self.root:
+                    info(f"Resuming {event.process}")
+                    self.resume_process(event.process)
+                else:
+                    forked_child = event.process
+                    self._forked_child = forked_child.root = forked_child
+                    debug(f"Set self._forked_child to {self._forked_child}")
+                    # restore correct trap byte and registers
+                    self._cleanup_forkserver(forked_child)
+                    # resume execution of the child process
+                    info(f"Resuming {forked_child}")
+                    self.resume_process(forked_child)
             else:
                 info("Forkserver trapped, waiting for wake-up call")
                 self._proc_trapped = True
@@ -683,6 +701,8 @@ class PtraceForkChannel(PtraceChannel):
         return self._wakeup_forkserver_syscall_found
 
     async def _wakeup_forkserver_syscall_callback(self, process, syscall):
+        if process != self._proc:
+            return False
         is_entry = syscall.result is None
         self._wakeup_forkserver_syscall_found = True
         if is_entry:
