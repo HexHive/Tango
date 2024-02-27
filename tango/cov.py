@@ -495,7 +495,7 @@ class CoverageTracker(BaseTracker,
         info(f"Relaunching {self._driver}")
         await self._driver.relaunch()
         if startup:
-            debug(f"Sending startup input {startup} by {self._driver}")
+            info(f"Sending startup input {startup} by {self._driver}")
             await self._driver.execute_input(startup)
 
         info("Obtaining coverage map (shmem)")
