@@ -1414,7 +1414,7 @@ class FileDescriptorChannel(PtraceChannel):
         return matched_fd
 
     def _send_ignore_callback(self, syscall):
-        return syscall.name != 'read'
+        return syscall.name not in ['read', 'readv']
 
     async def _send_syscall_callback(self, process, syscall):
         if not self._send_ignore_callback(syscall) and \
@@ -1427,6 +1427,9 @@ class FileDescriptorChannel(PtraceChannel):
                     new_length = min(argv[2], self._chunk)
                     argv = (*argv[:2], new_length)
                     syscall.writeArgumentValues(*argv)
+                elif self._chunk and syscall.name == 'readv' and \
+                        argv[0] in self._refcounter:
+                    pass
             elif syscall.result <= 0:
                 raise ChannelBrokenException(
                     "Target failed to read data off file")
