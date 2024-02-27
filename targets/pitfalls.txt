@@ -1,0 +1,36 @@
+# Pitfalls when setting up protocol servers
+
+## RTSP (live555)
+
+- Live555 is designed to handle delayed events with timers, which introduces
+  non-determinism. Tango uses libfaketime with  FAKETIME="+0 i0" and
+  FAKETIME_NO_CACHE="1" to address this.
+- Live555 suffers from the overhead of recovering opened files with Tango's
+  forkserver enabled.
+
+## SIP (kamailio)
+
+- Kamailio suffers from the overhead of remapping feature_map/pc_map as kamailio
+  dynamically loads shared objects with dlopen().
+- Kamailio suffers from the overhead of recovering MAP_SHARED pages with Tango's
+  forkserver enabled.
+
+## DAAP (daap-forked)
+
+- Daap-forked uses conftest that maybe has issues when sanitizer is enabled,
+  ASLR is disabled, and -fPIE/-pie is enabled in LDFLAGS.
+- Daap-forked blocks SIGTERM for all threads except the main one.
+- Daap-forked has multiple threads (race-conditions).
+- Daap-forked involves a readv that is not support by Tango at first place.
+
+## FTP (bftpd, lightftp, proftpd, and pureftpd)
+
+- Proftpd/Pureftpd uses conftest that maybe has issues when sanitizer is enabled,
+  ASLR is disabled, and -fPIE/-pie is enabled in LDFLAGS.
+- Proftpd will open and append data into scoreboard_file. With forkserver, Tango
+  should handle this. However, with forkserver, this file is reopened in the
+  child process, thus the parent loses the control of the file. Tango patches
+  proftpd to truncate this file when it is opened. See scoreboard_file.patch.
+- Lightftp creates a few threads, so Tango's ptrace is adjusts.
+- Pureftpd is not compatible with ASAN
+- Proftpd needs cap_sys_ptrace.
