@@ -384,6 +384,7 @@ class CoverageDriver(ProcessDriver,
             self._symb_tracer = resolve_symbol(process, 'CoverageTracer')
 
     async def execute_input(self, input: AbstractInput):
+        info(f"Executing input in {self}")
         try:
             idx = 0
             async for instruction in input:
@@ -405,6 +406,7 @@ class CoverageDriver(ProcessDriver,
         finally:
             ValueMeanProfiler("input_len", samples=100)(idx)
             CountProfiler("total_instructions")(idx)
+        debug(f"Executed input in {self}")
 
     def disable_coverage_tracer(self, root: PtraceProcess):
         disabled_p = self._symb_tracer + StructTracer.disabled.offset
@@ -834,9 +836,13 @@ class CoverageExplorer(BaseExplorer,
         return CoverageExplorerContext(input, explorer=self, **kwargs)
 
     async def follow(self, input: BaseInput, **kwargs):
+        info(f"Following in {self}")
         context_input = self.get_context_input(input, **kwargs)
+        debug(f"Got context input {context_input}")
         try:
+            info(f"Executing the context input {context_input}")
             await self._driver.execute_input(context_input)
+            debug(f"Executed the context input {context_input}")
             return self._current_path.copy()
         except LoadedException as ex:
             if not self._observe_postmortem or \

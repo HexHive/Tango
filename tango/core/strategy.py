@@ -83,18 +83,24 @@ class BaseStrategy(AbstractStrategy,
         return await super().initialize()
 
     async def step(self, input: Optional[AbstractInput]=None):
+        info(f"Stepping in {self}")
         if self._step_interrupted:
+            info(f"Reloading target ...")
             current_state = await self.reload_target()
+            debug(f"Reloaded target")
         elif not input:
             current_state = self._explorer.tracker.current_state
         if not input:
+            info(f"Generating input ...")
             input = self._generator.generate(current_state)
+            debug(f"Generated input")
 
         self._step_interrupted = True
         await self._explorer.follow(input,
             minimize=self._minimize_transitions,
             validate=self._validate_transitions)
         self._step_interrupted = False
+        debug(f"Stepped in {self}")
 
     @EventProfiler('reload_target')
     async def _reload_target_once(self) -> AbstractState:
@@ -221,18 +227,24 @@ class RolloverCounterStrategy(AbstractStrategy,
         return await super().initialize()
 
     async def step(self, input: Optional[AbstractInput]=None):
+        info(f"Stepping in {self}")
         should_reset = False
         if self._counter == 0:
             old_target = self._target
+            info(f"Recalculating target ...")
             self._target = self.recalculate_target()
+            debug(f"Recalculated target")
             should_reset = (old_target != self._target)
         self._counter += 1
         self._counter %= self._rollover
 
         if should_reset:
+            info(f"Reloading target ...")
             await self.reload_target()
+            debug(f"Reloaded target")
             self._step_interrupted = False
         await super().step(input)
+        debug(f"Stepped in {self}")
 
     def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
             **kwargs):
@@ -296,10 +308,13 @@ class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
         debug(f"Finalized {self}")
 
     async def step(self, input: Optional[AbstractInput]=None):
+        info(f"Stepping in {self}")
         try:
             await super().step(input)
         finally:
             self._energy_map[self._target] += 1
+            debug(f"Increased the energy of {self._target} by 1")
+        debug(f"Stepped in {self}")
 
     def recalculate_target(self) -> AbstractState:
         filtered = self.valid_targets

@@ -1,6 +1,7 @@
 from tango.core import (AbstractInput, BaseMutator,
     AbstractInstruction, TransmitInstruction, ReceiveInstruction,
     DelayInstruction, BaseInputGenerator, AbstractState)
+from . import debug, info, warning, critical
 
 from array import array
 from typing import Sequence, Iterable, Optional, ByteString
@@ -491,12 +492,15 @@ class HavocMutator(BaseMutator):
             i = -1
             reorder_buffer = []
             for i, instruction in enumerate(orig()):
+                info(f"Mutating {instruction}")
                 seq = self._mutate(instruction, reorder_buffer, entropy)
                 yield from seq
             if i == -1:
+                info(f"Mutating but there is no instruction")
                 yield from self._mutate(None, reorder_buffer, entropy)
 
             # finally, we flush the reorder buffer
+            info(f"Flushing the reorder buffer")
             yield from entropy.sample(reorder_buffer, k=len(reorder_buffer))
             reorder_buffer.clear()
 
@@ -511,6 +515,7 @@ class HavocMutator(BaseMutator):
                     return
                 oper = self.RandomOperation(entropy.randint(low, 5))
                 low = oper.value + 1
+                info(f"Applying mutator {oper}")
                 if oper == self.RandomOperation.DELETE:
                     return
                 elif oper == self.RandomOperation.PUSHORDER:
@@ -564,6 +569,11 @@ class RandomInputGenerator(BaseInputGenerator):
             config['generator'].get('type') == 'random'
 
     def generate(self, state: AbstractState) -> AbstractInput:
+        info(f"Generating input in {self}")
         candidate = self.select_candidate(state)
-        return HavocMutator(candidate, entropy=self._entropy,
+        debug(f"Selected candidate {candidate}")
+        info(f"Mutating the candidate {candidate}")
+        mut = HavocMutator(candidate, entropy=self._entropy,
             chunk_size=self._fmt.chunk_size)
+        info(f"Generated mutatable input {mut}")
+        return mut

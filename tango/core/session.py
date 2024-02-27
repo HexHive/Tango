@@ -80,7 +80,9 @@ class FuzzerSession(AsyncComponent, component_type=ComponentType.session,
     async def _loop_forever(self):
         while True:
             try:
+                info(f"Stepping next, hopefully no hang or exeception")
                 await self._strategy.step()
+                debug(f"Stepped, perfect!")
             except LoadedException as ex:
                 # only raised by the loader, after the strategy target is
                 # already reached, i.e., in reaction to a generated input

@@ -238,9 +238,13 @@ class BaseExplorer(AbstractExplorer,
         scheduler. May need to receive information about the current state to
         update it.
         """
+        info(f"Following in {self}")
         context_input = self.get_context_input(input, **kwargs)
+        debug(f"Got context input {context_input}")
         try:
+            info(f"Executing the context input {context_input}")
             await self._driver.execute_input(context_input)
+            debug(f"Executed the context input {context_input}")
             return self._current_path.copy()
         except LoadedException as ex:
             # the driver is un-aware of the context_input semantics; if a crash

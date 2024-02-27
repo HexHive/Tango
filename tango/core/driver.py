@@ -56,6 +56,7 @@ class BaseDriver(AbstractDriver,
         :raises:    LoadedException: Forwards the exception that was raised
                     during execution, along with the input that caused it.
         """
+        info(f"Executing input in {self}")
         try:
             idx = 0
             async for instruction in input:
@@ -66,3 +67,4 @@ class BaseDriver(AbstractDriver,
         finally:
             ValueMeanProfiler("input_len", samples=100)(idx)
             CountProfiler("total_instructions")(idx)
+        debug(f"Executed input in {self}")

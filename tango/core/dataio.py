@@ -1,4 +1,5 @@
 from __future__ import annotations
+from . import debug, info, warning, critical
 
 from tango.common      import AsyncComponent, ComponentType
 from tango.core.profiler import FrequencyProfiler, EventProfiler, CountProfiler
@@ -121,9 +122,11 @@ class TransmitInstruction(AbstractInstruction):
         self._data = data
 
     async def perform(self, channel: AbstractChannel):
+        info(f"Send data via {channel}")
         sent = await channel.send(self._data)
         if sent < len(self._data):
             self._data = self._data[:sent]
+        debug(f"Sent {sent} bytes")
         CountProfiler('bytes_sent')(sent)
 
     def __eq__(self, other: TransmitInstruction):
@@ -149,6 +152,7 @@ class ReceiveInstruction(AbstractInstruction):
         self._data = data
 
     async def perform(self, channel: AbstractChannel):
+        info(f"Receiving data via {channel}")
         self._data = await channel.receive()
         # TODO verify size? verify data??
 
@@ -177,6 +181,7 @@ class DelayInstruction(AbstractInstruction):
         self._maxdelay = 5
 
     async def perform(self, channel: AbstractChannel):
+        info("Sleeping for a while")
         await sleep(self._time * channel.timescale)
 
     def __eq__(self, other: DelayInstruction):

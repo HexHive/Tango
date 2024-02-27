@@ -1,4 +1,4 @@
-from . import debug, warning
+from . import debug, info, warning, critical
 from tango.core.profiler import FrequencyProfiler
 from tango.core.tracker  import AbstractState, IUpdateCallback
 from tango.core.dataio   import FormatDescriptor, AbstractChannelFactory

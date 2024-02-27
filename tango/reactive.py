@@ -1,5 +1,5 @@
 from tango.common import ComponentOwner
-from . import debug, info, critical
+from . import debug, info, warning, critical
 
 from tango.core import (AbstractInstruction, TransmitInstruction,
     ReceiveInstruction, DelayInstruction, AbstractInput,
@@ -62,13 +62,17 @@ class ReactiveInputGenerator(BaseInputGenerator,
             config['generator'].get('type') == 'reactive'
 
     def generate(self, state: AbstractState) -> AbstractInput:
+        info(f"Generating input in {self}")
         if (model := self._state_model.get(state)) is None:
             model = self._init_state_model(state)
 
         candidate = self.select_candidate(state)
+        debug(f"Selected candidate {candidate}")
         weights = map(lambda t: model['actions'][t][1], havoc_handlers)
+        info(f"Mutating the candidate {candidate} with weights {weights}")
         mut = HavocMutator(candidate, weights=weights, entropy=self._entropy,
             chunk_size=None if not hasattr(self._fmt, "chunk_size") else self._fmt.chunk_size)
+        debug(f"Generated mutatable input {mut}")
         return mut
 
     def update_state(self, state: AbstractState, /, *, input: AbstractInput,

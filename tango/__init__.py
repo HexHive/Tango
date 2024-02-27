@@ -79,20 +79,19 @@ class PowerfulLogRecordFactory(logging.LogRecord):
                     'UDPChannelFactory', 'UDPForkChannelFactory',
                 ] and self.funcName in ['initialize', 'finalize']:
             indent = 2
-        elif (self.className in ['BaseTracker', 'CoverageTracker'] \
-                and self.funcName in ['update_state', 'peek', 'extract_snapshot',
-                                      '_update_local', 'reset_state', '_show_pcs', '_get_pcs']) \
-                or (self.className in ['BaseStrategy'] \
-                and self.funcName in ['reload_target']) \
-                or (self.className in ['CoverageDriver'] \
-                and self.funcName in ['execute_input']) \
-                or (self.className in ['BaseExplorerContext'] \
-                and self.funcName in ['_handle_update']) \
-                or (self.className in ['BaseExplorer'] \
-                and self.funcName in ['reload_state', 'attempt_load_state', '_arbitrate_load_state',
-                                      'update']) \
-                or (self.className in ['PtraceProcess'] \
-                and self.funcName in ['kill', 'terminateTree', 'waitExit']):
+        elif (self.className in ['BaseTracker', 'CoverageTracker'] and self.funcName in [
+                    'update_state', 'peek', 'extract_snapshot', '_update_local',
+                    'reset_state', '_show_pcs', '_get_pcs']) \
+                or (self.className in ['BaseStrategy'] and self.funcName in ['reload_target']) \
+                or (self.className in ['ReactiveInputGenerator'] and self.funcName in ['generate']) \
+                or (self.className in ['HavocMutator'] and self.funcName in ['__iter__', '_mutate']) \
+                or (self.className in ['TransmitInstruction'] and self.funcName in ['perform']) \
+                or (self.className in ['CoverageDriver'] and self.funcName in ['execute_input']) \
+                or (self.className in ['BaseExplorerContext'] and self.funcName in ['_handle_update']) \
+                or (self.className in ['BaseExplorer'] and self.funcName in [
+                    'reload_state', 'attempt_load_state', '_arbitrate_load_state', 'update']) \
+                or (self.className in ['PtraceProcess'] and self.funcName in [
+                    'kill', 'terminateTree', 'waitExit']):
             indent = 2
         elif self.className in ['ReplayLoader'] \
                 and self.funcName in ['load_state', 'load_path', 'apply_transition']:
