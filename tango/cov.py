@@ -112,7 +112,16 @@ class FeatureSnapshot(BaseState):
         self._pcs = pcs
 
     def __eq__(self, other):
-        # return hash(self) == hash(other)
+        if not isinstance(other ,FeatureSnapshot):
+            return False
+
+        # make it flexible
+        a = list(self._feature_mask)
+        b = list(other._feature_mask)
+        c = set(a) - set(b)
+        if len(c) == 0:
+            return True
+
         return isinstance(other, FeatureSnapshot) and \
                hash(self) == hash(other) and \
                self._feature_count == other._feature_count and \
