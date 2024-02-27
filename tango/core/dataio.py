@@ -122,7 +122,7 @@ class TransmitInstruction(AbstractInstruction):
         self._data = data
 
     async def perform(self, channel: AbstractChannel):
-        info(f"Send data via {channel}")
+        info(f"Sending data via {channel}")
         sent = await channel.send(self._data)
         if sent < len(self._data):
             self._data = self._data[:sent]

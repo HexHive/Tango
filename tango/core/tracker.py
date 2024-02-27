@@ -641,7 +641,7 @@ class BaseTracker(AbstractTracker):
             -> Optional[AbstractState]:
         if state:
             if not exc:
-                debug("Adding {state} into {self._state_graph}")
+                debug(f"Adding {state} into {self._state_graph}")
                 state, is_new = self._state_graph.update_state(state)
             elif state != self.entry_state:
                 try:

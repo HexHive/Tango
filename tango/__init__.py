@@ -100,6 +100,7 @@ class PowerfulLogRecordFactory(logging.LogRecord):
                 'TCPChannel', 'TCPForkChannelFactory', 'TCPForkBeforeAcceptChannel', 'TCPForkAfterListenChannel',
                 'UDPChannel', 'UDPForkChannel', 'UDPForkBeforeBindChannel', 'UDPForkChannelFactory',
                 'ListenerSocketState', 'UDPSocketState',
+                'NetworkChannel',
                 'FileDescriptorChannel',
                 'PtraceChannel', 'PtraceForkChannel', 'PtraceDebugger',
                 'ProcessDriver', 'ProcessForkDriver',

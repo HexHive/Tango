@@ -1140,18 +1140,28 @@ class FileDescriptorChannel(PtraceChannel):
             'orig_ignore_callback': ignore_callback}
         kwargs['break_on_entry'] = True
         kwargs['break_on_exit'] = True
+        # new_ignore_callback will not ignore the syscalls defined in
+        # old_ignore_callback, dup/dup2/dup3, close, and
+        # read/poll/ppoll/select/pselect
         new_ignore_callback = partial(
             self._tracer_ignore_callback, ignore_callback)
+        # new_syscall_callback will filter the syscall again, via
+        # orig_ignore_callback, break_on_entry, and break_on_exit, and apply
+        # orig_ingore_callback. Then, it will handle dup/close/select
+        # seperately. Finally, it will execute the syscall if not captured.
         new_syscall_callback = self._tracer_syscall_callback
         #           monitor_target ----> monitor_targets
         #  _tracer_ignore_callback ->
-        #                            |-> ignore_callback
-        #          ignore_callback ->
+        #                            |-> new_ignore_callback
+        #      old_ignore_callback ->
         #           break_callback ----> break_callback
         # _tracer_syscall_callback ----> syscall_callback
         #          ignore_callback ->
         #                            |-> kw
         #         syscall_callback ->
+        #
+        # Task 1: ignore_callback->syscall_callback->break_callback
+        # Task 2: monitor_target
         return await super().monitor_syscalls(
             monitor_target, new_ignore_callback,
             break_callback, new_syscall_callback, timeout=timeout,
@@ -1273,11 +1283,14 @@ class FileDescriptorChannel(PtraceChannel):
             'pselect6')
 
     def _tracer_ignore_callback(self, orig_ignore_callback, syscall):
-        return all((orig_ignore_callback(syscall),
+        ignored = all((orig_ignore_callback(syscall),
             self._dup_ignore_callback(syscall),
             self._close_ignore_callback(syscall),
             self._select_ignore_callback(syscall)
         ))
+        if not ignored and os.getenv("SHOW_SYSCALLS"):
+            debug(f"Not ignored {syscall}")
+        return ignored
 
     async def _tracer_syscall_callback(self,
             process: PtraceProcess, syscall: PtraceSyscall, *, kw, **kwargs):
@@ -1292,17 +1305,29 @@ class FileDescriptorChannel(PtraceChannel):
         if not orig_ignore_callback(syscall) and orig_match_condition:
             orig_syscall_callback = kw['orig_syscall_callback']
             processed = await orig_syscall_callback(process, syscall, **kwargs)
+            if os.getenv("SHOW_SYSCALLS"):
+                debug(f"Handled {syscall} (entry: {is_entry}) by {orig_syscall_callback}")
 
         if not self._dup_ignore_callback(syscall) and not is_entry:
             self._dup_syscall_exit_callback_internal(process, syscall)
+            if os.getenv("SHOW_SYSCALLS"):
+                debug(f"Handled {syscall} (entry: False) internally")
         elif not self._close_ignore_callback(syscall) and not is_entry:
             self._close_syscall_exit_callback_internal(process, syscall)
+            if os.getenv("SHOW_SYSCALLS"):
+                debug(f"Handled {syscall} (entry: False) internally")
         elif not self._select_ignore_callback(syscall) and is_entry:
             self._select_syscall_entry_callback_internal(process, syscall)
+            if os.getenv("SHOW_SYSCALLS"):
+                debug(f"Handled {syscall} (entry: True) internally")
 
         if is_entry and not processed:
             process.syscall()
             processed = True
+            if os.getenv("SHOW_SYSCALLS"):
+                debug(f"Throwed {syscall} to process")
+        if os.getenv("SHOW_SYSCALL") and not processed:
+            debug(f"Throwed {syscall} to process")
         return processed
 
     def _dup_syscall_exit_callback_internal(self,
