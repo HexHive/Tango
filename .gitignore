@@ -13,3 +13,5 @@ stderr
 .venv/
 build/
 tango.egg-info/
+
+.vscode
