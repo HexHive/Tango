@@ -9,9 +9,6 @@
 [submodule "lib/libfaketime"]
 	path = lib/libfaketime
 	url = https://github.com/wolfcw/libfaketime.git
-[submodule "scripts"]
-	path = scripts
-	url = https://gist.github.com/89093a2b335979759062f86dfc27af65.git
 [submodule "lib/libeatmydata"]
 	path = lib/libeatmydata
 	url = https://github.com/stewartsmith/libeatmydata.git
