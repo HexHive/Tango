@@ -19,7 +19,7 @@ http://localhost:8080.
 To debug, try the following command lines.
 
 ```
-# skip to build the target
+# skip build the target
 ./scripts/docker_run.sh expat_skip_build
 # show info
 ./scripts/docker_run.sh expat_skip_build -v

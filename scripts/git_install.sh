@@ -2,7 +2,8 @@
 
 # defaults
 batch=false
-pythonminversion="3.7"
+pythonminversion="3.11" # >=
+pythonmaxversion="3.12" # <
 pipminversion="22.2"
 clangminversion="13"
 pipflags="-e" # install package in edit mode, for development
@@ -19,6 +20,7 @@ do
         D) setup_venv=false;;
         V) verify_deps=false;;
         P) pythonminversion="${OPTARG}";;
+        p) pythonmaxversion="${OPTARG}";;
         p) pipminversion="${OPTARG}";;
         C) clangminversion="${OPTARG}";;
         F) pipflags="${OPTARG}";;
@@ -52,7 +54,7 @@ find_binary() {
 find_python() {
     if [ "$PYTHONBIN" == "" ]; then
         if [ "$PYTHONINSTALLED" == "" ]; then
-            if ! pybin="$(find_binary python$pythonminversion python3 python)";
+            if ! pybin="$(find_binary python$pythonversion python3 python)";
             then
                 return 1
             fi
@@ -185,8 +187,8 @@ check_python_version() {
         return 1
     fi
     pyver="$($python --version | cut -d' ' -f2 -s)"
-    if ! test_version "$pyver" '>=' "$pythonminversion"; then
-        >&2 echo "Python version $pyver is not in '>=$pythonminversion'."
+    if ! (test_version "$pyver" '>=' "$pythonminversion" && test_version "$pyver" '<' "$pythonmaxversion"); then
+        >&2 echo "Python version $pyver is not in '>=$pythonminversion,<$pythonmaxversion'."
         return 1
     fi
     pipver="$($python -c \
@@ -247,14 +249,15 @@ check_clang_version() {
 }
 
 install_python() {
-    requires_python="$1"
+    requires_python_min="$1"
+    requires_python_max="$2"
 
     (set -x; sudo add-apt-repository -yu ppa:deadsnakes/ppa >&/dev/null)
     ver=$(apt-cache search -n '^python(\d+[.]?)+?' | \
             grep -oP '^python\K(\d+[.]?)+(?= - )' | uniq | sort -Vr | (
         while read -r ver;
         do
-            if test_version_spec $ver $requires_python; then
+            if (test_version_spec $ver $requires_python_min && test_version_spec $ver $requires_python_max); then
                 echo "$ver"
                 exit 0
             fi
@@ -318,11 +321,11 @@ while : ; do
             break
             ;;
         1 ) >&2 echo "Could not find suitable python binary!"
-            if ! prompt "Attempt to install python >=$pythonminversion?"; then
+            if ! prompt "Attempt to install python >=$pythonminversion,<$pythonmaxversion?"; then
                 echo "Aborting installation!"
                 exit 1
             fi
-            if ! PYTHONINSTALLED="$(install_python ">=$pythonminversion")";
+            if ! PYTHONINSTALLED="$(install_python ">=$pythonminversion" "<$pythonmaxversion")";
             then
                 >&2 echo "Could not find suitable python version." \
                     "Aborting installation!"
@@ -355,7 +358,7 @@ while : ; do
             fi
             >&2 echo "Looking for python version: $requires_python"
 
-            if ! PYTHONINSTALLED="$(install_python "$requires_python")";
+            if ! PYTHONINSTALLED="$(install_python "$requires_python" "$requires_python")";
             then
                 >&2 echo "Could not find suitable python version." \
                     "Aborting installation!"

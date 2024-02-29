@@ -16,7 +16,8 @@ USER tango:tango
 ENV PATH="/home/.local/bin:$PATH"
 
 COPY git_install.sh /home/tango/git_install.sh
-RUN cd $HOME/ && ./git_install.sh -y
+RUN cd /home/tango/ && ./git_install.sh -y -V -D
+RUN sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 10
 
-WORKDIR /home/tango
-ENTRYPOINT ["scripts_eurosp/docker_entry.sh"]
+WORKDIR /home/tango/tango
+ENTRYPOINT ["scripts/docker_entry.sh"]

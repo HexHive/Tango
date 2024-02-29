@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 
-cd $HOME/tango
-# ./scripts_eurosp/git_install.sh -y
+cd /home/tango/tango
+if [ ! -d .venv ]; then
+    ./scripts/git_install.sh -y
+fi
 source .venv/bin/activate
 
 python="$(realpath "$(which python)")"
