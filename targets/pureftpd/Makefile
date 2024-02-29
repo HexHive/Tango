@@ -5,7 +5,6 @@ export LDFLAGS := $(filter-out -pie,$(LDFLAGS))
 export LDFLAGS := $(LDFLAGS) $(LDLIBS)
 
 pureftpd:
-	./preinstall.sh
 	./setup_ftpshare.sh
 	rm -rf pureftpd_repo pure-ftpd 
 	git clone https://github.com/jedisct1/pure-ftpd.git pureftpd_repo && \

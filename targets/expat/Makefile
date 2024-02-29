@@ -6,6 +6,7 @@ libexpat:
 	rm -rf libexpat_repo
 	git clone https://github.com/libexpat/libexpat.git libexpat_repo
 	cd libexpat_repo && \
+	git checkout a387201 && \
 	patch -p1 < ../hashsalt.patch && \
 	patch -p1 < ../bufsize.patch && \
 	cd expat && \

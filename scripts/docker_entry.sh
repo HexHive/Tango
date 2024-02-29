@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-cd /home/tango/tango
 if [ ! -d .venv ]; then
     ./scripts/git_install.sh -y
 fi

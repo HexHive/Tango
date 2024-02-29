@@ -1,13 +1,13 @@
 diff --git a/expat/xmlwf/xmlfile.c b/expat/xmlwf/xmlfile.c
-index e3521676..ff7c39b6 100644
+index 0598b86b..782d977b 100644
 --- a/expat/xmlwf/xmlfile.c
 +++ b/expat/xmlwf/xmlfile.c
-@@ -74,7 +74,7 @@
- #ifdef _DEBUG
- #  define READ_SIZE 16
- #else
--#  define READ_SIZE (1024 * 8)
-+#  define READ_SIZE 4
+@@ -71,7 +71,7 @@
+ #  endif
  #endif
  
+-int g_read_size_bytes = 1024 * 8;
++int g_read_size_bytes = 4;
+ 
  typedef struct {
+   XML_Parser parser;

@@ -6,6 +6,7 @@ llhttp:
 	rm -rf llhttp_repo
 	git clone https://github.com/nodejs/llhttp.git llhttp_repo
 	cd llhttp_repo && \
+	git checkout a35e183 && \
 	npm install && \
 	$(MAKE) build/libllhttp.a && \
 	cd - && \

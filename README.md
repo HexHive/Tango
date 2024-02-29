@@ -1,5 +1,14 @@
 # Let's Tango!
 
+Tango can fuzz multiple stateful targets, i.e., 1) protocol targets: bftpd,
+daap, dcmtk, dnsmasq, dtls, exim, lightftp, openssh, openssl, proftpd, pureftpd,
+rtsp, and sip, 2) parsers: expat, llhttp, and yaml.
+
+Targets snapshotted on 20240229.
+- [expat](https://github.com/libexpat/libexpat): a387201
+- [llhttp](https://github.com/nodejs/llhttp): a35e183
+- [yajl](https://github.com/openEuler-BaseService/yajl): 175a30f
+
 ## Usage
 
 Setup Tango and build the docker images.
@@ -15,6 +24,8 @@ http://localhost:8080.
 ```
 ./scripts/docker_run.sh expat
 ```
+
+Use `Ctrl-c` to pause Tango and type `Exit` to exit.
 
 To debug, try the following command lines.
 

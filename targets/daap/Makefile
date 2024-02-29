@@ -3,11 +3,13 @@
 export CFLAGS := $(CFLAGS) -DSQLITE_CORE
 LIBEVENT_PATH := $(realpath ./libevent_repo/build/lib/)
 export LDFLAGS := $(LDFLAGS) -L$(LIBEVENT_PATH)
+export LDFLAGS := $(filter-out -fPIE,$(LDFLAGS))
+export LDFLAGS := $(filter-out -pie,$(LDFLAGS))
 export LD_LIBRARY_PATH="$(LIBEVENT_PATH)"
 export LDLIBS := $(LDLIBS)
 export LIBS := $(LDLIBS)
 
-daapd: preinstall libevent
+daapd: libevent
 	rm -rf daapd_repo
 	git clone https://github.com/ejurgensen/forked-daapd.git daapd_repo
 	cd daapd_repo && \
@@ -34,11 +36,6 @@ daapd: preinstall libevent
 	sudo chown tango:root forked-daapd.log
 	sudo chown tango:root forked-daapd.pid
 	sudo update-rc.d avahi-daemon defaults
-
-preinstall:
-	rm -rf openssl-1.1.1q* && \
-	unset CFLAGS CXXFLAGS LDFLAGS LIBS LDLIBS && \
-	./preinstall.sh
 
 libevent:
 	rm -rf libevent_repo
