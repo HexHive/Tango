@@ -9,6 +9,8 @@ Targets snapshotted on 20240229.
 - [llhttp](https://github.com/nodejs/llhttp): a35e183
 - [yajl](https://github.com/openEuler-BaseService/yajl): 175a30f
 
+Other targets are consistent with ProFuzzBench.
+
 ## Usage
 
 Setup Tango and build the docker images.
