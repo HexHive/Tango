@@ -1086,6 +1086,7 @@ class StateInferenceStrategy(SeedableStrategy,
 
     def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
             **kwargs):
+        info(f"Updating states in {self}")
         super().update_state(state, *args, exc=exc, **kwargs)
         if state and not exc:
             if state is not self.target_state:

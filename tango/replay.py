@@ -39,9 +39,10 @@ class ReplayLoader(BaseLoader,
                 f"source state ({source}) did not match current state ({current_state})",
                 current_state, source
             )
-        debug(f"Executing the input {input}")
+        info(f"Executing the input {input}")
         await self._driver.execute_input(input)
 
+        info(f"Peeking ({source}, {destination}) by {self._tracker}")
         current_state = self._tracker.peek(source, destination, **kwargs)
         debug(f"Got current state {current_state} by peeking {destination} by {self._tracker}")
         # check if destination matches the current state
@@ -54,7 +55,7 @@ class ReplayLoader(BaseLoader,
 
     async def load_path(self, path: Path, **kwargs):
         src, _, _ = path[0]
-        info(f"Peeking expected destination {src} by {self._tracker}")
+        info(f"Peeking (None, {src}) by {self._tracker}")
         last_state = self._tracker.peek(expected_destination=src, **kwargs)
 
         for transition in path:

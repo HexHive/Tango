@@ -528,7 +528,7 @@ class CoverageTracker(BaseTracker,
 
         await super().finalize(owner)
 
-        info("Initializing _local and _local_state")
+        info("Resetting _local and _local_state")
         self.reset_state(self._current_state)
 
         LambdaProfiler('snapshot_cov')(lambda: np.sum(
@@ -558,6 +558,7 @@ class CoverageTracker(BaseTracker,
 
     @cached_property
     def current_state(self) -> FeatureSnapshot:
+        info(f"Peeking ({self._current_state}, None) by {self}")
         return self.peek(self._current_state, update_cache=False)
 
     def extract_snapshot(self, feature_map: FeatureMap,
@@ -571,7 +572,7 @@ class CoverageTracker(BaseTracker,
                 parent_state, feature_mask, feature_count, feature_map,
                 self._shrunk_pcs(),
                 tracker=self, state_hash=mask_hash, **kwargs)
-            debug(f"Construced {state} whose parent is {parent_state} due to new dirty bits")
+            debug(f"Constructed {state} whose parent is {parent_state} due to new dirty bits")
             if commit:
                 feature_map.commit(feature_mask)
                 debug(f"Committed the accumualted features in {feature_map}")
@@ -580,12 +581,14 @@ class CoverageTracker(BaseTracker,
     def update_state(self, source: FeatureSnapshot, /, *, input: AbstractInput,
             exc: Exception=None, peek_result: Optional[FeatureSnapshot]=None) \
             -> FeatureSnapshot:
+        info(f"Updating states in {self}")
         source = super().update_state(source, input=input, exc=exc,
                 peek_result=peek_result)
         if not exc:
             if peek_result is None:
+                info(f"Peeking ({source}, None) by {self}")
                 next_state = self.peek(source, commit=True)
-                debug(f"Got state {next_state} by peeking {source}")
+                debug(f"Got state {next_state} by peeking {self._global}")
             else:
                 # if peek_result was specified, we can skip the recalculation;
                 # we reconstruct a cached version of the state
@@ -654,18 +657,19 @@ class CoverageTracker(BaseTracker,
             # when the destination is not None, we use its `context_map` as a
             # basis for calculating the coverage delta
             fmap.copy_from(expected_destination._feature_context)
-            debug(f"Copied dst: {expected_destination}._feature_context to {fmap}")
+            debug(f"Copied dst: {expected_destination}._feature_context to fmap: {fmap}")
             parent = expected_destination._parent
-            debug(f"Set dst: {expected_destination._parent} to parent")
+            debug(f"Set dst: {expected_destination._parent} as parent")
             debug_old_pcs = self._get_pcs(expected_destination)
             if (debug_old_pcs):
                 debug(f"{len(debug_old_pcs)} unique_pcs={debug_old_pcs}")
         else:
             fmap.copy_from(self._global)
-            debug(f"Copied glo: {self._global} to {fmap}")
+            debug(f"Copied glo: {self._global} to fmap: {fmap}")
             parent = default_source
-            debug(f"Set src: {default_source} to parent")
+            debug(f"Set src: {default_source} as parent")
 
+        info(f"Extracting snapshot from fmap: {fmap}")
         next_state = self.extract_snapshot(fmap, parent, commit=commit,
             allow_empty=parent is None, **kwargs)
         if not next_state:
@@ -684,7 +688,7 @@ class CoverageTracker(BaseTracker,
                     default_source._feature_count, default_source._feature_context,
                     self._shrunk_pcs(),
                     tracker=self, state_hash=hash(default_source), **kwargs)
-                debug(f"Construced {next_state} whose parent is {parent} (seems duplicated)")
+                debug(f"Constructed {next_state} whose parent is {parent} (seems duplicated)")
         debug_new_pcs = self._get_pcs(next_state)
         if debug_new_pcs:
             debug(f"{len(debug_new_pcs)} unique_pcs={debug_new_pcs}")
@@ -722,6 +726,7 @@ class CoverageTracker(BaseTracker,
         # reset local maps
         self._local.clear()
         debug(f"Cleared _local feature map {self._local}")
+        info(f"Extracting snapshot from local: {self._local}")
         self.extract_snapshot(  # initialize the state of the local feature map
             self._local, None, update_cache=False)
         self._local_state = None
@@ -739,6 +744,7 @@ class CoverageTracker(BaseTracker,
                 torc.object.LastIdx = torc.object.Length = 0
 
     def _update_local(self):
+        info(f"Extracting snapshot from local: {self._local}")
         self._local_state = self.extract_snapshot(
             self._local, self._local_state,
             allow_empty=True, update_cache=False)

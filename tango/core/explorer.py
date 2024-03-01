@@ -270,6 +270,7 @@ class BaseExplorer(AbstractExplorer,
         # same hash(), but may be a different object. This means, any
         # modifications made to the state (or new attributes stored) may not
         # persist.
+        info(f"Getting current_state")
         current_state = self._tracker.current_state
 
         # the tracker may return None as current_state, in case it has not yet
@@ -283,6 +284,7 @@ class BaseExplorer(AbstractExplorer,
         # FIXME this logic should be moved to the tracker; it is more suitable
         # for judging whether a state or a transition is new
         if current_state == self._last_state:
+            debug(f"Current state: {current_state} is equal to last state: {self._last_state}")
             return False, False, current_state, current_input
 
         unseen = current_state not in self._tracker.state_graph.successors(self._last_state)
@@ -475,6 +477,7 @@ class BaseExplorerContext(BaseDecorator):
             return head + tail
 
     async def update_state(self, *args, **kwargs):
+        info(f"Updating states in {self}")
         await self._exp._state_update_cb(*args, **kwargs)
 
     async def update_transition(self, *args, **kwargs):
@@ -520,8 +523,10 @@ class BaseExplorerContext(BaseDecorator):
         async def publish_updates(exp, idx):
             try:
                 last_state = exp._last_state
+                info("Getting the new state after sending an input")
                 updated, unseen, new_state, current_input = await exp.update(
                     self.input_gen, **self._update_kwargs)
+                debug(f"Got new_state: {new_state} which is unseen: {unseen} and should be update: {updated}")
                 if updated:
                     self._start = idx + 1
 
@@ -537,6 +542,7 @@ class BaseExplorerContext(BaseDecorator):
                     exc=ex)
                 raise
             else:
+                info(f"Updating from {last_state} to {new_state}")
                 await self._handle_update(
                     updated, unseen,
                     last_state, new_state, current_input)

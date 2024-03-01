@@ -882,13 +882,13 @@ class ProcessDriver(BaseDriver,
 
         info(f"Creating a channel to the new process {self._pobj.pid}")
         channel = await self.create_channel()
-        info(f"Created a channel {channel} to the new process {self._pobj.pid}")
+        debug(f"Created a channel {channel} to the new process {self._pobj.pid}")
 
     async def create_channel(self, **kwargs):
         info(f"Creating a channel via {self._factory}")
         self._channel = await self._factory.create(self._pobj, self._netns_name,
             **kwargs)
-        info(f"Created a channel {self._channel} via {self._factory}")
+        debug(f"Created a channel {self._channel} via {self._factory}")
         return self._channel
 
     @property
@@ -1104,7 +1104,7 @@ class ProcessForkDriver(ProcessDriver):
 
         info(f"Creating a channel to the process {self._pobj.pid}")
         channel = await self.create_channel()
-        info(f"Created a channel {channel} to the process {self._pobj.pid}")
+        debug(f"Created a channel {channel} to the process {self._pobj.pid}")
 
 class ForkserverCrashedException(RuntimeError):
     pass

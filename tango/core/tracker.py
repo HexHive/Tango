@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from . import debug, warning, error
+from . import debug, info, warning, critical
 
 from tango.core.input import AbstractInput, BaseInput, EmptyInput
 from tango.core.profiler import (LambdaProfiler, EventProfiler, CountProfiler,
@@ -357,6 +357,7 @@ class BaseStateGraph(AbstractStateGraph, graph_cls=nx.DiGraph):
 
     @EventProfiler('update_state')
     def update_state(self, state: AbstractState) -> tuple[AbstractState, bool]:
+        info(f"Updating states in {self}")
         new = False
         if state not in self.nodes:
             self.add_node(state, node_obj=state)
@@ -639,13 +640,14 @@ class BaseTracker(AbstractTracker):
     def update_state(self, state: AbstractState, /, *, input: AbstractInput,
             exc: Exception=None, peek_result: Optional[AbstractState]=None) \
             -> Optional[AbstractState]:
+        info(f"Updating states in {self}")
         if state:
             if not exc:
-                debug(f"Adding {state} into {self._state_graph}")
+                info(f"Adding {state} into {self._state_graph}")
                 state, is_new = self._state_graph.update_state(state)
             elif state != self.entry_state:
                 try:
-                    debug(f"Dissolving {state} due to {exc}")
+                    info(f"Dissolving {state} due to {exc}")
                     if isinstance(exc, StateNotReproducibleException):
                         debug(f"Dissolving irreproducible {state}")
                     # WARN if stitch==False, this may create disconnected

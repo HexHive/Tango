@@ -77,6 +77,7 @@ class ReactiveInputGenerator(BaseInputGenerator,
 
     def update_state(self, state: AbstractState, /, *, input: AbstractInput,
             orig_input: AbstractInput, exc: Exception=None, **kwargs):
+        info(f"Updating states in {self}")
         if state not in self._state_model:
             self._init_state_model(state)
 
@@ -266,6 +267,7 @@ class StatelessReactiveInputGenerator(ReactiveInputGenerator):
 
     def update_state(self, state: AbstractState, /, *, input: AbstractInput,
             orig_input: AbstractInput, exc: Exception=None, **kwargs):
+        info(f"Updating states in {self}")
         state = state.tracker._entry_state
         super().update_state(state, input=input, orig_input=orig_input, exc=exc, **kwargs)
 

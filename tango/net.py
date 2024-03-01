@@ -399,14 +399,14 @@ class TCPChannel(NetworkChannel):
                 return
             fd = syscall.result
             fds[fd] = ListenerSocketState(fd)
-            info(f"Handled socket() returned fd:{fd}")
+            debug(f"Handled socket() returned fd:{fd}")
         elif syscall.name in ('bind', 'listen'):
             fd = syscall.arguments[0].value
             if fd not in fds:
                 return
             entry = syscall.result is None
             result = fds[fd].event(process, syscall, entry=entry)
-            info(f"Handled {syscall.name}() returned fd:{fd}")
+            debug(f"Handled {syscall.name}() returned fd:{fd}")
             if result is not None:
                 listeners[fd] = result
                 candidates = [x[0] for x in listeners.items() if x[1][2] == address[1]]
@@ -415,7 +415,7 @@ class TCPChannel(NetworkChannel):
                     # At this point, the target is paused just after the listen syscall that
                     # matches our condition.
                     self.cb_socket_listening(process, syscall)
-                    info(f"Handled socket listening for process {process.pid}")
+                    debug(f"Handled socket listening for process {process.pid}")
 
     def _setup_ignore_callback(self, syscall):
         return syscall.name not in ('socket', 'bind', 'listen')
@@ -429,7 +429,7 @@ class TCPChannel(NetworkChannel):
             return
         self._setup_accepting = True
         self.cb_socket_accepting(process, syscall)
-        info(f"Handled socket accepting for process {process.pid}")
+        debug(f"Handled socket accepting for process {process.pid}")
 
         process.syscall()
         return True
@@ -729,21 +729,21 @@ class UDPChannel(NetworkChannel):
                 return
             fd = syscall.result
             fds[fd] = UDPSocketState(fd)
-            info(f"Handled socket() returned fd:{fd}")
+            debug(f"Handled socket() returned fd:{fd}")
         elif syscall.name == 'bind':
             fd = syscall.arguments[0].value
             if fd not in fds:
                 return
             # if syscall_entry, we'll do it again later
             result = fds[fd].event(process, syscall, entry=is_entry)
-            info(f"Handled {syscall.name}() returned fd:{fd}")
+            debug(f"Handled {syscall.name}() returned fd:{fd}")
             if result is not None:
                 binds[fd] = result
                 candidates = [x[0] for x in binds.items() if x[1][2] == address[1]]
                 if candidates:
                     self._sockfd = candidates[0]
                     self.cb_socket_binding(process, syscall)
-                    info(f"Handled socket binding for process {process.pid}")
+                    debug(f"Handled socket binding for process {process.pid}")
 
         if is_entry:
             process.syscall()

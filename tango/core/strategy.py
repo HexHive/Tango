@@ -126,6 +126,7 @@ class BaseStrategy(AbstractStrategy,
 
     def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
             **kwargs):
+        info(f"Updating states in {self}")
         if not self._invalidate:
             return
         elif exc:
@@ -248,6 +249,7 @@ class RolloverCounterStrategy(AbstractStrategy,
 
     def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
             **kwargs):
+        info(f"Updating states in {self}")
         super().update_state(state, *args, exc=exc, **kwargs)
         if exc and self._target == state:
             self._counter = 0
@@ -326,6 +328,7 @@ class UniformStrategy(RolloverCounterStrategy, SeedableStrategy):
 
     def update_state(self, state: AbstractState, /, *args, exc: Exception=None,
             **kwargs):
+        info(f"Updating states in {self}")
         super().update_state(state, *args, exc=exc, **kwargs)
         if exc:
             self._energy_map[state] = max(*self._energy_map.values(), 1)
