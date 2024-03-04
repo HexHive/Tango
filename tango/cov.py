@@ -112,6 +112,20 @@ class FeatureSnapshot(BaseState):
         self._pcs = pcs
 
     def __eq__(self, other):
+        if not isinstance(other, FeatureSnapshot):
+            debug(f"Failed to compare since {other} is not FeatureSnapshot")
+            return False
+        if self._feature_count != other._feature_count:
+            debug(f"Failed to compare since feature count is not equal")
+            return False
+        if self._feature_context != other._feature_context:
+            debug(f"Failed to compare since feature context is not equal")
+            return False
+        if hash(self) != hash(other):
+            debug(f"Failed to compare since hash is not equal")
+            return False
+        return True
+
         # return hash(self) == hash(other)
         return isinstance(other, FeatureSnapshot) and \
                hash(self) == hash(other) and \

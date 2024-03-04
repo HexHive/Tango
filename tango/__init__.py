@@ -83,6 +83,7 @@ class PowerfulLogRecordFactory(logging.LogRecord):
                     'update_state', 'peek', 'extract_snapshot', '_update_local',
                     'reset_state', '_show_pcs', '_get_pcs', 'current_state']) \
                 or (self.className in ['BaseStrategy'] and self.funcName in ['reload_target']) \
+                or (self.className in ['FeatureSnapshot'] and self.funcName in ['__eq__']) \
                 or (self.className in ['ReactiveInputGenerator'] and self.funcName in ['generate']) \
                 or (self.className in ['HavocMutator'] and self.funcName in ['__iter__', '_mutate']) \
                 or (self.className in ['TransmitInstruction'] and self.funcName in ['perform']) \
