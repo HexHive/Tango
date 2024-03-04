@@ -22,8 +22,7 @@
 		"port": 5158
 	},
 	"generator": {
-		"type": "reactive",
-		"seeds": "./seeds/"
+		"type": "reactive"
 	},
 	"tracker": {
 		"type": "coverage"
@@ -32,6 +31,7 @@
 		"type": "uniform"
 	},
 	"fuzzer": {
+		"seeds": "./seeds/",
 		"cwd": "./targets/dcmtk/",
 		"work_dir": "./workdir/",
 		"resume": true
