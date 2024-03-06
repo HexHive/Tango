@@ -12,7 +12,7 @@ from tango.cov import (
     FeatureSnapshot)
 from tango.reactive import ReactiveInputGenerator, HavocMutator
 from tango.webui import create_svg
-from tango.common import get_session_task_group
+from tango.common import ComponentOwner, get_session_task_group
 from tango.exceptions import StabilityException
 from tango.havoc import havoc_handlers, RAND, MUT_HAVOC_STACK_POW2
 
@@ -84,6 +84,16 @@ class StateInferenceTracker(CoverageTracker,
             lambda: len(self.equivalence.mapped_snapshots))
         LambdaProfiler('states')(
             lambda: len(self.equivalence.state_labels))
+
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
+    async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
+        await super().finalize(owner)
+        debug(f"Finalized {self}")
 
     @cache
     def _get_snapshot_features(self, snapshot: FeatureSnapshot) -> Sequence[int]:
@@ -224,6 +234,7 @@ class StateInferenceStrategy(SeedableStrategy,
             lambda: self._energies[self._target].energy)
 
     async def initialize(self):
+        info(f"Initializing {self}")
         await super().initialize()
         self._nprng = np.random.default_rng(
             seed=self._entropy.randint(0, 0xffffffff))
@@ -240,27 +251,34 @@ class StateInferenceStrategy(SeedableStrategy,
             self._dump_path = \
                 self._work_dir / f'crosstest_{session.id}.csv'
             self._dump_path.write_text(','.join(self._profilers) + '\n')
+            debug(f"written crosstest result header into {self._dump_path}")
             loop = session.loop
             loop.add_signal_handler(
                 signal.SIGUSR2, self._dump_profilers, session.id)
+            debug(f"Setup signal handler for session {session.id}")
         else:
             self._auto_dump_stats = False
             del self._profilers
+        debug(f"Initialized {self}")
 
     def _dump_profilers(self, sid):
         with open(self._dump_path, 'at') as file:
             values = map(lambda p: get_profiler(p, None), self._profilers)
             file.write(','.join(str(v.value) if v else '' for v in values))
             file.write('\n')
+            debug(f"Dumped crosstest results into {self._dump_path}")
 
     async def step(self, input: Optional[AbstractInput]=None):
+        info(f"Stepping in {self}")
         match self._tracker.mode:
             case InferenceMode.Discovery:
                 if len(self._tracker.unmapped_snapshots) >= self._inference_batch:
                     self._tracker.mode = InferenceMode.CrossPollination
                     self._step_interrupted = True
+                    debug(f"Switched to crosspollination mode due to enough unmapped snapshots (>{self._inference_batch})")
                 else:
                     try:
+                        info(f"Going to discover more snapshots")
                         should_reset = False
                         while (rec := self._energies[self._target].energy) <= 0:
                             self._target = self.recalculate_target()
@@ -269,10 +287,11 @@ class StateInferenceStrategy(SeedableStrategy,
                             await self.reload_target()
                             self._step_interrupted = False
                         await super().step(input)
+                        debug(f"Found {len(self._tracker.unmapped_snapshots)} unmapped snapshots")
                     finally:
                         rec -= 1
-
             case InferenceMode.CrossPollination:
+                info(f"Going to cross pollinate unmapped snapshots")
                 while self._tracker.unmapped_snapshots:
                     equivalence = await self.perform_inference()
                     self._tracker.update_equivalence(equivalence)
@@ -281,6 +300,8 @@ class StateInferenceStrategy(SeedableStrategy,
                 self._tracker.reconstruct_graph()
                 self.assign_state_energies()
                 self._tracker.mode = InferenceMode.Discovery
+                debug(f"Switched to discovery mode after cross pollination")
+        debug(f"Stepped in {self}")
 
     async def perform_inference(self, *,
             snapshots: Optional[frozenset[AbstractState]]=None,
@@ -1337,6 +1358,16 @@ class InferenceInputGenerator(ReactiveInputGenerator,
         self._tracker = tracker
         self._broadcast_mutation_feedback = broadcast_mutation_feedback
         self._disperse_heat = disperse_heat
+
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
+    async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
+        await super().finalize(owner)
+        debug(f"Finalized {self}")
 
     def select_candidate(self, state: AbstractState):
         if not self._disperse_heat:
