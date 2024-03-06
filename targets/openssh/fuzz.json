@@ -29,13 +29,13 @@
 		"type": "replay"
 	},
 	"generator": {
-		"type": "reactive"
+		"type": "reactive",
+		"seeds": "./seeds/"
 	},
 	"strategy": {
 		"type": "uniform"
 	},
 	"fuzzer": {
-		"seeds": "./seeds/",
 		"cwd": "./targets/openssh/",
 		"work_dir": "./workdir/",
 		"resume": true

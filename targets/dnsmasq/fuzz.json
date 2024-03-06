@@ -19,7 +19,8 @@
 		"port": 5355
 	},
 	"generator": {
-		"type": "reactive"
+		"type": "reactive",
+		"seeds": "./seeds/"
 	},
 	"tracker": {
 		"type": "coverage"

@@ -8,6 +8,7 @@ exim:
 	cd exim_repo && \
 	git checkout 38903fb && \
 	patch -p1 < ../editme.patch && \
+	patch -p1 < ../bug-2145.patch && \
 	mkdir -p src/Local && \
 	cp src/src/EDITME src/Local/Makefile && \
 	sed -i 's/^EXIM_USER=/EXIM_USER=ref:${USER}/' src/Local/Makefile && \
@@ -19,4 +20,3 @@ exim:
 	$(MAKE) makefile && \
 	$(MAKE) exim && \
 	cp ./build-Linux-x86_64/exim ../../
-	sudo chown -R tango:tango /var/spool
