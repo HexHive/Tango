@@ -376,8 +376,6 @@ class PtraceProcess(object):
                     # will receive a lot of ForkChildKilledEvents
 
                     for p in self.children:
-                        if p.is_thread:
-                            continue
                         await p.terminateTree(**kwargs)
                     await self.terminate(**kwargs)
                     break
