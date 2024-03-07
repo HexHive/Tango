@@ -20,7 +20,8 @@
 		"fork_before_accept": true
 	},
 	"generator": {
-		"type": "reactive"
+		"type": "reactive",
+		"seeds": "./seeds/"
 	},
 	"tracker": {
 		"type": "coverage"
@@ -31,7 +32,6 @@
 	"fuzzer": {
 		"cwd": "./targets/lightftp/",
 		"work_dir": "./workdir/",
-		"seeds": "./seeds/",
 		"resume": true
 	}
 }

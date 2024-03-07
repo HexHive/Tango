@@ -19,7 +19,8 @@
         "port": 20220
 	},
 	"generator": {
-		"type": "reactive"
+		"type": "reactive",
+		"seeds": "./seeds/"
 	},
 	"tracker": {
 		"type": "coverage"
@@ -30,7 +31,6 @@
 	"fuzzer": {
 		"cwd": "./targets/dtls/",
 		"work_dir": "./workdir/",
-		"seeds": "./seeds/",
 		"resume": true
 	}
 }

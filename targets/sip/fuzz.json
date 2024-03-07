@@ -19,7 +19,8 @@
         "port": 5060
 	},
 	"generator": {
-		"type": "reactive"
+		"type": "reactive",
+		"seeds": "./seeds/"
 	},
 	"tracker": {
 		"type": "coverage"
@@ -30,7 +31,6 @@
 	"fuzzer": {
 		"cwd": "./targets/sip/",
 		"work_dir": "./workdir/",
-		"seeds": "./seeds/",
 		"resume": true
 	}
 }
