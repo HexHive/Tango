@@ -1,4 +1,5 @@
-from . import debug
+from tango.common import ComponentOwner
+from . import debug, info
 
 from tango.core import (AbstractChannel, FormatDescriptor, AbstractInstruction,
     TransmitInstruction, SerializedInputMeta, CountProfiler)
@@ -47,14 +48,28 @@ class StdIOChannelFactory(FileDescriptorChannelFactory,
     fmt: FormatDescriptor = RawFormatDescriptor()
     chunk_size: ChunkSizeDescriptor = ChunkSizeDescriptor()
 
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
+    async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
+        await super().finalize(owner)
+        debug(f"Finalized {self}")
+
     def __post_init__(self):
         # implicit casting through the descriptor
         object.__setattr__(self, 'fmt', (self.chunk_size,))
 
     async def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
         ch = StdIOChannel(pobj=pobj, **self.fields, **kwargs)
+        debug(f"Created a {ch}")
         await ch.setup()
+        debug(f"Setup {ch}")
+        info(f"Connecting via {ch}")
         await ch.connect()
+        debug(f"Connected via {ch}")
         return ch
 
     @classmethod
@@ -78,6 +93,7 @@ class StdIOChannel(FileDescriptorChannel):
         # wait for the next read, recv, select, or poll
         # or wait for the parent to fork, and trace child for these calls
         await self.sync()
+        info(f"Target file {self._file.fileno()} is waiting us")
         if not self.synced:
             raise NotSyncedException("Failed to sync after connection")
 
@@ -118,6 +134,16 @@ class StdIOForkChannelFactory(StdIOChannelFactory,
     work_dir: str
     _cached = None
 
+    async def initialize(self):
+        info(f"Initializing {self}")
+        await super().initialize()
+        debug(f"Initialized {self}")
+
+    async def finalize(self, owner: ComponentOwner):
+        info(f"Finalizing {self}")
+        await super().finalize(owner)
+        debug(f"Finalized {self}")
+
     @classmethod
     def match_config(cls, config: dict) -> bool:
         return super().match_config(config) and \
@@ -125,15 +151,19 @@ class StdIOForkChannelFactory(StdIOChannelFactory,
 
     async def create(self, pobj: Popen, netns: str, **kwargs) -> AbstractChannel:
         ch = await self._create_once(pobj=pobj, **kwargs)
+        info(f"Connecting via {ch}")
         await ch.connect()
+        debug(f"Connected via {ch}")
         return ch
 
     async def _create_once(self, **kwargs):
         if self._cached is not None:
             return self._cached
         ch = StdIOForkChannel(**kwargs, **self.fields)
+        debug(f"Created a {ch}")
         object.__setattr__(self, '_cached', ch)
         await ch.setup()
+        debug(f"Set up the {ch}")
         return ch
 
 class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
@@ -155,6 +185,7 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
             # FIXME it is preferred that this be part of PtraceForkChannel, but
             # it can only be done outside the call frame of an existing
             # monitor_syscalls call.
+            info("Running the target and monitoring syscalls")
             await self.monitor_syscalls(None,
                 self._invoke_forkserver_ignore_callback,
                 self._invoke_forkserver_break_callback,
@@ -168,6 +199,7 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
         if not self._injected:
             self._invoke_forkserver_custom(process, syscall)
             self._injected = True
+            debug(f"Handled stdin polling for process {process.pid}")
 
     def _setup_fifo(self):
         if self._fifo.exists():
@@ -188,6 +220,7 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
         # listener
         syscall.name = "FORKSERVER"
         syscall.syscall = -1
+        info(f"Injecting forkserver to {process}")
         self._invoke_forkserver(process)
         self._proc = process
 
@@ -209,6 +242,7 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
             assert False # will never be called
         self.synced = False
         ignore_cb = lambda s: True
+        debug("Syncing: running the target and monitoring syscalls")
         await self.monitor_syscalls(
             self._sync_monitor_target, ignore_cb, break_cb, syscall_cb,
             break_on_entry=False, break_on_exit=False,

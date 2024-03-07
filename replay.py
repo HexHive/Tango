@@ -17,8 +17,8 @@ def parse_args():
         help="The path to the TangoFuzz fuzz.json file.")
     parser.add_argument("file",
         help="The path to the input file.")
-    parser.add_argument('--override', action='append', nargs=2)
-    parser.add_argument('-v', '--verbose', action='count', default=0,
+    parser.add_argument('-o', '--override', action='append', nargs=2)
+    parser.add_argument('-v', '--verbose', action='count', default=-1,
         help=("Controls the verbosity of messages. "
             "-v prints info. -vv prints debug. Default: warnings and higher.")
         )

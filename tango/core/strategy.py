@@ -173,7 +173,7 @@ class SeedableStrategy(BaseStrategy,
             try:
                 info(f"Reloading states by {self._explorer}")
                 await self._explorer.reload_state()
-                info(f"Feeding {input} and populating state machine by {self._explorer}")
+                info(f"Seeding {input} and populating state machine by {self._explorer}")
                 await self._explorer.follow(input,
                     minimize=self._minimize_seeds, validate=self._validate_seeds)
                 debug(f"Loaded seed file {input}")

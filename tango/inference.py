@@ -275,7 +275,7 @@ class StateInferenceStrategy(SeedableStrategy,
                 if len(self._tracker.unmapped_snapshots) >= self._inference_batch:
                     self._tracker.mode = InferenceMode.CrossPollination
                     self._step_interrupted = True
-                    debug(f"Switched to crosspollination mode due to enough unmapped snapshots (>{self._inference_batch})")
+                    debug(f"Switched to crosspollination mode due to {len(self._tracker.unmapped_snapshots)} unmapped snapshots (>={self._inference_batch})")
                 else:
                     try:
                         info(f"Going to discover more snapshots")

@@ -77,6 +77,7 @@ class PowerfulLogRecordFactory(logging.LogRecord):
                     'CoverageDriver', 'CoverageForkDriver',
                     'TCPChannelFactory', 'TCPForkChannelFactory',
                     'UDPChannelFactory', 'UDPForkChannelFactory',
+                    'StdIOForkChannelFactory', 'StdIOChannelFactory',
                     'InferenceInputGenerator',
                 ] and self.funcName in ['initialize', 'finalize']:
             indent = 2
@@ -92,17 +93,18 @@ class PowerfulLogRecordFactory(logging.LogRecord):
                 or (self.className in ['BaseExplorerContext'] and self.funcName in [
                     '_handle_update', 'publish_updates']) \
                 or (self.className in ['TCPForkChannelFactory'] and self.funcName in ['create', '_create_once']) \
+                or (self.className in ['StdIOForkChannelFactory'] and self.funcName in ['create', '_create_once']) \
                 or (self.className in ['BaseExplorer'] and self.funcName in [
                     'reload_state', 'attempt_load_state', '_arbitrate_load_state', 'update']) \
+                or (self.className in ['ReplayLoader'] and self.funcName in [
+                    'load_state', 'load_path', 'apply_transition']) \
                 or (self.className in ['PtraceProcess'] and self.funcName in [
                     'kill', 'terminateTree', 'waitExit']):
-            indent = 2
-        elif self.className in ['ReplayLoader'] \
-                and self.funcName in ['load_state', 'load_path', 'apply_transition']:
             indent = 2
         elif self.className in [
                 'TCPChannel', 'TCPForkBeforeAcceptChannel', 'TCPForkAfterListenChannel',
                 'UDPChannel', 'UDPForkChannel', 'UDPForkBeforeBindChannel',
+                'StdIOChannel', 'StdIOForkChannel',
                 'ListenerSocketState', 'UDPSocketState',
                 'NetworkChannel',
                 'FileDescriptorChannel',

@@ -1272,6 +1272,7 @@ class FileDescriptorChannel(PtraceChannel):
 
     def sync_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
         self.synced = True
+        debug("Synced")
 
     ## Callbacks
     def _dup_ignore_callback(self, syscall: PtraceSyscall) -> bool:
