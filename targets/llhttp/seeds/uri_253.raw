@@ -1,0 +1,2 @@
+GET /foo bar/ HTTP/1.1
+

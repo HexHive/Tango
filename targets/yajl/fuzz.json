@@ -20,7 +20,8 @@
 	},
 	"generator": {
 		"type": "reactive",
-		"chunk_size": 4
+		"chunk_size": 4,
+        "seeds": "./seeds/"
 	},
 	"tracker": {
 		"type": "coverage"

@@ -1,0 +1,6 @@
+HTTP/1.1 101 Switching Protocols
+Connection: upgrade
+Upgrade: h2c
+Content-Length: 4
+
+bodyproto

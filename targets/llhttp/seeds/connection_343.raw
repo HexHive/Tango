@@ -1,0 +1,12 @@
+HTTP/1.1 101 Switching Protocols
+Connection: upgrade
+Upgrade: h2c
+Transfer-Encoding: chunked
+
+2
+bo
+2
+dy
+0
+
+proto

@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Server: Microsoft-IIS/6.0
+X-Powered-By: ASP.NET
+en-US Content-Type: text/xml
+Content-Type: text/xml
+Content-Length: 16
+Date: Fri, 23 Jul 2010 18:45:38 GMT
+Connection: keep-alive
+
+<xml>hello</xml>

@@ -1,0 +1,15 @@
+GET / HTTP/1.1
+Line1:   abc
+	def
+ ghi
+		jkl
+  mno 
+	 	qrs
+Line2: 	 line2	
+Line3:
+ line3
+Line4: 
+ 
+Connection:
+ close
+

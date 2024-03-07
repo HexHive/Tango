@@ -1,0 +1,6 @@
+PUT /url HTTP/1.0
+Content-Length: 0
+
+PUT /url HTTP/1.1
+Transfer-Encoding: chunked
+

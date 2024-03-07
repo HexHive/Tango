@@ -1,0 +1,4 @@
+UNLINK /images/my_dog.jpg HTTP/1.1
+Host: example.com
+Link: <http://example.com/profiles/sally>; rel="tag"
+

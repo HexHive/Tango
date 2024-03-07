@@ -20,7 +20,8 @@
 		"type": "stdio"
 	},
 	"generator": {
-		"type": "reactive"
+		"type": "reactive",
+        "seeds": "./seeds/"
 	},
 	"tracker": {
 		"type": "coverage"

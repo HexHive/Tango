@@ -1,0 +1,4 @@
+OPTIONS /url HTTP/1.1
+Header1: Value1
+Header2:	 Value2
+

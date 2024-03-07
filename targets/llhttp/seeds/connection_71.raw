@@ -1,0 +1,4 @@
+HTTP/1.0 204 No content
+Connection: keep-alive
+
+HTTP/1.0 200 OK

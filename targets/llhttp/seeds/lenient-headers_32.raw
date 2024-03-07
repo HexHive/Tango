@@ -1,0 +1,7 @@
+GET /url HTTP/1.1
+Header1: Okay
+
+
+GET /url HTTP/1.1
+Header1: 
+

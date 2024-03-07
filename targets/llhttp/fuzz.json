@@ -20,7 +20,8 @@
 		"type": "replay"
 	},
 	"generator": {
-		"type": "reactive"
+		"type": "reactive",
+        "seeds": "./seeds/"
 	},
 	"strategy": {
 		"type": "uniform"

@@ -1,0 +1,11 @@
+HTTP/1.1 200 OK
+Connection: upgrade
+Upgrade: h2c
+Transfer-Encoding: chunked
+
+2
+bo
+2
+dy
+0
+

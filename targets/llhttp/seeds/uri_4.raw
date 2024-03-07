@@ -1,0 +1,2 @@
+GET /with_"lovely"_quotes?foo=\"bar\" HTTP/1.1
+
