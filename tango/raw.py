@@ -189,6 +189,7 @@ class StdIOForkChannel(StdIOChannel, PtraceForkChannel):
         syscall.name = "FORKSERVER"
         syscall.syscall = -1
         self._invoke_forkserver(process)
+        self._proc = process
 
     def _invoke_forkserver(self, process):
         address = process.getInstrPointer() - 2

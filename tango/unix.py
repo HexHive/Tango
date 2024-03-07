@@ -539,7 +539,8 @@ class PtraceForkChannel(PtraceChannel):
                     self.resume_process(event.process)
                 else:
                     forked_child = event.process
-                    self._forked_child = forked_child.root = forked_child
+                    self._forked_child = forked_child
+                    self._forked_child.root = self._proc
                     debug(f"Set self._forked_child to {self._forked_child}")
                     # restore correct trap byte and registers
                     self._cleanup_forkserver(forked_child)
@@ -850,7 +851,8 @@ class ProcessDriver(BaseDriver,
         return Environment(**config)
 
     def __del__(self):
-        netns.remove(self._netns_name)
+        if self._isolate_net:
+            netns.remove(self._netns_name)
 
     async def relaunch(self):
         if self._pobj:
