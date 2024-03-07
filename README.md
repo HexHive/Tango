@@ -27,6 +27,10 @@ http://localhost:8080.
 ./scripts/docker_run.sh expat
 ```
 
+To enable the state inference, use `./scripts/docker_run.inference.sh`. Two
+notes, 1) a crosstest_0.csv is stored into the workdir. 2) webui profiler is not
+supported during inference by default.
+
 Use `Ctrl-c` to pause Tango and type `Exit` to exit.
 
 To debug, try the following command lines.
@@ -34,12 +38,20 @@ To debug, try the following command lines.
 ```
 # skip build the target
 ./scripts/docker_run.sh expat_skip_build
-# show info
+# show info-level logs
 ./scripts/docker_run.sh expat_skip_build -v
-# show info and debug
+# show info-level and debug-level logs
 ./scripts/docker_run.sh expat_skip_build -vv
-# show all syscalls
+# show all syscalls (working with -vv)
 ./scripts/docker_run.sh expat_skip_build -vv --show_syscalls
-# show covered and symbolized PCs (verbose ouput if the target has symbols)
+# show covered and symbolized PCs (verbose ouput if the target has symbols) (working with -vv)
 ./scripts/docker_run.sh expat_skip_build -vv --show_syscalls --show_pcs
+```
+
+To reproduce a crash, go into the container and run `replay.sh`.
+
+```
+./scripts/docker_run.debug.sh
+cd /home/tango
+./replay.sh expat absolute_path_to_poc [-v[v]] [--show_syscalls]
 ```
