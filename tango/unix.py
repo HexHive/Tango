@@ -1204,9 +1204,14 @@ class FileDescriptorChannel(PtraceChannel):
             unpack_len = len(data) - (len(data) % self._chunk)
             for s, in struct.iter_unpack(f'{self._chunk}s', data[:unpack_len]):
                 try:
-                    sent += await self._send_some(s)
+                    info(f"Sending data {s}")
+                    _just_sent = await self._send_some(s)
+                    sent += _just_sent
+                    debug(f"Sent {_just_sent} bytes of data")
                 except Exception as ex:
-                    raise ChannelBrokenException("Failed to send data") from ex
+                    raise ex
+                    # Confused to wrap this ex
+                    # raise ChannelBrokenException("Failed to send data") from ex
                 await self.sync()
                 if not self.synced:
                     raise NotSyncedException("Failed to sync after sending data")
@@ -1215,9 +1220,14 @@ class FileDescriptorChannel(PtraceChannel):
 
         if unpack_len < len(data):
             try:
-                sent += await self._send_some(data[unpack_len:])
+                info(f"Sending data {data[unpack_len:]}")
+                _just_sent = await self._send_some(data[unpack_len:])
+                sent += _just_sent
+                debug(f"Sent {_just_sent} bytes of data")
             except Exception as ex:
-                raise ChannelBrokenException("Failed to send data") from ex
+                raise ex
+                # Confused to wrap this ex
+                # raise ChannelBrokenException("Failed to send data") from ex
             await self.sync()
             if not self.synced:
                 raise NotSyncedException("Failed to sync after sending data")
@@ -1268,7 +1278,8 @@ class FileDescriptorChannel(PtraceChannel):
             debug(f"Remove fd {fd} from the fd refcounter")
         if sum(self._refcounter.values()) == 0:
             raise ChannelBrokenException(
-                "Channel closed while waiting for server to read")
+                "Channel closed while waiting for server to read",
+                exitcode=ChannelBrokenException.CHANNEL_CLOSE)
 
     def sync_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
         self.synced = True

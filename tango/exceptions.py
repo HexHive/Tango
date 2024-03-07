@@ -39,7 +39,12 @@ class ChannelSetupException(RuntimeError):
     pass
 
 class ChannelBrokenException(RuntimeError):
-    pass
+    CHANNEL_SHUTDOWN = 0
+    CHANNEL_RESET = 1
+    CHANNEL_CLOSE = 2
+    def __init__(self, *args: object, exitcode=None) -> None:
+        super().__init__(*args)
+        self._exitcode = exitcode
 
 class ChannelTimeoutException(RuntimeError):
     pass

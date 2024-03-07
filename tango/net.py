@@ -92,7 +92,8 @@ class NetworkChannel(FileDescriptorChannel):
             super().close_callback(process, syscall)
         elif syscall.name == 'shutdown' and syscall.result == 0:
             raise ChannelBrokenException(
-                "Channel shutdown while waiting for server to read")
+                "Channel shutdown while waiting for server to read",
+                exitcode=ChannelBrokenException.CHANNEL_SHUTDOWN)
 
     def _send_ignore_callback(self, syscall):
         return super()._send_ignore_callback(syscall) and \
@@ -343,10 +344,14 @@ class TCPChannel(NetworkChannel):
             try:
                 ret = self._socket.recv(self.RECV_CHUNK_SIZE)
             except ConnectionResetError as ex:
-                raise ChannelBrokenException("recv failed, connection reset") \
+                raise ChannelBrokenException(
+                    "recv failed, connection reset",
+                    exitcode=ChannelBrokenException.CHANNEL_RESET) \
                     from ex
             if ret == b'' and len(chunks) == 0:
-                raise ChannelBrokenException("recv returned 0, socket shutdown")
+                raise ChannelBrokenException(
+                    "recv returned 0, socket shutdown",
+                    exitcode=ChannelBrokenException.CHANNEL_SHUTDOWN)
             elif ret == b'':
                 data = b''.join(chunks)
                 debug("Received data from server: %s", data)
@@ -701,7 +706,9 @@ class UDPChannel(NetworkChannel):
         try:
             data = self._socket.recv(self.MAX_DATAGRAM_SIZE)
         except ConnectionResetError as ex:
-            raise ChannelBrokenException("recv failed, connection reset") \
+            raise ChannelBrokenException(
+                "recv failed, connection reset",
+                ChannelBrokenException.CHANNEL_RESET) \
                 from ex
         if data:
             debug("Received data from server: %s", data)

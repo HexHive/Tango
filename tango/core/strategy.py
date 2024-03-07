@@ -7,7 +7,8 @@ from tango.core.explorer import BaseExplorer
 from tango.core.generator import AbstractInputGenerator, BaseInputGenerator
 from tango.core.profiler import LambdaProfiler, EventProfiler
 from tango.common import AsyncComponent, ComponentType, ComponentOwner
-from tango.exceptions import LoadedException, StateNotReproducibleException
+from tango.exceptions import ChannelBrokenException, LoadedException, ProcessCrashedException, \
+    ProcessTerminatedException, StateNotReproducibleException
 
 from abc import ABC, abstractmethod
 from random import Random
@@ -178,7 +179,21 @@ class SeedableStrategy(BaseStrategy,
                     minimize=self._minimize_seeds, validate=self._validate_seeds)
                 debug(f"Loaded seed file {input}")
             except LoadedException as ex:
-                warning("Failed to load %s: %s", input, ex.exception)
+                if isinstance(ex.exception, ProcessTerminatedException):
+                    if ex.exception._exitcode == 0:
+                        warning("Maybe loaded seed file %s, since %s", input, ex.exception)
+                    else:
+                        warning("Maybe loaded seed file %s, but %s", input, ex.exception)
+                elif isinstance(ex.exception, ProcessCrashedException):
+                    warning("Failed to load %s: %s", input, ex.exception)
+                elif isinstance(ex.exception, ChannelBrokenException):
+                    if ex.exception._exitcode in [ChannelBrokenException.CHANNEL_SHUTDOWN,
+                            ChannelBrokenException.CHANNEL_RESET, ChannelBrokenException.CHANNEL_CLOSE]:
+                        warning("Maybe loaded seed file %s, but %s", input, ex.exception)
+                    else:
+                        warning("Failed to load %s: %s", input, ex.exception)
+                else:
+                    warning("Failed to load %s: %s", input, ex.exception)
         info(f"Reloading state by {self._explorer}")
         await self._explorer.reload_state()
         await super().finalize(owner)
