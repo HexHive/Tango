@@ -270,12 +270,16 @@ static void _forkserver() {
     snprintf(fifopath, PATH_MAX, "%s/%s", shared, "input.pipe");
 
     save_file_offsets();
-    save_map_shared_pages();
+    if (getenv("SKIP_SHARED_PAGE_CHECK")) {
+        save_map_shared_pages();
+    }
 
     while(1) {
         cleanup_fs();
         CoverageTracer.ClearMaps();
-        clear_refs_write();
+        if (getenv("SKIP_SHARED_PAGE_CHECK")) {
+            clear_refs_write();
+        }
         int child_pid = fork();
         if (child_pid) {
             asm("int $3"); // trap and wait until fuzzer wakes us up
@@ -285,7 +289,9 @@ static void _forkserver() {
                 ret = waitpid(-1, &status, WNOHANG);
             } while (ret > 0);
             restore_file_offsets();
-            restore_map_shared_pages();
+            if (getenv("SKIP_SHARED_PAGE_CHECK")) {
+                restore_map_shared_pages();
+            }
         } else {
             fifofd = open(fifopath, O_RDONLY);
             if (fifofd >= 0) {
