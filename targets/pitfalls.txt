@@ -34,3 +34,4 @@
 - Lightftp creates a few threads, so Tango's ptrace is adjusts.
 - Pureftpd is not compatible with ASAN
 - Proftpd needs cap_sys_ptrace.
+- Proftpd has nondetermism due to timers.

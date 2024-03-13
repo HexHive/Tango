@@ -11,6 +11,7 @@ proftd:
 	cd proftpd_repo && \
 	git checkout 4017eff8 && \
 	patch -p1 < ../scoreboard_file.patch && \
+	patch -p1 < ../timers.patch && \
 	./configure --enable-devel=nodaemon:nofork && \
 	$(MAKE) clean && \
 	$(MAKE) all && \

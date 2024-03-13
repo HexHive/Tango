@@ -1,0 +1,13 @@
+diff --git a/src/timers.c b/src/timers.c
+index 2ec81d55e..eefc842f9 100644
+--- a/src/timers.c
++++ b/src/timers.c
+@@ -284,7 +284,7 @@ void handle_alarm(void) {
+ 
+       new_timeout = _total_time + alarm_elapsed;
+       _total_time = 0;
+-      new_timeout = process_timers(new_timeout);
++      // new_timeout = process_timers(new_timeout);
+ 
+       _alarmed_time = now;
+       alarm(_current_timeout = new_timeout);
