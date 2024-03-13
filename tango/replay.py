@@ -59,7 +59,7 @@ class ReplayLoader(BaseLoader,
         last_state = self._tracker.peek(expected_destination=src, **kwargs)
 
         for transition in path:
-            debug(f"Applying transition {transition}")
+            debug(f"Applying transition {transition} with {last_state}")
             last_state = await self.apply_transition(transition, last_state,
                 **kwargs)
 
