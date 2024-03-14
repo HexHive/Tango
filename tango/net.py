@@ -951,6 +951,11 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
             for endpoint in eps:
                 if endpoint not in endpoints:
                     endpoints.append(endpoint)
+        if self._fmt.protocol == 'tcp':
+            for i in range(len(plist)):
+                if plist[i][Raw].load.decode('utf-8').startswith("PORT"):
+                    plist[i][Raw].load = b"PORT 127,0,0,1,222,193\r\n"
+
         if len(endpoints) != 2:
             # raise RuntimeError(
             #     f"PCAP file has {len(endpoints)} endpoints (expected 2)"
