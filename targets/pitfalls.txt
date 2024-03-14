@@ -1,5 +1,12 @@
 # Pitfalls when setting up protocol servers
 
+## llhttp/expat/yajl
+
+- Dilemma: Tango hooks the first read(fd=0) syscall and redirect the control
+  flow to forkserver where all reads are disabled due to unknown reason. I have
+  to disable such a read here. Only these three targets are not compatible with
+  ENABLE_SHARED_PAGE_CHECK.
+
 ## RTSP (live555)
 
 - Live555 is designed to handle delayed events with timers, which introduces
@@ -13,7 +20,7 @@
 - Kamailio suffers from the overhead of remapping feature_map/pc_map as kamailio
   dynamically loads shared objects with dlopen().
 - Kamailio suffers from the overhead of recovering MAP_SHARED pages with Tango's
-  forkserver enabled.
+  forkserver enabled (ENABLE_SHARED_PAGE_CHECK=1).
 
 ## DAAP (daap-forked)
 

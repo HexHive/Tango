@@ -137,11 +137,6 @@ class StdIOForkChannelFactory(StdIOChannelFactory,
     async def initialize(self):
         info(f"Initializing {self}")
         await super().initialize()
-        # TODO
-        # Dilemma: Tango hooks the first read(fd=0) syscall and redirect
-        # the control flow to forkserver where all reads are disabled due
-        # to unknown reason. I have to disable such a read here.
-        os.environ['SKIP_SHARED_PAGE_CHECK'] = '1'
         debug(f"Initialized {self}")
 
     async def finalize(self, owner: ComponentOwner):
