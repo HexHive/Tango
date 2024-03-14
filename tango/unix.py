@@ -535,9 +535,16 @@ class PtraceForkChannel(PtraceChannel):
             if event.process != self._proc:
                 info(f"{event.process} != {self._proc}")
                 if event.process == self.root:
+                    if self._proc != self.root:
+                        warning(f"Having weird SIGTRAP from {event.process}")
+                        return
                     info(f"Resuming {event.process}")
                     self.resume_process(event.process)
                 else:
+                    if self._proc != self.root and \
+                            event.process in self.root.children:
+                        warning(f"Having weird SIGTRAP from {event.process}")
+                        return
                     forked_child = event.process
                     self._forked_child = forked_child
                     self._forked_child.root = self._proc

@@ -121,7 +121,7 @@ class FeatureSnapshot(BaseState):
         if self._feature_context != other._feature_context:
             debug(f"Failed to compare since feature context is not equal")
             return False
-        if hash(self) != hash(other):
+        if os.getenv("IGNORE_VALUE_PROFILE") and hash(self) != hash(other):
             debug(f"Failed to compare since hash is not equal")
             return False
         return True

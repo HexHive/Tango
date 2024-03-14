@@ -1,15 +1,15 @@
-.PHONY: daapd libevent
+.PHONY: daapd # libevent
 
 export CFLAGS := $(CFLAGS) -DSQLITE_CORE
-LIBEVENT_PATH := $(realpath ./libevent_repo/build/lib/)
-export LDFLAGS := $(LDFLAGS) -L$(LIBEVENT_PATH)
+# LIBEVENT_PATH := $(realpath ./libevent_repo/build/lib/)
+export LDFLAGS := $(LDFLAGS) # -L$(LIBEVENT_PATH)
 export LDFLAGS := $(filter-out -fPIE,$(LDFLAGS))
 export LDFLAGS := $(filter-out -pie,$(LDFLAGS))
-export LD_LIBRARY_PATH="$(LIBEVENT_PATH)"
+# export LD_LIBRARY_PATH="$(LIBEVENT_PATH)"
 export LDLIBS := $(LDLIBS)
 export LIBS := $(LDLIBS)
 
-daapd: libevent
+daapd: # libevent
 	rm -rf daapd_repo
 	git clone https://github.com/ejurgensen/forked-daapd.git daapd_repo
 	cd daapd_repo && \

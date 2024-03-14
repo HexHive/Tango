@@ -8,13 +8,11 @@
             "env": {
                 "ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0",
                 "LD_LIBRARY_PATH": "libevent_repo/build/lib/",
-                "LD_PRELOAD": "../../lib/libfaketime/src/libfaketime.so.1",
-                "FAKETIME": "+0 i0",
-                "FAKETIME_NO_CACHE": "1"
+                "IGNORE_VALUE_PROFILE": "1"
             }
         },
 		"disable_aslr": true,
-		"forkserver": true
+		"forkserver": false
     },
 	"loader": {
 		"type": "replay"

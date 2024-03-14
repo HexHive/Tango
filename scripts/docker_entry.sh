@@ -19,7 +19,7 @@ else
     if [[ $target == "pureftpd" ]]; then
         make $target/
     elif [[ $target == "daap" ]]; then
-        make $target/
+        USE_ASAN=1 make $target/
     else
         USE_ASAN=1 make $target/
     fi

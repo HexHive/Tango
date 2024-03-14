@@ -22,6 +22,7 @@
 - Daap-forked blocks SIGTERM for all threads except the main one.
 - Daap-forked has multiple threads (race-conditions).
 - Daap-forked involves a readv that is not support by Tango at first place.
+- Daap-forked requires a flexible Snapshot comparison.
 
 ## FTP (bftpd, lightftp, proftpd, and pureftpd)
 
