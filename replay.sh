@@ -10,6 +10,10 @@ sudo setcap \
 target=$1
 shift
 
+if [ -f targets/$target/postinstall.sh ]; then
+    ./targets/$target/postinstall.sh
+fi
+
 python replay.py -v targets/$target/fuzz.json \
     -o driver.isolate_fs false \
     -o driver.exec.stdout inherit \
