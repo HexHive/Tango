@@ -1293,6 +1293,9 @@ class FileDescriptorChannel(PtraceChannel):
         debug("Synced")
 
     ## Callbacks
+    def _sleep_ignore_callback(self, syscall: PtraceSyscall) -> bool:
+        return syscall.name not in ('clock_nanosleep')
+
     def _dup_ignore_callback(self, syscall: PtraceSyscall) -> bool:
         return syscall.name not in ('dup', 'dup2', 'dup3')
 
@@ -1305,6 +1308,7 @@ class FileDescriptorChannel(PtraceChannel):
 
     def _tracer_ignore_callback(self, orig_ignore_callback, syscall):
         ignored = all((orig_ignore_callback(syscall),
+            self._sleep_ignore_callback(syscall),
             self._dup_ignore_callback(syscall),
             self._close_ignore_callback(syscall),
             self._select_ignore_callback(syscall)
@@ -1329,6 +1333,10 @@ class FileDescriptorChannel(PtraceChannel):
             if os.getenv("SHOW_SYSCALLS"):
                 debug(f"Handled {syscall} (entry: {is_entry}) by {orig_syscall_callback}")
 
+        if not self._sleep_ignore_callback(syscall) and is_entry:
+            self._sleep_syscall_entry_callback_internal(process, syscall)
+            if os.getenv("SHOW_SYSCALLS"):
+                debug(f"Handled {syscall} (entry: False) internally")
         if not self._dup_ignore_callback(syscall) and not is_entry:
             self._dup_syscall_exit_callback_internal(process, syscall)
             if os.getenv("SHOW_SYSCALLS"):
@@ -1350,6 +1358,13 @@ class FileDescriptorChannel(PtraceChannel):
         if os.getenv("SHOW_SYSCALL") and not processed:
             debug(f"Throwed {syscall} to process")
         return processed
+
+    def _sleep_syscall_entry_callback_internal(self,
+            process: PtraceProcess, syscall: PtraceSyscall):
+        if syscall.name == 'clock_nanosleep':
+            request = syscall.argument_values[2]
+            fmt = '@ll'
+            process.writeBytes(request, struct.pack(fmt, 0, 0))
 
     def _dup_syscall_exit_callback_internal(self,
             process: PtraceProcess, syscall: PtraceSyscall):
