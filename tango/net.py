@@ -953,8 +953,12 @@ class PCAPInput(metaclass=SerializedInputMeta, typ='pcap'):
                     endpoints.append(endpoint)
         if self._fmt.protocol == 'tcp':
             for i in range(len(plist)):
-                if plist[i][Raw].load.decode('utf-8').startswith("PORT"):
-                    plist[i][Raw].load = b"PORT 127,0,0,1,222,193\r\n"
+                try:
+                    if plist[i][Raw].load.startswith(b"PORT"):
+                        plist[i][Raw].load = b"PORT 127,0,0,1,222,193\r\n"
+                except IndexError:
+                    # Raw doesn't exit
+                    pass
 
         if len(endpoints) != 2:
             # raise RuntimeError(
