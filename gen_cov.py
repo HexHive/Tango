@@ -2,21 +2,19 @@ import os
 os.environ['TANGO_NO_PROFILE'] = 'y'
 import sys
 sys.setrecursionlimit(10000)
+from datetime import datetime
+import pandas as pd
 
 from tango.core import FuzzerConfig
 from tango.core.tracker import *
 from tango.exceptions import LoadedException, ChannelBrokenException, \
     ProcessTerminatedException, ProcessCrashedException
-from abc          import ABC
-from tango.common import AsyncComponent, ComponentType
-from tango.common import AsyncComponent, timeit
 from typing import Iterable
 import asyncio
 import sys
 import argparse
 import logging
 import signal
-import time
 import psutil
 
 class EmptyTracker(BaseTracker):
@@ -99,42 +97,45 @@ def read_sancov(file_path):
 
 async def send_eof(channel):
     await channel.shutdown()
-    if not channel._proc.is_stopped:
-        channel._proc.kill(signal.SIGSTOP)
-        await channel._proc.waitEvent()
-        channel._proc.kill(signal.SIGCONT)
+    if not channel.root.is_stopped:
+        channel.root.kill(signal.SIGSTOP)
+        await channel.root.waitEvent()
+        channel.root.kill(signal.SIGCONT)
     await asyncio.sleep(0.1)
-    channel._proc.kill(signal.SIGSEGV)
-    channel._proc.detach()
+    channel.root.kill(signal.SIGSEGV)
+    channel.root.detach()
 
     ## ahmad's original version
-    ## channel._proc.detach()
+    ## channel._pobj.detach()
     ## await asyncio.sleep(0.1)
-    ## channel._proc.kill(signal.SIGSEGV)
-    await channel._proc.waitExit()
+    ## channel._pobj.kill(signal.SIGSEGV)
+    await channel.root.waitExit()
 
 tango_folder = os.getcwd()
 async def task(args, file):
     try:
-        # file name
         file_name = file.split("/")[-1]
 
         config = FuzzerConfig(args.config, {
-            'fuzzer': {'resume': True, 'work_dir': args.workdir, 'cwd': args.cwd},
-            'driver': {'forkserver': False},
+            'fuzzer': {
+                'resume': True,
+                'work_dir': args.workdir,
+                'cwd': args.cwd
+            }, 'driver': {
+                'forkserver': False,
+                 'isolate_fs':  False,
+                    # 'exec': {
+                        # 'stdout': 'inherit',
+                        # 'stderr': 'inherit',
+                    # }
+            }, 'tracker': {
+                'type': 'empty'
+            }
         })
         config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += \
                         ":coverage=1:handle_segv=2"
-        # config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += \
-        #                 ":coverage_dir=/shared/{}_sancov_dir".format(process_seed_name(file_name))
         config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += \
                         ":coverage_dir={}/fs/shared/{}_sancov_dir".format(args.workdir, process_seed_name(file_name))
-        # config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] = ""
-        # config._config["driver"]["exec"]["stdout"] = "inherit"
-        # config._config["driver"]["exec"]["stderr"] = "inherit"
-        config._config['generator'] = {'type': config._config['generator']['type']}
-        config._config['strategy'] = {'type': config._config['strategy']['type']}
-        config._config['tracker'] = {'type': 'empty'}
 
         gen = await config.instantiate('generator')
         inp = gen.load_input(file)
@@ -152,23 +153,10 @@ async def task(args, file):
                 raise
         # only send eof if process not crashed, otherwise would have "process
         # not exist" error
-        if not proc_crashed and psutil.pid_exists(drv._channel._proc.pid):
+        if not proc_crashed and psutil.pid_exists(drv._channel.root.pid):
             await send_eof(drv._channel)
     finally:
         os.chdir(tango_folder)
-
-# This function is needed only when we need to remove the fodler path before workdir.
-def rm_target_dir(file_path):
-    folders = []
-    for folder in file_path.split("/"):
-        if folder != "/":
-            folders.append(folder)
-    folders = folders[2:]
-    return os.path.join(*folders)
-
-def check_not_processed(cov_files, analyzed_file_names):
-    cov_file_names = [cov_file.split("/")[-1] for cov_file in cov_files]
-    print(set(cov_file_names) - set(analyzed_file_names))
 
 # need to replace some characters ("," ":")
 def process_seed_name(name):
@@ -176,73 +164,74 @@ def process_seed_name(name):
     new_name = new_name.replace(":", "_")
     return new_name
 
-# def diff_old_new_sancov(workdir, file_name):
-#     old_sancov = os.path.join(workdir, "fs/shared", "{}_sancov".format(file_name))
-#     new_sancov_dir_path = os.path.join(workdir, "fs/shared", "{}_sancov_dir".format(process_seed_name(file_name)))
-#     if not os.listdir(new_sancov_dir_path):
-#         return
-#     new_sancov = os.path.join(new_sancov_dir_path, os.listdir(new_sancov_dir_path)[0])
-#     os.system("diff {} {}".format(old_sancov, new_sancov))
-
-from datetime import datetime
 def main():
     args = parse_args()
     configure_verbosity(args.verbose)
 
-    # workdir = rm_target_dir(args.workdir)
-    cov_info_dict = {}
-    cov_files = []
+    # clear sancov_dir
+    os.system(f"rm -rf {args.workdir}/fs/shared/*_sancov_dir")
 
-    for _, _, files in os.walk(os.path.join(args.workdir, "queue")):
-        for file in files:
-            cov_files.append(os.path.join(args.workdir, "queue", file))
+    cov_info = {}
+    seed_filenames = []
+
+    # get all pcaps to replay
+    for _, _, filenames in os.walk(os.path.join(args.workdir, "queue")):
+        for filename in filenames:
+            seed_filenames.append(os.path.join(args.workdir, "queue", filename))
         break
-    cov_files.sort(key=os.path.getmtime)
-    # for file in cov_files:
-    #     file_name = file.split("/")[-1]
-    #     cov_info_dict[file_name] = {
-    #         "creation_time": str(datetime.fromtimestamp(os.path.getmtime(file)))
-    #     }
-    cov_files = [os.path.join(args.workdir, "queue", file.split("/")[-1]) for file in cov_files]
-    
-    # cov_files = ["out-openssl-nyxnet-001/queue/cov_569.tango"]
-    for file in cov_files:
-        file_name = file.split("/")[-1]
-        # check if this file has been analyzed
+    seed_filenames.sort(key=os.path.getmtime)
 
-        sancov_dir = "{}/fs/shared/{}_sancov_dir".format(args.workdir, process_seed_name(file_name))
+    # calculate the time elapsed
+    start_time = os.path.getmtime(seed_filenames[0])
+    for seed_filename in seed_filenames:
+        filename = seed_filename.split("/")[-1]
+        creation_time = os.path.getmtime(seed_filename)
+        cov_info[filename] = {
+            'time_elapsed': creation_time - start_time
+        }
+
+    # replay one by one
+    for seed_filename in seed_filenames:
+        filename = seed_filename.split("/")[-1]
+
+        sancov_dir = "{}/fs/shared/{}_sancov_dir".format(args.workdir, process_seed_name(filename))
         if not os.path.exists(sancov_dir):
             os.makedirs(sancov_dir)
-        if os.listdir(sancov_dir):
-            # already analyzed it
-            continue
-        # diff_old_new_sancov(args.workdir, file_name)
-        # continue
         try:
-            print("current file is", file)
-            asyncio.run(task(args, file))
-            # find the generated sancov file
-            # sancov_file = os.path.join(args.workdir, glob.glob("**/*.sancov", root_dir=args.workdir, recursive=True)[0])
-            # print(glob.glob("**/*.sancov", root_dir=args.workdir, recursive=True))
-            # print("sancov_file is ", sancov_file)
-            # pc_set = read_sancov(sancov_file)
-            # cov_info_dict[file_name]["pc_set"] = list(pc_set)
-            # os.rename(sancov_file, os.path.join(args.workdir, "fs/shared", file_name + "_sancov"))
+            print("current file is", seed_filename)
+            asyncio.run(task(args, seed_filename))
         except Exception as ex:
-            #import ipdb; ipdb.set_trace()
-            print("!!!!!!!!!!crashing file is: {}!!!!!!!!!!".format(file_name))
-            # if any sancov file has been generated along with the error, delete it
-            if os.listdir(sancov_dir):
-                os.system("rm {}/*".format(sancov_dir))
+            # import ipdb; ipdb.set_trace()
+            print("!!!!!!!!!!crashing file is: {}!!!!!!!!!!".format(filename))
             import traceback; print(traceback.format_exc())
-            return
-    # # now delete all generated .sancov files for consistency
-    # workdir_real_path = os.path.realpath(args.workdir)
-    # os.chdir(workdir_real_path)
-    # if glob.glob("**/*.sancov", root_dir=args.workdir, recursive=True):
-    #     os.system("rm $(find . -name *.sancov)")
 
-    # os.chdir(tango_folder)
+    # construct edge coverage
+    global_pc_set = set()
+    time2cov = {}
+    for seed_filename in seed_filenames:
+        filename = seed_filename.split("/")[-1]
+        sancov_folder_pathname = os.path.join(args.workdir, "fs/shared", process_seed_name(filename) + "_sancov_dir")
+
+        local_pc_set = set()
+        if os.listdir(sancov_folder_pathname):
+            # if we need to consider the shared libraries
+            for sancov_filename in os.listdir(sancov_folder_pathname):
+                if ".so." in sancov_filename:
+                    continue
+                local_pc_set = local_pc_set.union(read_sancov(os.path.join(sancov_folder_pathname, sancov_filename)))
+        else:
+            print("{} has no sancov file".format(filename))
+        global_pc_set = global_pc_set.union(local_pc_set)
+        cov_info[filename]['pc_cov_cnt'] = len(global_pc_set)
+        time2cov[cov_info[filename]['time_elapsed']] = len(global_pc_set)
+
+    # dump the edge coverage
+    time_list, pc_cnt_list = [], []
+    for time, pc_cnt in time2cov.items():
+        time_list.append(time)
+        pc_cnt_list.append(pc_cnt)
+    df = pd.DataFrame({'time_elapsed': time_list, 'pc_cov_cnt': pc_cnt_list})
+    df.to_csv(os.path.join(args.workdir, 'coverage.csv'), index=False)
 
 if __name__ == '__main__':
     main()
