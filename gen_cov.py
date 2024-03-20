@@ -231,7 +231,7 @@ def main():
         time_list.append(time)
         pc_cnt_list.append(pc_cnt)
     df = pd.DataFrame({'time_elapsed': time_list, 'pc_cov_cnt': pc_cnt_list})
-    df.to_csv(os.path.join(args.workdir, 'coverage.csv'), index=False)
+    df.to_csv(os.path.join(args.workdir, 'pc_cov_cnts.csv'), index=False)
 
 if __name__ == '__main__':
     main()
