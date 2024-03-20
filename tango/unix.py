@@ -794,6 +794,7 @@ class ProcessDriver(BaseDriver,
         self._exec_env = self.setup_execution_environment(exec)
         self._pobj = None # Popen object of child process
         self._netns_name = f'ns:{uuid4()}'
+        self._netns_set = False
         self._disable_aslr = disable_aslr
 
         if disable_aslr:
@@ -858,8 +859,9 @@ class ProcessDriver(BaseDriver,
         return Environment(**config)
 
     def __del__(self):
-        if self._isolate_net:
+        if self._isolate_net and self._netns_set:
             netns.remove(self._netns_name)
+            self._netns_set = False
 
     async def relaunch(self):
         if self._pobj:
@@ -978,6 +980,7 @@ class ProcessDriver(BaseDriver,
             netns.setns(self._netns_name, flags=os.O_CREAT)
             with IPRoute() as ipr:
                 ipr.link('set', index=1, state='up')
+            self._netns_set = True
         if self._isolate_fs:
             caps |= self._mount_caps
             self._setup_volatile_filesystem(
