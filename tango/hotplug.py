@@ -213,16 +213,16 @@ class NyxNetInference(HotplugInference):
         shared = os.environ['SHARED']
         target = os.environ['TARGETNAME']
         self._checksum = {
-            'kamailio': 0xfffff98c474e534b,
+            'sip': 0xfffff98c474e534b,
             'lightftp': 0x2371d768474e534b,
             'bftpd': 0x2371d768474e534b,
             'dnsmasq': 0x1989dd87474e534b,
             'exim': 0xfffff98c474e534b,
             'openssh': 0x07b6cf07474e534b,
-            'live555': 0x2371d768474e534b,
-            'tinydtls': 0x1989dd87474e534b,
+            'rtsp': 0x2371d768474e534b,
+            'dtls': 0x1989dd87474e534b,
             'openssl': 0x1989dd87474e534b,
-            'pure-ftpd': 0x2371d768474e534b,
+            'pureftpd': 0x2371d768474e534b,
             'proftpd': 0x2371d768474e534b,
             'dcmtk': 0x5230c19e474e534b,
             'forked-daapd': 0x91129c9b474e534b,
