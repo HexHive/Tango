@@ -16,6 +16,7 @@ fi
 
 python replay.py -v targets/$target/fuzz.json \
     -o driver.isolate_fs false \
+    -o driver.forkserver false \
     -o driver.exec.stdout inherit \
     -o driver.exec.stderr inherit \
     "$@"

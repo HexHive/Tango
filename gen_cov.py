@@ -6,54 +6,15 @@ from datetime import datetime
 import pandas as pd
 
 from tango.core import FuzzerConfig
-from tango.core.tracker import *
 from tango.exceptions import LoadedException, ChannelBrokenException, \
     ProcessTerminatedException, ProcessCrashedException
-from typing import Iterable
 import asyncio
 import sys
 import argparse
 import logging
 import signal
 import psutil
-
-class EmptyTracker(BaseTracker):
-    async def finalize(self, owner):
-        pass
-
-    @property
-    def entry_state(self) -> AbstractState:
-        """
-        The state of the target when it is first launched (with no inputs sent)
-
-        :returns:   The state object describing the entry state.
-        :rtype:     AbstractState
-        """
-        pass
-
-    @property
-    def current_state(self) -> AbstractState:
-        pass
-
-    @property
-    def state_graph(self) -> AbstractStateGraph:
-        pass
-
-    def peek(self, default_source: AbstractState, expected_destination: AbstractState) -> AbstractState:
-        pass
-
-    def reset_state(self, state: AbstractState):
-        """
-        Informs the state tracker that the loader has reset the target into a
-        state.
-        """
-        pass
-
-    def out_edges(self, state: AbstractState) -> Iterable[Transition]:
-        pass
-
-    def in_edges(self, state: AbstractState) -> Iterable[Transition]:
-        pass
+from replay import replay_load, EmptyTracker
 
 def parse_args():
     top = argparse.ArgumentParser(description=(
@@ -114,8 +75,6 @@ async def send_eof(channel):
 tango_folder = os.getcwd()
 async def task(args, file):
     try:
-        file_name = file.split("/")[-1]
-
         config = FuzzerConfig(args.config, {
             'fuzzer': {
                 'resume': True,
@@ -123,26 +82,24 @@ async def task(args, file):
                 'cwd': args.cwd
             }, 'driver': {
                 'forkserver': False,
-                 'isolate_fs':  False,
-                    # 'exec': {
-                        # 'stdout': 'inherit',
-                        # 'stderr': 'inherit',
-                    # }
+                'isolate_fs':  False,
+                'exec': {
+                    'stdout': 'inherit',
+                    'stderr': 'inherit',
+                }
             }, 'tracker': {
                 'type': 'empty'
             }
         })
         config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += \
                         ":coverage=1:handle_segv=2"
+        filename = file.split("/")[-1]
         config._config["driver"]["exec"]["env"]["ASAN_OPTIONS"] += \
-                        ":coverage_dir={}/fs/shared/{}_sancov_dir".format(args.workdir, process_seed_name(file_name))
+                        ":coverage_dir={}/fs/shared/{}_sancov_dir".format(
+                            args.workdir, process_seed_name(filename))
 
-        gen = await config.instantiate('generator')
-        inp = gen.load_input(file)
-
-        drv = await config.instantiate('driver')
         proc_crashed = False
-        await drv.relaunch()
+        drv, inp = await replay_load(config, file)
         try:
             await drv.execute_input(inp)
         except LoadedException as ex:
