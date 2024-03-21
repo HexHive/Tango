@@ -17,7 +17,8 @@
 		"type": "replay"
 	},
 	"channel": {
-		"type": "stdio"
+		"type": "stdio",
+		"chunk_size": 64
 	},
 	"generator": {
 		"type": "reactive",

@@ -16,11 +16,11 @@
 		"type": "replay"
 	},
 	"channel": {
-		"type": "stdio"
+		"type": "stdio",
+		"chunk_size": 64
 	},
 	"generator": {
 		"type": "reactive",
-		"chunk_size": 4,
         "seeds": "./seeds/"
 	},
 	"tracker": {

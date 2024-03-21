@@ -11,7 +11,8 @@
 		"disable_aslr": true
 	},
 	"channel": {
-		"type": "stdio"
+		"type": "stdio",
+		"chunk_size": 4
 	},
 	"tracker": {
 		"type": "coverage"
