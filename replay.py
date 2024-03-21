@@ -77,8 +77,6 @@ def configure_verbosity(level):
 async def replay_load(config, file):
     gen = await config.instantiate('generator')
     inp = gen.load_input(file)
-    RawInput(file=f'replay.{gen._fmt.typ}.bin', fmt=gen._fmt).dumpi(inp)
-    gen._input_kls(file=f'replay.{gen._fmt.typ}').dumpi(inp)
 
     ld = await config.instantiate('loader')
     try:
