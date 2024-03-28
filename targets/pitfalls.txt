@@ -33,6 +33,7 @@
 
 ## FTP (bftpd, lightftp, proftpd, and pureftpd)
 
+- Bftpd closes stderr.
 - Proftpd/Pureftpd uses conftest that maybe has issues when sanitizer is enabled,
   ASLR is disabled, and -fPIE/-pie is enabled in LDFLAGS.
 - Proftpd will open and append data into scoreboard_file. With forkserver, Tango
