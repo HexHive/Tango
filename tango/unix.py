@@ -1286,10 +1286,10 @@ class FileDescriptorChannel(PtraceChannel):
         if not self._refcounter[fd]:
             self._refcounter.pop(fd)
             debug(f"Remove fd {fd} from the fd refcounter")
-        if sum(self._refcounter.values()) == 0:
-            raise ChannelBrokenException(
-                "Channel closed while waiting for server to read",
-                exitcode=ChannelBrokenException.CHANNEL_CLOSE)
+        # if sum(self._refcounter.values()) == 0:
+        #     raise ChannelBrokenException(
+        #         "Channel closed while waiting for server to read",
+        #         exitcode=ChannelBrokenException.CHANNEL_CLOSE)
 
     def sync_callback(self, process: PtraceProcess, syscall: PtraceSyscall):
         self.synced = True
