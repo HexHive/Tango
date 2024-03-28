@@ -93,9 +93,13 @@ class StdIOChannel(FileDescriptorChannel):
         # wait for the next read, recv, select, or poll
         # or wait for the parent to fork, and trace child for these calls
         await self.sync()
-        info(f"Target file {self._file.fileno()} is waiting us")
+        info(f"Target file {self._file.fileno()} (not fd) is waiting us")
         if not self.synced:
             raise NotSyncedException("Failed to sync after connection")
+
+    async def is_file_readable(self):
+        # FIXME stdin.fileno() does not return its real fd
+        return True
 
     async def read_bytes(self) -> ByteString:
         # FIXME for now, stdout/stderr are not piped
