@@ -9,6 +9,7 @@ import argparse
 import logging
 from subprocess import PIPE
 from typing import Iterable
+from ast import literal_eval
 
 from tango.core.tracker import *
 class EmptyTracker(BaseTracker):
@@ -86,9 +87,26 @@ async def replay_load(config, file):
     drv = await config.instantiate('driver')
     return drv, inp
 
+import signal
+async def send_eof(channel, proper_signal):
+    await channel.shutdown()
+    if not channel.root.is_stopped:
+        channel.root.kill(signal.SIGSTOP)
+        await channel.root.waitEvent()
+        channel.root.kill(signal.SIGCONT)
+    await asyncio.sleep(0.1)
+    channel.root.kill(proper_signal)
+    channel.root.detach()
+    await channel.root.waitExit()
+
 async def replay(config, file):
     drv, inp = await replay_load(config, file)
     await drv.execute_input(inp)
+    # send the proper signal for the process to exit
+    if "signal_to_exit" in config._config["driver"]:
+        signal_name = config._config["driver"]["signal_to_exit"]
+        signal_number = getattr(signal, signal_name)
+        await send_eof(drv._channel, signal.Signals(signal_number))
 
 def main():
     args = parse_args()
@@ -109,6 +127,9 @@ def main():
                 value = (value == 'true')
             elif value.isnumeric():
                 value = literal_eval(value)
+            elif value.startswith('{'):
+                import json
+                value = json.loads(value)
             d[key] = value
 
     overrides['tracker'] = {'type': 'empty'}

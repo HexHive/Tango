@@ -14,7 +14,7 @@ import argparse
 import logging
 import signal
 import psutil
-from replay import replay_load, EmptyTracker
+from replay import replay_load, EmptyTracker, send_eof
 
 def parse_args():
     top = argparse.ArgumentParser(description=(
@@ -56,22 +56,6 @@ def read_sancov(file_path):
             pc_set.append(hex(int.from_bytes(byte, "little")))
     return set(pc_set[:-1])
 
-async def send_eof(channel):
-    await channel.shutdown()
-    if not channel.root.is_stopped:
-        channel.root.kill(signal.SIGSTOP)
-        await channel.root.waitEvent()
-        channel.root.kill(signal.SIGCONT)
-    await asyncio.sleep(0.1)
-    channel.root.kill(signal.SIGSEGV)
-    channel.root.detach()
-
-    ## ahmad's original version
-    ## channel._pobj.detach()
-    ## await asyncio.sleep(0.1)
-    ## channel._pobj.kill(signal.SIGSEGV)
-    await channel.root.waitExit()
-
 tango_folder = os.getcwd()
 async def task(args, file):
     try:
@@ -111,7 +95,7 @@ async def task(args, file):
         # only send eof if process not crashed, otherwise would have "process
         # not exist" error
         if not proc_crashed and psutil.pid_exists(drv._channel.root.pid):
-            await send_eof(drv._channel)
+            await send_eof(drv._channel, signal.SIGSEGV)
     finally:
         os.chdir(tango_folder)
 
