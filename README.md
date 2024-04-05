@@ -1,17 +1,13 @@
 # Let's Tango!
 
-Tango can fuzz multiple stateful targets, i.e., 1) protocol targets: bftpd,
-daap, dcmtk, dnsmasq, dtls, exim, lightftp, openssh, openssl, proftpd, pureftpd,
-rtsp, and sip, 2) parsers: expat, llhttp, and yaml.
+Tango can fuzz stateful targets, i.e., 1) protocol targets: bftpd, dcmtk,
+dnsmasq, dtls, exim, lightftp, openssh, openssl, proftpd, pureftpd, rtsp, and
+sip, 2) parsers: expat, llhttp, and yaml. (forked-daap is not supported.)
 
-Targets snapshotted on 20240229.
-- [expat](https://github.com/libexpat/libexpat): a387201
-- [llhttp](https://github.com/nodejs/llhttp): a35e183
-- [yajl](https://github.com/openEuler-BaseService/yajl): 175a30f
+Please refer to [MagmaStateful](https://github.com/HexHive/MagmaStateful) to
+check the performance of Tango against the recent targets.
 
-Other targets are consistent with ProFuzzBench.
-
-## Usage
+## Usage for Debugging Locally
 
 Setup Tango and build the docker images.
 
@@ -38,12 +34,16 @@ To debug, try the following command lines.
 ```
 # skip build the target
 ./scripts/docker_run.sh expat_skip_build
+
 # show info-level logs
 ./scripts/docker_run.sh expat_skip_build -v
+
 # show info-level and debug-level logs
 ./scripts/docker_run.sh expat_skip_build -vv
+
 # show all syscalls (working with -vv)
 ./scripts/docker_run.sh expat_skip_build -vv --show_syscalls
+
 # show covered and symbolized PCs (verbose ouput if the target has symbols) (working with -vv)
 ./scripts/docker_run.sh expat_skip_build -vv --show_syscalls --show_pcs
 ```
