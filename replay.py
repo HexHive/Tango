@@ -2,8 +2,11 @@
 import os
 os.environ['TANGO_NO_PROFILE'] = 'y'
 
+from tango.exceptions import LoadedException, ChannelBrokenException, \
+    ProcessTerminatedException, ProcessCrashedException
 from tango.core import FuzzerConfig
 from tango.raw import RawInput
+from tango.ptrace.errors import PtraceError
 import asyncio
 import argparse
 import logging
@@ -89,24 +92,29 @@ async def replay_load(config, file):
 
 import signal
 async def send_eof(channel, proper_signal):
-    await channel.shutdown()
-    if not channel.root.is_stopped:
-        channel.root.kill(signal.SIGSTOP)
-        await channel.root.waitEvent()
-        channel.root.kill(signal.SIGCONT)
+    try:
+        channel.root.detach()
+    except PtraceError:
+        # no such process
+        return
     await asyncio.sleep(0.1)
     channel.root.kill(proper_signal)
-    channel.root.detach()
-    await channel.root.waitExit()
 
 async def replay(config, file):
     drv, inp = await replay_load(config, file)
-    await drv.execute_input(inp)
-    # send the proper signal for the process to exit
+    try:
+        await drv.execute_input(inp)
+    except LoadedException as ex:
+        if not isinstance(ex._ex, ProcessCrashedException) and \
+                not isinstance(ex._ex, ProcessTerminatedException) and \
+                not isinstance(ex._ex, ChannelBrokenException):
+            raise
     if "signal_to_exit" in config._config["driver"]:
         signal_name = config._config["driver"]["signal_to_exit"]
         signal_number = getattr(signal, signal_name)
         await send_eof(drv._channel, signal.Signals(signal_number))
+    else:
+        await send_eof(drv._channel, signal.SIGTERM)
 
 def main():
     args = parse_args()

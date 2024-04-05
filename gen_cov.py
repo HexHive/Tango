@@ -14,7 +14,7 @@ import argparse
 import logging
 import signal
 import psutil
-from replay import replay_load, EmptyTracker, send_eof
+from replay import replay_load, EmptyTracker
 
 def parse_args():
     top = argparse.ArgumentParser(description=(
@@ -55,6 +55,22 @@ def read_sancov(file_path):
             byte = file.read(pc_length)
             pc_set.append(hex(int.from_bytes(byte, "little")))
     return set(pc_set[:-1])
+
+async def send_eof(channel):
+    await channel.shutdown()
+    if not channel.root.is_stopped:
+        channel.root.kill(signal.SIGSTOP)
+        await channel.root.waitEvent()
+        channel.root.kill(signal.SIGCONT)
+    await asyncio.sleep(0.1)
+    channel.root.kill(signal.SIGSEGV)
+    channel.root.detach()
+
+    ## ahmad's original version
+    ## channel._pobj.detach()
+    ## await asyncio.sleep(0.1)
+    ## channel._pobj.kill(signal.SIGSEGV)
+    await channel.root.waitExit()
 
 tango_folder = os.getcwd()
 async def task(args, file):
