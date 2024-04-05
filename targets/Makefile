@@ -1,5 +1,5 @@
-export CC=clang-13
-export CXX=clang++-13
+export CC=clang
+export CXX=clang++
 TANGO_LIBDIR ?= $(realpath ../lib/)
 
 # one of: edge, bb, func

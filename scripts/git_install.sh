@@ -5,7 +5,7 @@ batch=false
 pythonminversion="3.11" # >=
 pythonmaxversion="3.12" # <
 pipminversion="22.2"
-clangminversion="13"
+clangminversion="17"
 pipflags="-e" # install package in edit mode, for development
 setup_venv=true
 verify_deps=true
@@ -278,10 +278,9 @@ install_clang() {
     v=$clangminversion
     (
         set -xe;
-        LLVM_VERSION=13
+        LLVM_VERSION=$v
         sudo apt-get install -y curl wget
-        curl -sL https://apt.llvm.org/llvm.sh | sudo bash -s $LLVM_VERSION
-        sudo apt-get install -y libc++-$v-dev libc++abi-$v-dev
+        curl -sL https://apt.llvm.org/llvm.sh | sudo bash -s $LLVM_VERSION all
     )
     return $?
 }
