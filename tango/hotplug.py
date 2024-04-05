@@ -211,7 +211,7 @@ class NyxNetInference(HotplugInference):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         shared = os.environ['SHARED']
-        target = os.environ['TARGETNAME']
+        target = os.environ['TARGET_NAME']
         self._checksum = {
             'sip': 0xfffff98c474e534b,
             'lightftp': 0x2371d768474e534b,
@@ -228,7 +228,7 @@ class NyxNetInference(HotplugInference):
             'forked-daapd': 0x91129c9b474e534b,
             'expat': 0x1870c1e5474e534b,
         }[target]
-        self._sharedir = Path(f'{shared}/out-{target}-balanced-000')
+        self._sharedir = Path(f'{shared}/workdir/out-{target}-balanced-000')
         self._inputs = {}
         self._exported = set()
 
@@ -254,9 +254,9 @@ class NyxNetInference(HotplugInference):
         await (await asyncio.create_subprocess_shell('set -x;'
             f'rm -rf "{self._sharedir}"')).wait()
         return await asyncio.create_subprocess_shell('set -x;'
-            'cd "$FUZZER/targets/profuzzbench-nyx/scripts/nyx-eval";'
-            './start.sh -c 0 -i 0 -T $TIMEOUT -p balanced -d "$SHARED"'
-            ' -t "$TARGETNAME" $NYX_FUZZARGS',
+            'cd "$OUT/targets/profuzzbench-nyx/scripts/nyx-eval";'
+            './start.sh -c 0 -i 0 -T $TIMEOUT -p balanced -d "$SHARED/workdir"'
+            ' -t "$TARGET_NAME" $NYX_FUZZARGS',
             start_new_session=True)
 
     async def stop_fuzzer(self, process):
@@ -265,9 +265,9 @@ class NyxNetInference(HotplugInference):
 
     async def import_inputs(self, paths):
         await (await asyncio.create_subprocess_shell('set -x;'
-            'cd "$FUZZER/targets/profuzzbench-nyx/scripts/nyx-eval";'
-            './reproducible.sh -c 0 -i 0 -p balanced -d "$SHARED"'
-            ' -t "$TARGETNAME" $NYX_FUZZARGS')).wait()
+            'cd "$OUT/targets/profuzzbench-nyx/scripts/nyx-eval";'
+            './reproducible.sh -c 0 -i 0 -p balanced -d "$SHARED/workdir"'
+            ' -t "$TARGET_NAME" $NYX_FUZZARGS')).wait()
 
         reproducible = self._sharedir / 'reproducible'
         stems = {p.stem: p for p in paths}
@@ -341,7 +341,7 @@ class AFLppInference(HotplugInference):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         shared = os.environ['SHARED']
-        self._out_dir = Path(f'{shared}/default')
+        self._out_dir = Path(f'{shared}/workdir/default')
         self._inputs = {}
 
     @property
@@ -366,11 +366,11 @@ class AFLppInference(HotplugInference):
         await (await asyncio.create_subprocess_shell('set -x;'
             f'rm -rf "{self._out_dir}"')).wait()
         return await asyncio.create_subprocess_shell('set -x;'
-            'cd "$FUZZER/fuzzer";'
             'export AFL_NO_UI=1;'
-            './afl-fuzz -i "$TARGET/corpus/$PROGRAM" -o "$SHARED" -X'
-            ' -F "$SHARED/imports" $AFL_FUZZARGS'
-            ' -- "$OUT/nyx/packed/nyx_$TARGETNAME"',
+            'cd "$OUT/fuzzer_repo";'
+            './afl-fuzz -i "$MAGMA_TARGET/corpus/$PROGRAM/$FUZZER_NAME" -o "$SHARED/workdir" -X'
+            ' -F "$SHARED/workdir/imports" $AFL_FUZZARGS'
+            ' -- "$RUN/nyx_build/packed/nyx_$TARGET_NAME"',
             start_new_session=True)
 
     async def stop_fuzzer(self, process):
