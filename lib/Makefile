@@ -10,7 +10,7 @@ clean:
 	$(MAKE) -C libfaketime distclean
 
 libfaketime:
-	CFLAGS=-DFAIL_PRE_INIT_CALLS $(MAKE) -C libfaketime all
+	FAKETIME_COMPILE_CFLAGS="-DFAIL_PRE_INIT_CALLS -Wno-error" $(MAKE) -C libfaketime all
 
 tango:
 	$(MAKE) -C tango all
