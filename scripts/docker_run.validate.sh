@@ -40,6 +40,6 @@ docker run \
     -o strategy.dt_predict true \
     -o strategy.dt_extrapolate true \
     \
-    -o strategy.inference_batch 20 \
+    -o strategy.validate true \
     \
-    -o strategy.validate true
+    -o strategy.inference_batch 50 \

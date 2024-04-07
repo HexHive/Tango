@@ -770,9 +770,13 @@ class StateInferenceStrategy(SeedableStrategy,
                     count_hits += 1
                     valid_mask[eqv_idx, dst_idx] = True
                     continue
-                exists = await self._perform_one_cross_pollination(
-                    eqv_node, dst_node, inputv)
-                is_valid = not (exists ^ (cap[eqv_idx, dst_idx] is not None))
+                try:
+                    exists = await self._perform_one_cross_pollination(
+                        eqv_node, dst_node, inputv)
+                    is_valid = not (exists ^ (cap[eqv_idx, dst_idx] is not None))
+                except Exception:
+                    is_valid = False
+
                 assert not valid_mask[eqv_idx, dst_idx]
                 valid_mask[eqv_idx, dst_idx] = is_valid
 
