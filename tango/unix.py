@@ -1246,7 +1246,7 @@ class FileDescriptorChannel(PtraceChannel):
         return sent
 
     async def receive(self) -> ByteString:
-        if not await self.is_file_readable():
+        if not self.is_file_readable():
             return b''
         return await self.read_bytes()
 

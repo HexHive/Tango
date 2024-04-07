@@ -97,7 +97,7 @@ class StdIOChannel(FileDescriptorChannel):
         if not self.synced:
             raise NotSyncedException("Failed to sync after connection")
 
-    async def is_file_readable(self):
+    def is_file_readable(self):
         # FIXME stdin.fileno() does not return its real fd
         return True
 
