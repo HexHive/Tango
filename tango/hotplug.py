@@ -213,20 +213,19 @@ class NyxNetInference(HotplugInference):
         shared = os.environ['SHARED']
         target = os.environ['TARGET_NAME']
         self._checksum = {
-            'sip': 0xfffff98c474e534b,
+            'kamailio': 0xfffff98c474e534b,
             'lightftp': 0x2371d768474e534b,
             'bftpd': 0x2371d768474e534b,
             'dnsmasq': 0x1989dd87474e534b,
             'exim': 0xfffff98c474e534b,
             'openssh': 0x07b6cf07474e534b,
-            'rtsp': 0x2371d768474e534b,
-            'dtls': 0x1989dd87474e534b,
+            'live555': 0x2371d768474e534b,
+            'tinydtls': 0x1989dd87474e534b,
             'openssl': 0x1989dd87474e534b,
             'pureftpd': 0x2371d768474e534b,
             'proftpd': 0x2371d768474e534b,
             'dcmtk': 0x5230c19e474e534b,
-            'forked-daapd': 0x91129c9b474e534b,
-            'expat': 0x1870c1e5474e534b,
+            'daapd': 0x91129c9b474e534b,
         }[target]
         self._sharedir = Path(f'{shared}/workdir/out-{target}-balanced-000')
         self._inputs = {}
