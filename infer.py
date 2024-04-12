@@ -26,16 +26,17 @@ async def run_inference(session, *, outfile=None):
     strat = await session.owner.instantiate('strategy')
     tracker = await session.owner.instantiate('tracker')
     while True:
-        while (rem := len(tracker.unmapped_states)) >= strat._inference_batch:
+        while (rem := len(tracker.unmapped_snapshots)) >= strat._inference_batch:
             logging.info(f"Remaining snapshots: {rem}")
             await strat.step()
         if rem == 0:
             break
         # flush the remaining nodes
         strat._inference_batch = rem
-    groupings = {str(k): v for k, v in tracker.equivalence_states.items()}
+    groupings = {str(k): [str(vv) for vv in list(v)] for k, v in tracker.equivalence.states.items()}
     dump = json.dumps(groupings, cls=NumpyEncoder)
     if outfile:
+        logging.info(f"Dumping the groupings to {outfile}")
         outfile.write_text(dump)
     else:
         print(dump)
