@@ -58,12 +58,12 @@ def main():
         'strategy.type': 'inference',
         'strategy.inference_batch': 50,
         'strategy.recursive_collapse': True,
+        'strategy.disperse_heat': True,
+        'strategy.broadcast_state_schedule': True,
+        'generator.broadcast_mutation_feedback': True,
         'strategy.extend_on_groups': True,
         'strategy.dt_predict': True,
         'strategy.dt_extrapolate': True,
-        'tracker.native_lib': False,
-        'tracker.skip_counts': True,
-        'explorer.observe_postmortem': False,
     }
     fuzzer = Fuzzer(args=rest, overrides=overrides)
     asyncio.run(infer(fuzzer, outfile=argspace.out))
