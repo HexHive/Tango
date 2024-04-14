@@ -2,12 +2,14 @@
     "driver": {
         "type": "unix",
         "exec": {
-            "path": "./kamailio",
-            "args": ["./kamailio", "-f", "kamailio-basic.cfg", "-L", "./modules", "-Y", "./rundir", "-n", "1", "-D", "-E"],
+            "path": "./live555",
+            "args": ["./live555", "8554"],
             "cwd": "./",
             "env": {
                 "ASAN_OPTIONS": "abort_on_error=1:symbolize=0:detect_leaks=0",
-                "ENABLE_SHARED_PAGE_CHECK": "1"
+                "LD_PRELOAD": "../../lib/libfaketime/src/libfaketime.so.1",
+                "FAKETIME": "+0 i0",
+                "FAKETIME_NO_CACHE": "1"
             }
         },
 		"disable_aslr": true,
@@ -17,9 +19,10 @@
 		"type": "replay"
 	},
 	"channel": {
-		"type": "udp",
+		"type": "tcp",
         "endpoint": "127.0.0.1",
-        "port": 5060
+        "port": 8554,
+        "fork_before_accept": true
 	},
 	"generator": {
 		"type": "reactive",
@@ -32,7 +35,7 @@
 		"type": "uniform"
 	},
 	"fuzzer": {
-		"cwd": "./targets/sip/",
+		"cwd": "./targets/live555/",
 		"work_dir": "./workdir/",
 		"resume": true
 	}

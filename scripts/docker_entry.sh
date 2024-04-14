@@ -18,7 +18,7 @@ else
     pushd targets
     if [[ $target == "pureftpd" ]]; then
         make $target/
-    elif [[ $target == "daap" ]]; then
+    elif [[ $target == "daapd" ]]; then
         USE_ASAN=1 make $target/
     else
         USE_ASAN=1 make $target/

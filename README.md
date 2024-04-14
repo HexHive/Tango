@@ -1,8 +1,8 @@
 # Let's Tango!
 
 Tango can fuzz stateful targets, i.e., 1) protocol targets: bftpd, dcmtk,
-dnsmasq, dtls, exim, lightftp, openssh, openssl, proftpd, pureftpd, rtsp, and
-sip, 2) parsers: expat, llhttp, and yaml. (forked-daap is not supported.)
+dnsmasq, tinydtls, exim, lightftp, openssh, openssl, proftpd, pureftpd, live555, and
+kamailio, 2) parsers: expat, llhttp, and yaml. (forked-daap is not supported.)
 
 Please refer to [MagmaStateful](https://github.com/HexHive/MagmaStateful) to
 check the performance of Tango against the recent targets.

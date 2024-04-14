@@ -54,7 +54,7 @@ RUN sudo apt-get install -y \
     npm
 # Update npm for llhttp
 RUN sudo npm cache clean -f && sudo npm install -g n && sudo n stable
-# Install dependencies for daap
+# Install dependencies for daapd
 RUN sudo apt-get install -y \
     apt-utils \
     libgnutls28-dev \
@@ -76,7 +76,7 @@ RUN git clone https://github.com/openssl/openssl.git openssl && \
     git -C openssl checkout OpenSSL_1_0_2-stable && cd openssl && \
     mkdir install && ./config --prefix="/home/openssl/install" && \
     make && make install
-# Install dependencies for sip
+# Install dependencies for kamailio
 RUN sudo apt-get install -y flex bison libmysqlclient-dev pkg-config
 # Install dependencies for pureftpd
 RUN sudo apt-get install -y automake

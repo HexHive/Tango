@@ -34,7 +34,7 @@
 		"type": "uniform"
 	},
 	"fuzzer": {
-		"cwd": "./targets/daap/",
+		"cwd": "./targets/daapd/",
 		"work_dir": "./workdir/",
 		"resume": true
 	}

@@ -647,7 +647,7 @@ class CoverageTracker(BaseTracker,
             base_address = 0
             if elf.header["e_type"] == "ET_DYN":
                 for map in self._driver._channel.root.readMappings():
-                    # 0x0000555555554000-0x000055555557c000 => /home/tango/targets/sip/kamailio (r--p)
+                    # 0x0000555555554000-0x000055555557c000 => /home/tango/targets/kamailio/kamailio (r--p)
                     if map.pathname == pathname:
                         base_address = map.start
                         debug(f"Got base address 0x{base_address:x} ({map})")
