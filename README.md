@@ -7,6 +7,9 @@ kamailio, 2) parsers: expat, llhttp, and yaml. (forked-daap is not supported.)
 Please refer to [MagmaStateful](https://github.com/HexHive/MagmaStateful) to
 check the performance of Tango against the recent targets.
 
+Please check [tango-evaluation](https://github.com/cyruscyliu/tango-evaluation)
+to reproduce figures in the paper if you are interested.
+
 ## Usage for Debugging Locally
 
 Setup Tango and build the docker images.
